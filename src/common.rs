@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
+use std::io;
 use base64::{engine::general_purpose, Engine as _};
 use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
 
@@ -28,7 +29,10 @@ impl GoogleClient {
         let key: ServiceAccountKey = serde_json::from_str(&self.creds_json)?;
         let auth = ServiceAccountAuthenticator::builder(key).build().await?;
         let t = auth.token(scopes).await?;
-        let tok = t.token().ok_or("missing access token")?.to_string();
+        let tok = t
+            .token()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "missing access token"))?
+            .to_string();
         Ok(tok)
     }
 
@@ -45,7 +49,7 @@ impl GoogleClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(format!("google docs error: {} {}", status, body).into());
+            return Err(io::Error::new(io::ErrorKind::Other, format!("google docs error: {} {}", status, body)).into());
         }
         let val: Value = resp.json().await?;
         Ok(val)
@@ -63,7 +67,7 @@ fn read_google_credentials_from_env() -> Result<String, Box<dyn std::error::Erro
     if let Ok(json) = env::var("GOOGLE_CREDENTIALS") {
         return Ok(json);
     }
-    Err("Missing GOOGLE_CREDENTIALS_* env var".into())
+    Err(io::Error::new(io::ErrorKind::Other, "Missing GOOGLE_CREDENTIALS_* env var").into())
 }
 
 pub fn document_to_html(doc: &Value) -> String {

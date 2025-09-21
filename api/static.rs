@@ -51,6 +51,7 @@ fn content_type_from_ext(ext: &str) -> &'static str {
     }
 }
 
-fn main() -> Result<(), Error> {
-    run(handler)
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    run(handler).await
 }
