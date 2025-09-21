@@ -36,13 +36,12 @@
 - Promote to production: `vercel --prod`.
 
 **Auto-Update (Hard Requirement)**
-- Option A — GitHub Actions (recommended):
+- Vercel Cron (implemented):
   - Create a Vercel Deploy Hook in Project Settings → Git → Deploy Hooks.
-  - Add repository secret `VERCEL_DEPLOY_HOOK_URL` with that URL.
-  - This repo includes `.github/workflows/auto-redeploy.yml` which triggers hourly and calls the hook. Adjust the cron as needed.
-- Option B — Vercel Cron (requires a small Function):
-  - Create a serverless/edge function at `/api/redeploy` that `fetch()`es your Deploy Hook, then add a cron entry in `vercel.json` to hit `/api/redeploy` on a schedule.
-  - We avoided Functions to keep the site fully static; use Actions unless you prefer Vercel Cron.
+  - Add an environment variable in Vercel: `VERCEL_DEPLOY_HOOK_URL` with that URL.
+  - The repo includes `/api/redeploy.ts` (Edge Function) which POSTs to your deploy hook.
+  - `vercel.json` includes a cron entry that calls `/api/redeploy` every hour (`0 * * * *`). Adjust the schedule as needed.
+  - Each cron call triggers a new deploy, re-running the Rust generator to pull the latest Google Docs.
 
 **Link Rewriting**
 - Any link in your Google Doc matching `https://docs.google.com/document/d/<ID>` is rewritten to `/g/<ID>/<slug>`.

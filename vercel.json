@@ -10,5 +10,8 @@
     }
   },
   "buildCommand": "curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable && . \"$CARGO_HOME/env\" && cargo --version && cargo run --release --bin sitegen",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "crons": [
+    { "path": "/api/redeploy", "schedule": "0 * * * *" }
+  ]
 }
