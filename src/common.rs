@@ -1,31 +1,33 @@
 use chrono::Local;
 use pulldown_cmark::{html, Options, Parser};
 use regex::Regex;
+use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
+use base64::{engine::general_purpose, Engine as _};
 use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
 
 const TEMPLATE: &str = include_str!("../templates/page.html");
 
 pub struct GoogleClient {
-    auth: ServiceAccountAuthenticator,
+    creds_json: String,
     http: Client,
 }
 
 impl GoogleClient {
     pub async fn new_from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let creds_json = read_google_credentials_from_env()?;
-        let key: ServiceAccountKey = serde_json::from_str(&creds_json)?;
-        let auth = ServiceAccountAuthenticator::builder(key).build().await?;
         let http = Client::builder()
             .user_agent("rodiger-vercel-rust/1.0")
             .build()?;
-        Ok(Self { auth, http })
+        Ok(Self { creds_json, http })
     }
 
     async fn token(&self, scopes: &[&str]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let t = self.auth.token(scopes).await?;
+        let key: ServiceAccountKey = serde_json::from_str(&self.creds_json)?;
+        let auth = ServiceAccountAuthenticator::builder(key).build().await?;
+        let t = auth.token(scopes).await?;
         Ok(t.as_str().to_string())
     }
 
@@ -51,7 +53,7 @@ impl GoogleClient {
 
 fn read_google_credentials_from_env() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     if let Ok(b64) = env::var("GOOGLE_CREDENTIALS_B64") {
-        let bytes = base64::decode(b64)?;
+        let bytes = general_purpose::STANDARD.decode(b64)?;
         return Ok(String::from_utf8(bytes)?);
     }
     if let Ok(json) = env::var("GOOGLE_CREDENTIALS_JSON") {
@@ -156,10 +158,10 @@ fn process_inline_object(ioe: &Value, inline_objects: &Value, out: &mut String) 
 fn maybe_rewrite_google_doc_link(url: &str, link_text: &str) -> String {
     // Match Google Docs document link and rewrite to internal route
     // Examples: https://docs.google.com/document/d/<id>/edit, ...
-    lazy_static::lazy_static! {
-        static ref RE: Regex = Regex::new(r"(?i)https?://docs\.google\.com/document/d/([A-Za-z0-9_-]+)").unwrap();
-    }
-    if let Some(caps) = RE.captures(url) {
+    static GOOGLE_DOC_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r"(?i)https?://docs\.google\.com/document/d/([A-Za-z0-9_-]+)").unwrap()
+    });
+    if let Some(caps) = GOOGLE_DOC_RE.captures(url) {
         let id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let slug = slugify(link_text);
         return format!("/g/{}/{}", id, slug);
@@ -202,4 +204,3 @@ pub fn html_response(body: String) -> Result<vercel_runtime::Response<vercel_run
         .body(Body::Text(body))?;
     Ok(resp)
 }
-
