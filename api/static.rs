@@ -2,7 +2,7 @@ use include_dir::{include_dir, Dir};
 use std::path::Path;
 use vercel_runtime::{run, Body, Error, Request, Response};
 
-static STATIC_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../static");
+static STATIC_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/static");
 
 async fn handler(req: Request) -> Result<Response<Body>, Error> {
     let full_path = req.uri().path().to_string();
@@ -54,4 +54,3 @@ fn content_type_from_ext(ext: &str) -> &'static str {
 fn main() -> Result<(), Error> {
     run(handler)
 }
-

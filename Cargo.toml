@@ -16,3 +16,18 @@ chrono = { version = "0.4", features = ["clock"] }
 include_dir = "0.7"
 base64 = "0.22"
 
+[lib]
+name = "rodiger_vercel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "index"
+path = "api/index.rs"
+
+[[bin]]
+name = "page"
+path = "api/page.rs"
+
+[[bin]]
+name = "static"
+path = "api/static.rs"

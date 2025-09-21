@@ -1,7 +1,5 @@
 use vercel_runtime::{run, Body, Error, Request, Response};
-
-mod common;
-use common::{document_to_html, html_response, render_template, GoogleClient};
+use rodiger_vercel::common::{document_to_html, html_response, render_template, GoogleClient};
 
 async fn handler(req: Request) -> Result<Response<Body>, Error> {
     let query = req.uri().query().unwrap_or("");
@@ -30,4 +28,3 @@ async fn handler(req: Request) -> Result<Response<Body>, Error> {
 fn main() -> Result<(), Error> {
     run(handler)
 }
-

@@ -1,3 +1,6 @@
 .DS_Store
 config.json
 credentials.json
+target/
+.vercel/
+.env

@@ -1,7 +1,5 @@
 use vercel_runtime::{run, Body, Error, Request, Response};
-
-mod common;
-use common::{document_to_html, html_response, render_template, GoogleClient};
+use rodiger_vercel::common::{document_to_html, html_response, render_template, GoogleClient};
 
 async fn handler(_req: Request) -> Result<Response<Body>, Error> {
     let doc_id = std::env::var("ROOT_DOC_ID").map_err(|e| format!("ROOT_DOC_ID not set: {}", e))?;
@@ -19,4 +17,3 @@ async fn handler(_req: Request) -> Result<Response<Body>, Error> {
 fn main() -> Result<(), Error> {
     run(handler)
 }
-
