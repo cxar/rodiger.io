@@ -2,7 +2,11 @@
   "build": {
     "env": {
       "CARGO_HOME": "/vercel/.cargo",
-      "RUSTUP_HOME": "/vercel/.rustup"
+      "RUSTUP_HOME": "/vercel/.rustup",
+      "RUSTUP_INIT_SKIP_PATH_CHECK": "1",
+      "RUSTUP_INIT_SKIP_PATH_MODIFICATION": "1",
+      "RUSTUP_INIT_SKIP_RCFILE": "1",
+      "RUSTUP_INIT_SKIP_SUDO_CHECK": "1"
     }
   },
   "functions": {

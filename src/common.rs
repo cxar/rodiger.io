@@ -28,7 +28,7 @@ impl GoogleClient {
         let key: ServiceAccountKey = serde_json::from_str(&self.creds_json)?;
         let auth = ServiceAccountAuthenticator::builder(key).build().await?;
         let t = auth.token(scopes).await?;
-        Ok(t.as_str().to_string())
+        Ok(t.token().to_string())
     }
 
     pub async fn fetch_document(&self, doc_id: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
