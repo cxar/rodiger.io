@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/**/*.rs": {
+      "runtime": "vercel-rust@4.0.0"
+    }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/api/index" },
+    { "source": "/g/:id/:slug*", "destination": "/api/page?id=:id" },
+    { "source": "/static/:path*", "destination": "/api/static/:path" }
+  ]
+}

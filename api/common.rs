@@ -1,0 +1,205 @@
+use chrono::Local;
+use pulldown_cmark::{html, Options, Parser};
+use regex::Regex;
+use reqwest::Client;
+use serde_json::Value;
+use std::env;
+use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
+
+const TEMPLATE: &str = include_str!("../templates/page.html");
+
+pub struct GoogleClient {
+    auth: ServiceAccountAuthenticator,
+    http: Client,
+}
+
+impl GoogleClient {
+    pub async fn new_from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let creds_json = read_google_credentials_from_env()?;
+        let key: ServiceAccountKey = serde_json::from_str(&creds_json)?;
+        let auth = ServiceAccountAuthenticator::builder(key).build().await?;
+        let http = Client::builder()
+            .user_agent("rodiger-vercel-rust/1.0")
+            .build()?;
+        Ok(Self { auth, http })
+    }
+
+    async fn token(&self, scopes: &[&str]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let t = self.auth.token(scopes).await?;
+        Ok(t.as_str().to_string())
+    }
+
+    pub async fn fetch_document(&self, doc_id: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        // Google Docs API
+        let url = format!("https://docs.googleapis.com/v1/documents/{}", doc_id);
+        let token = self.token(&["https://www.googleapis.com/auth/documents.readonly"]).await?;
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("google docs error: {} {}", status, body).into());
+        }
+        let val: Value = resp.json().await?;
+        Ok(val)
+    }
+}
+
+fn read_google_credentials_from_env() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    if let Ok(b64) = env::var("GOOGLE_CREDENTIALS_B64") {
+        let bytes = base64::decode(b64)?;
+        return Ok(String::from_utf8(bytes)?);
+    }
+    if let Ok(json) = env::var("GOOGLE_CREDENTIALS_JSON") {
+        return Ok(json);
+    }
+    if let Ok(json) = env::var("GOOGLE_CREDENTIALS") {
+        return Ok(json);
+    }
+    Err("Missing GOOGLE_CREDENTIALS_* env var".into())
+}
+
+pub fn document_to_html(doc: &Value) -> String {
+    // Traverse Google Docs structure -> Markdown, then to HTML
+    let mut md = String::new();
+
+    let inline_objects = doc.get("inlineObjects").cloned().unwrap_or(Value::Object(Default::default()));
+
+    if let Some(body) = doc.get("body") {
+        if let Some(content) = body.get("content").and_then(|c| c.as_array()) {
+            for elem in content {
+                if let Some(par) = elem.get("paragraph") {
+                    process_paragraph(par, &inline_objects, &mut md);
+                }
+            }
+        }
+    }
+
+    // Markdown -> HTML
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    let parser = Parser::new_ext(&md, options);
+    let mut html_out = String::new();
+    html::push_html(&mut html_out, parser);
+    html_out
+}
+
+fn process_paragraph(par: &Value, inline_objects: &Value, out: &mut String) {
+    out.push_str(&get_paragraph_prefix(par));
+
+    if let Some(elements) = par.get("elements").and_then(|e| e.as_array()) {
+        for el in elements {
+            if let Some(tr) = el.get("textRun") {
+                process_text_run(tr, out);
+                continue;
+            }
+            if let Some(ioe) = el.get("inlineObjectElement") {
+                process_inline_object(ioe, inline_objects, out);
+            }
+        }
+    }
+    out.push('\n');
+}
+
+fn get_paragraph_prefix(par: &Value) -> String {
+    if par.get("bullet").is_some() {
+        return "* ".to_string();
+    }
+    if let Some(style) = par.get("paragraphStyle") {
+        if let Some(named) = style.get("namedStyleType").and_then(|s| s.as_str()) {
+            return match named {
+                "HEADING_1" => "# ".into(),
+                "HEADING_2" => "## ".into(),
+                "HEADING_3" => "### ".into(),
+                _ => "".into(),
+            };
+        }
+    }
+    String::new()
+}
+
+fn process_text_run(tr: &Value, out: &mut String) {
+    let mut text = tr.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    if let Some(style) = tr.get("textStyle") {
+        if let Some(link) = style.get("link") {
+            if let Some(url) = link.get("url").and_then(|u| u.as_str()) {
+                let txt_trim = text.trim();
+                let href = maybe_rewrite_google_doc_link(url, txt_trim);
+                text = format!("[{}]({})", txt_trim, href);
+            }
+        }
+    }
+    out.push_str(&text);
+}
+
+fn process_inline_object(ioe: &Value, inline_objects: &Value, out: &mut String) {
+    let id = ioe.get("inlineObjectId").and_then(|v| v.as_str()).unwrap_or("");
+    if id.is_empty() { return; }
+    if let Some(obj) = inline_objects.get(id) {
+        if let Some(props) = obj.get("inlineObjectProperties") {
+            if let Some(eo) = props.get("embeddedObject") {
+                if let Some(img_props) = eo.get("imageProperties") {
+                    if let Some(uri) = img_props.get("contentUri").and_then(|u| u.as_str()) {
+                        out.push_str(&format!("\n![image]({})\n", uri));
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn maybe_rewrite_google_doc_link(url: &str, link_text: &str) -> String {
+    // Match Google Docs document link and rewrite to internal route
+    // Examples: https://docs.google.com/document/d/<id>/edit, ...
+    lazy_static::lazy_static! {
+        static ref RE: Regex = Regex::new(r"(?i)https?://docs\.google\.com/document/d/([A-Za-z0-9_-]+)").unwrap();
+    }
+    if let Some(caps) = RE.captures(url) {
+        let id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let slug = slugify(link_text);
+        return format!("/g/{}/{}", id, slug);
+    }
+    url.to_string()
+}
+
+fn slugify(s: &str) -> String {
+    let s = s.trim().to_lowercase();
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in s.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_dash = false;
+        } else {
+            if !last_dash {
+                out.push('-');
+                last_dash = true;
+            }
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+pub fn render_template(content_html: &str) -> String {
+    let now = Local::now();
+    let date = now.format("%B %-d, %Y").to_string();
+    TEMPLATE
+        .replace("{{CONTENT}}", content_html)
+        .replace("{{LAST_UPDATED}}", &date)
+}
+
+pub fn html_response(body: String) -> Result<vercel_runtime::Response<vercel_runtime::Body>, vercel_runtime::Error> {
+    use vercel_runtime::{Body, Response};
+    let resp = Response::builder()
+        .status(200)
+        .header("Content-Type", "text/html; charset=utf-8")
+        .header("Cache-Control", "s-maxage=600, stale-while-revalidate=60")
+        .body(Body::Text(body))?;
+    Ok(resp)
+}
+

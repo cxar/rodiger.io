@@ -35,17 +35,11 @@
       sizes="512x512"
       href="/static/favicon/android-chrome-512x512.png"
     />
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link rel="stylesheet" href="/static/css/style.css" />
   </head>
   <body>
     <div class="container">
-      <main
-        id="content"
-        hx-get="/content"
-        hx-trigger="sse:contentUpdated from:body"
-        hx-swap="innerHTML"
-      >
+      <main id="content">
         {{.Content}}
       </main>
 
@@ -59,6 +53,6 @@
         <p>Last updated: {{.LastUpdate.Format "January 2, 2006"}}</p>
       </footer>
     </div>
-    <div hx-ext="sse" sse-connect="/updates" sse-swap="none"></div>
   </body>
-</html>
+  </html>
+
