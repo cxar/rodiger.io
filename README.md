@@ -1,12 +1,11 @@
 **Overview**
-- Rust + Vercel serverless site that renders Google Docs as pages.
-- Root page renders `ROOT_DOC_ID`; links to other Google Docs are rewritten to internal routes and rendered on-demand.
-- Static assets served from `static/` via a Rust function.
+- Rust static-site generator that renders Google Docs to HTML during build on Vercel.
+- Root page renders `ROOT_DOC_ID`; links to other Google Docs are rewritten to internal routes and those pages are generated too.
+- Static assets are copied from `static/` to the final site.
 
 **Routes**
 - `/` → renders the Google Doc from `ROOT_DOC_ID`.
-- `/g/:id/:slug*` → renders the Google Doc ID `:id`.
-- `/static/:path*` → serves files from local `static/`.
+- `/g/:id/:slug*` → static page per linked Google Doc.
 
 **Environment Variables**
 - `ROOT_DOC_ID` — Google Doc ID for the homepage.
@@ -25,9 +24,11 @@
 - If Rust was just installed: `. "$HOME/.cargo/env"` to update your shell PATH.
 - Link project: `vercel link` (once).
 - Add envs locally: `vercel env pull .env` (or set manually in `.env`).
-- Run dev: `vercel dev` (builds Rust functions and serves routes).
+- Build locally: `cargo run --release --bin sitegen` → outputs to `dist/`.
+- Preview locally: `npx serve dist` or `python -m http.server` inside `dist/`.
 
 **Deploy**
+- Vercel uses `buildCommand: cargo run --release --bin sitegen` and serves `dist/`.
 - Set envs in Vercel Dashboard or via CLI:
   - `vercel env add ROOT_DOC_ID`
   - `vercel env add GOOGLE_CREDENTIALS_B64` (or JSON variant)
@@ -39,11 +40,10 @@
 - The `<slug>` is derived from the link text for nicer URLs; it’s optional for routing.
 
 **Performance Notes**
-- HTML responses include `Cache-Control: s-maxage=600, stale-while-revalidate=60` for fast edge caching.
-- Static assets use long-lived immutable caching.
+- Fully static output, fast on Vercel’s CDN.
+- You control rebuild cadence by redeploying (or adding a Vercel cron to trigger redeploys).
 
 **Next Enhancements (optional)**
 - Add KV/ETag caching to reduce Docs API calls.
 - Use Doc title as `<title>` for better SEO.
 - Image proxying/transforms if needed.
-

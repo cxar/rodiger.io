@@ -71,16 +71,24 @@ fn read_google_credentials_from_env() -> Result<String, Box<dyn std::error::Erro
 }
 
 pub fn document_to_html(doc: &Value) -> String {
-    // Traverse Google Docs structure -> Markdown, then to HTML
-    let mut md = String::new();
+    document_to_html_with_links(doc).0
+}
 
-    let inline_objects = doc.get("inlineObjects").cloned().unwrap_or(Value::Object(Default::default()));
+pub fn document_to_html_with_links(doc: &Value) -> (String, Vec<(String, String)>) {
+    // Traverse Google Docs structure -> Markdown, then to HTML, collecting Google Doc links
+    let mut md = String::new();
+    let mut links: Vec<(String, String)> = Vec::new();
+
+    let inline_objects = doc
+        .get("inlineObjects")
+        .cloned()
+        .unwrap_or(Value::Object(Default::default()));
 
     if let Some(body) = doc.get("body") {
         if let Some(content) = body.get("content").and_then(|c| c.as_array()) {
             for elem in content {
                 if let Some(par) = elem.get("paragraph") {
-                    process_paragraph(par, &inline_objects, &mut md);
+                    process_paragraph(par, &inline_objects, &mut md, &mut links);
                 }
             }
         }
@@ -93,16 +101,21 @@ pub fn document_to_html(doc: &Value) -> String {
     let parser = Parser::new_ext(&md, options);
     let mut html_out = String::new();
     html::push_html(&mut html_out, parser);
-    html_out
+    (html_out, links)
 }
 
-fn process_paragraph(par: &Value, inline_objects: &Value, out: &mut String) {
+fn process_paragraph(
+    par: &Value,
+    inline_objects: &Value,
+    out: &mut String,
+    link_collector: &mut Vec<(String, String)>,
+) {
     out.push_str(&get_paragraph_prefix(par));
 
     if let Some(elements) = par.get("elements").and_then(|e| e.as_array()) {
         for el in elements {
             if let Some(tr) = el.get("textRun") {
-                process_text_run(tr, out);
+                process_text_run(tr, out, link_collector);
                 continue;
             }
             if let Some(ioe) = el.get("inlineObjectElement") {
@@ -130,13 +143,13 @@ fn get_paragraph_prefix(par: &Value) -> String {
     String::new()
 }
 
-fn process_text_run(tr: &Value, out: &mut String) {
+fn process_text_run(tr: &Value, out: &mut String, link_collector: &mut Vec<(String, String)>) {
     let mut text = tr.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
     if let Some(style) = tr.get("textStyle") {
         if let Some(link) = style.get("link") {
             if let Some(url) = link.get("url").and_then(|u| u.as_str()) {
                 let txt_trim = text.trim();
-                let href = maybe_rewrite_google_doc_link(url, txt_trim);
+                let href = maybe_rewrite_google_doc_link_collect(url, txt_trim, link_collector);
                 text = format!("[{}]({})", txt_trim, href);
             }
         }
@@ -160,7 +173,11 @@ fn process_inline_object(ioe: &Value, inline_objects: &Value, out: &mut String) 
     }
 }
 
-fn maybe_rewrite_google_doc_link(url: &str, link_text: &str) -> String {
+fn maybe_rewrite_google_doc_link_collect(
+    url: &str,
+    link_text: &str,
+    collector: &mut Vec<(String, String)>,
+) -> String {
     // Match Google Docs document link and rewrite to internal route
     // Examples: https://docs.google.com/document/d/<id>/edit, ...
     static GOOGLE_DOC_RE: Lazy<Regex> = Lazy::new(|| {
@@ -168,7 +185,9 @@ fn maybe_rewrite_google_doc_link(url: &str, link_text: &str) -> String {
     });
     if let Some(caps) = GOOGLE_DOC_RE.captures(url) {
         let id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        let slug = slugify(link_text);
+        let mut slug = slugify(link_text);
+        if slug.is_empty() { slug = id.to_string(); }
+        collector.push((id.to_string(), slug.clone()));
         return format!("/g/{}/{}", id, slug);
     }
     url.to_string()
@@ -198,14 +217,4 @@ pub fn render_template(content_html: &str) -> String {
     TEMPLATE
         .replace("{{CONTENT}}", content_html)
         .replace("{{LAST_UPDATED}}", &date)
-}
-
-pub fn html_response(body: String) -> Result<vercel_runtime::Response<vercel_runtime::Body>, vercel_runtime::Error> {
-    use vercel_runtime::{Body, Response};
-    let resp = Response::builder()
-        .status(200)
-        .header("Content-Type", "text/html; charset=utf-8")
-        .header("Cache-Control", "s-maxage=600, stale-while-revalidate=60")
-        .body(Body::Text(body))?;
-    Ok(resp)
 }
