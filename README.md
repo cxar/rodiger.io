@@ -38,8 +38,10 @@
 **Auto-Update (Hard Requirement)**
 - Vercel Cron (implemented):
   - Create a Vercel Deploy Hook in Project Settings → Git → Deploy Hooks.
-  - Add an environment variable in Vercel: `VERCEL_DEPLOY_HOOK_URL` with that URL.
-  - The repo includes `/api/redeploy.ts` (Edge Function) which POSTs to your deploy hook.
+  - Add environment variables in Vercel:
+    - `VERCEL_DEPLOY_HOOK_URL` with that URL.
+    - `CRON_SECRET` to any random string; Vercel will send it as `Authorization: Bearer <value>`.
+  - The repo includes `/api/redeploy.js` (Serverless Function) which checks `Authorization` and POSTs to your deploy hook.
   - `vercel.json` includes a cron entry that calls `/api/redeploy` every hour (`0 * * * *`). Adjust the schedule as needed.
   - Each cron call triggers a new deploy, re-running the Rust generator to pull the latest Google Docs.
 
