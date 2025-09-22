@@ -181,14 +181,15 @@ fn maybe_rewrite_google_doc_link_collect(
     // Match Google Docs document link and rewrite to internal route
     // Examples: https://docs.google.com/document/d/<id>/edit, ...
     static GOOGLE_DOC_RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)https?://docs\.google\.com/document/d/([A-Za-z0-9_-]+)").unwrap()
+        // Matches: /document/d/<ID> and /document/u/<n>/d/<ID>
+        Regex::new(r"(?i)https?://docs\.google\.com/document/(?:u/\d+/)?d/([A-Za-z0-9_-]+)").unwrap()
     });
     if let Some(caps) = GOOGLE_DOC_RE.captures(url) {
         let id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let mut slug = slugify(link_text);
         if slug.is_empty() { slug = id.to_string(); }
         collector.push((id.to_string(), slug.clone()));
-        return format!("/g/{}/{}", id, slug);
+        return format!("/g/{}/{}/", id, slug);
     }
     url.to_string()
 }

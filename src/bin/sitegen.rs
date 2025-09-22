@@ -30,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut chosen_slug: HashMap<String, String> = HashMap::new();
 
     while let Some((doc_id, slug_hint)) = queue.pop_front() {
+        println!("Generating: {} (slug hint: {:?})", doc_id, slug_hint);
         // Fetch doc JSON
         let doc = client.fetch_document(&doc_id).await?;
         let (html, links) = document_to_html_with_links(&doc);
@@ -46,9 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         if let Some(parent) = output_path.parent() { fs::create_dir_all(parent)?; }
         fs::write(&output_path, page)?;
+        println!("Wrote: {}", output_path.display());
 
         // Enqueue discovered links
         for (linked_id, linked_slug) in links {
+            println!("  found link -> id={} slug={} ", linked_id, linked_slug);
             if !chosen_slug.contains_key(&linked_id) {
                 queue.push_back((linked_id, Some(linked_slug)));
             }
@@ -74,4 +77,3 @@ fn copy_dir_all<S: AsRef<Path>, D: AsRef<Path>>(src: S, dst: D) -> io::Result<()
     }
     Ok(())
 }
-
