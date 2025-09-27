@@ -34,7 +34,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Fetch doc JSON
         let doc = client.fetch_document(&doc_id).await?;
         let (html, links) = document_to_html_with_links(&doc);
-        let page = render_template(&html);
+        // Build nav
+        let nav_html = if Some(&doc_id) == Some(&root_id) && slug_hint.is_none() {
+            String::new()
+        } else {
+            let created = client.fetch_created_time(&doc_id).await?.unwrap_or_default();
+            let created_span = if created.is_empty() { String::new() } else { format!(r#"<span class=\"created\">Created: {}</span>"#, created) };
+            format!(r#"<nav class=\"top\"><a href=\"/\" class=\"back\" aria-label=\"Back to home\">&larr;</a>{}</nav>"#, created_span)
+        };
+        let page = render_template(&html, &nav_html);
 
         // Resolve path
         let output_path = if Some(&doc_id) == Some(&root_id) && slug_hint.is_none() {

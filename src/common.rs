@@ -55,6 +55,33 @@ impl GoogleClient {
         let val: Value = resp.json().await?;
         Ok(val)
     }
+
+    pub async fn fetch_created_time(&self, file_id: &str) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        // Google Drive API for metadata
+        let url = format!(
+            "https://www.googleapis.com/drive/v3/files/{}?fields=createdTime,modifiedTime,name",
+            file_id
+        );
+        let token = self
+            .token(&["https://www.googleapis.com/auth/drive.metadata.readonly"])
+            .await?;
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Ok(None);
+        }
+        let v: Value = resp.json().await?;
+        if let Some(s) = v.get("createdTime").and_then(|x| x.as_str()) {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                return Ok(Some(dt.format("%B %-d, %Y").to_string()));
+            }
+        }
+        Ok(None)
+    }
 }
 
 fn read_google_credentials_from_env() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -233,10 +260,11 @@ fn rewrite_md_google_links(md: &str, collector: &mut Vec<(String, String)>) -> S
         .into_owned()
 }
 
-pub fn render_template(content_html: &str) -> String {
+pub fn render_template(content_html: &str, nav_html: &str) -> String {
     let now = Local::now();
     let date = now.format("%B %-d, %Y").to_string();
     TEMPLATE
         .replace("{{CONTENT}}", content_html)
+        .replace("{{NAV}}", nav_html)
         .replace("{{LAST_UPDATED}}", &date)
 }
