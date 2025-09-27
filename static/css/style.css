@@ -159,6 +159,26 @@ img {
   display: block;
 }
 
+/* Top navigation on subpages */
+nav.top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0 0.5rem;
+}
+
+nav.top .back {
+  font-size: 1.25rem;
+  border: none;
+  text-decoration: none;
+  color: var(--link);
+}
+
+nav.top .created {
+  color: var(--gray);
+  font-size: 0.9rem;
+}
+
 /* Selection */
 ::selection {
   background: var(--h1);
