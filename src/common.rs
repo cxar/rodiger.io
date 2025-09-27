@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
+use std::borrow::Cow;
 use std::io;
 use base64::{engine::general_purpose, Engine as _};
 use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
@@ -93,6 +94,9 @@ pub fn document_to_html_with_links(doc: &Value) -> (String, Vec<(String, String)
             }
         }
     }
+
+    // Safety pass: rewrite any remaining markdown links to Google Docs
+    md = rewrite_md_google_links(&md, &mut links);
 
     // Markdown -> HTML
     let mut options = Options::empty();
@@ -210,6 +214,23 @@ fn slugify(s: &str) -> String {
         }
     }
     out.trim_matches('-').to_string()
+}
+
+fn rewrite_md_google_links(md: &str, collector: &mut Vec<(String, String)>) -> String {
+    static MD_LINK_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r"\[(?P<text>[^\]]+)\]\(\s*(?P<url>https?://docs\.google\.com/document/(?:u/\d+/)?d/(?P<id>[A-Za-z0-9_-]+)[^)]*)\s*\)").unwrap()
+    });
+
+    MD_LINK_RE
+        .replace_all(md, |caps: &regex::Captures| {
+            let text = caps.name("text").map(|m| m.as_str()).unwrap_or("");
+            let id = caps.name("id").map(|m| m.as_str()).unwrap_or("");
+            let mut slug = slugify(text);
+            if slug.is_empty() { slug = id.to_string(); }
+            collector.push((id.to_string(), slug.clone()));
+            Cow::from(format!("[{}](/g/{}/{}/)", text, id, slug))
+        })
+        .into_owned()
 }
 
 pub fn render_template(content_html: &str) -> String {
