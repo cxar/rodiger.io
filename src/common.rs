@@ -220,7 +220,7 @@ fn maybe_rewrite_google_doc_link_collect(
         let mut slug = slugify(link_text);
         if slug.is_empty() { slug = id.to_string(); }
         collector.push((id.to_string(), slug.clone()));
-        return format!("/g/{}/{}/", id, slug);
+        return format!("/p/{}/", slug);
     }
     url.to_string()
 }
@@ -255,7 +255,7 @@ fn rewrite_md_google_links(md: &str, collector: &mut Vec<(String, String)>) -> S
             let mut slug = slugify(text);
             if slug.is_empty() { slug = id.to_string(); }
             collector.push((id.to_string(), slug.clone()));
-            Cow::from(format!("[{}](/g/{}/{}/)", text, id, slug))
+            Cow::from(format!("[{}](/p/{}/)", text, slug))
         })
         .into_owned()
 }

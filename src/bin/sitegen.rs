@@ -1,5 +1,5 @@
 use rodiger_vercel::common::{document_to_html_with_links, render_template, GoogleClient};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::fs;
 use std::io;
@@ -26,8 +26,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut queue: VecDeque<(String, Option<String>)> = VecDeque::new();
     queue.push_back((root_id.clone(), None));
 
-    // Map doc_id -> slug chosen (first seen wins)
+    // Map doc_id -> slug chosen (first seen wins, dedup if needed)
     let mut chosen_slug: HashMap<String, String> = HashMap::new();
+    let mut used_slugs: HashSet<String> = HashSet::new();
 
     while let Some((doc_id, slug_hint)) = queue.pop_front() {
         println!("Generating: {} (slug hint: {:?})", doc_id, slug_hint);
@@ -48,20 +49,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let output_path = if Some(&doc_id) == Some(&root_id) && slug_hint.is_none() {
             out_dir.join("index.html")
         } else {
-            let slug = slug_hint.unwrap_or_else(|| doc_id.clone());
-            chosen_slug.entry(doc_id.clone()).or_insert_with(|| slug.clone());
-            out_dir.join("g").join(&doc_id).join(&slug).join("index.html")
+            // pick or dedupe slug for this doc
+            let base = slug_hint.unwrap_or_else(|| "page".to_string());
+            let final_slug = match chosen_slug.get(&doc_id) {
+                Some(s) => s.clone(),
+                None => {
+                    let mut s = base.clone();
+                    let mut i = 2;
+                    while used_slugs.contains(&s) { s = format!("{}-{}", base, i); i += 1; }
+                    used_slugs.insert(s.clone());
+                    chosen_slug.insert(doc_id.clone(), s.clone());
+                    s
+                }
+            };
+            out_dir.join("p").join(&final_slug).join("index.html")
         };
 
         if let Some(parent) = output_path.parent() { fs::create_dir_all(parent)?; }
         fs::write(&output_path, page)?;
         println!("Wrote: {}", output_path.display());
 
-        // Enqueue discovered links
+        // Enqueue discovered links, pre-assign slug to keep URLs stable
         for (linked_id, linked_slug) in links {
             println!("  found link -> id={} slug={} ", linked_id, linked_slug);
             if !chosen_slug.contains_key(&linked_id) {
-                queue.push_back((linked_id, Some(linked_slug)));
+                // reserve the slug if available
+                let base = linked_slug.clone();
+                let mut s = base.clone();
+                let mut i = 2;
+                while used_slugs.contains(&s) { s = format!("{}-{}", base, i); i += 1; }
+                used_slugs.insert(s.clone());
+                chosen_slug.insert(linked_id.clone(), s.clone());
+                queue.push_back((linked_id, Some(s)));
             }
         }
     }
