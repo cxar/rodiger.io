@@ -40,8 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             String::new()
         } else {
             let created = client.fetch_created_time(&doc_id).await?.unwrap_or_default();
-            let created_span = if created.is_empty() { String::new() } else { format!(r#"<span class=\"created\">Created: {}</span>"#, created) };
-            format!(r#"<nav class=\"top\"><a href=\"/\" class=\"back\" aria-label=\"Back to home\">&larr;</a>{}</nav>"#, created_span)
+            let created_span = if created.is_empty() { String::new() } else { format!(r#"<span class="created">Created: {}</span>"#, created) };
+            format!(r#"<nav class="top"><a href="/" class="back" aria-label="Back to home">&larr; back</a>{}</nav>"#, created_span)
         };
         let page = render_template(&html, &nav_html);
 

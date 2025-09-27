@@ -163,15 +163,20 @@ img {
 nav.top {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin: 1rem 0 0.5rem;
+  gap: 1rem;
+  margin: 1.25rem 0 1rem;
 }
 
 nav.top .back {
-  font-size: 1.25rem;
+  font-size: 1rem;
   border: none;
   text-decoration: none;
   color: var(--link);
+  padding: 0.2rem 0.4rem;
+}
+
+nav.top .back:hover {
+  text-decoration: underline;
 }
 
 nav.top .created {
