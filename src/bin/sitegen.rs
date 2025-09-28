@@ -4,6 +4,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use regex::Regex;
+use sha2::{Digest, Sha256};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -34,7 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Generating: {} (slug hint: {:?})", doc_id, slug_hint);
         // Fetch doc JSON
         let doc = client.fetch_document(&doc_id).await?;
-        let (html, links) = document_to_html_with_links(&doc);
+        let (mut html, links) = document_to_html_with_links(&doc);
+        // Localize images referenced in the HTML to dist/static/images
+        html = localize_images(&html, &client, &out_dir.join("static").join("images")).await?;
         // Build nav
         let nav_html = if Some(&doc_id) == Some(&root_id) && slug_hint.is_none() {
             String::new()
@@ -103,4 +107,115 @@ fn copy_dir_all<S: AsRef<Path>, D: AsRef<Path>>(src: S, dst: D) -> io::Result<()
         }
     }
     Ok(())
+}
+
+async fn localize_images(
+    html: &str,
+    client: &GoogleClient,
+    images_dir: &Path,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    fs::create_dir_all(images_dir)?;
+    let re = Regex::new(r#"<img\s+[^>]*src=\"([^\"]+)\""#)?;
+    let mut out = String::with_capacity(html.len());
+    let mut last = 0usize;
+    let mut cache: HashMap<String, String> = HashMap::new();
+
+    for cap in re.captures_iter(html) {
+        if let Some(m) = cap.get(1) {
+            let url = m.as_str();
+            // copy segment before this match
+            if let Some(mat) = cap.get(0) { out.push_str(&html[last..mat.start()]); }
+
+            let local_src = if url.starts_with("/static/") {
+                url.to_string()
+            } else if url.starts_with("data:image/") {
+                // data URI
+                match save_data_uri(url, images_dir) {
+                    Ok(p) => p,
+                    Err(_) => url.to_string(),
+                }
+            } else {
+                // http(s) fetch with reqwest
+                match cache.get(url) {
+                    Some(p) => p.clone(),
+                    None => match download_image(url, client, images_dir).await {
+                        Ok(p) => { cache.insert(url.to_string(), p.clone()); p }
+                        Err(_) => url.to_string(),
+                    }
+                }
+            };
+
+            // rebuild the <img ... src="..." with local_src
+            if let Some(mat) = cap.get(0) {
+                let replaced = mat.as_str().replacen(url, &local_src, 1);
+                out.push_str(&replaced);
+                last = mat.end();
+            }
+        }
+    }
+    out.push_str(&html[last..]);
+    Ok(out)
+}
+
+fn save_data_uri(data_uri: &str, images_dir: &Path) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // format: data:<mime>;base64,<data>
+    let (meta, data_b64) = data_uri.split_once(',').ok_or("invalid data uri")?;
+    let mime = meta.trim_start_matches("data:").split(';').next().unwrap_or("application/octet-stream");
+    let ext = match mime {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/gif" => ".gif",
+        "image/svg+xml" => ".svg",
+        _ => ".bin",
+    };
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data_b64)?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = format!("{:x}", hasher.finalize());
+    let filename = format!("{}{}", &hash[..16], ext);
+    let path = images_dir.join(&filename);
+    if !path.exists() { fs::write(&path, &bytes)?; }
+    Ok(format!("/static/images/{}", filename))
+}
+
+async fn download_image(
+    url: &str,
+    client: &GoogleClient,
+    images_dir: &Path,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let resp = client
+        .http
+        .get(url)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        return Err(io::Error::new(io::ErrorKind::Other, format!("image fetch failed {}", resp.status())).into());
+    }
+    let ct = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("application/octet-stream");
+    let ext = match ct {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/gif" => ".gif",
+        "image/svg+xml" => ".svg",
+        _ => {
+            // try to infer from url
+            if let Some(ext) = Path::new(url).extension().and_then(|s| s.to_str()) {
+                match ext.to_ascii_lowercase().as_str() {
+                    "png" => ".png",
+                    "jpg" | "jpeg" => ".jpg",
+                    "gif" => ".gif",
+                    "svg" => ".svg",
+                    _ => ".bin",
+                }
+            } else { ".bin" }
+        }
+    };
+    let bytes = resp.bytes().await?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = format!("{:x}", hasher.finalize());
+    let filename = format!("{}{}", &hash[..16], ext);
+    let path = images_dir.join(&filename);
+    if !path.exists() { fs::write(&path, &bytes)?; }
+    Ok(format!("/static/images/{}", filename))
 }
