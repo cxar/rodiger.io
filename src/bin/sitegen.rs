@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use regex::Regex;
 use sha2::{Digest, Sha256};
+use base64::{engine::general_purpose, Engine as _};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -184,7 +185,7 @@ async fn download_image(
     images_dir: &Path,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let resp = client
-        .http
+        .http_client()
         .get(url)
         .send()
         .await?;

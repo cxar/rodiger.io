@@ -56,6 +56,10 @@ impl GoogleClient {
         Ok(val)
     }
 
+    pub fn http_client(&self) -> &Client {
+        &self.http
+    }
+
     pub async fn fetch_created_time(&self, file_id: &str) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Google Drive API for metadata
         let url = format!(
