@@ -6,7 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use regex::Regex;
 use sha2::{Digest, Sha256};
-use base64::{engine::general_purpose, Engine as _};
+use base64::Engine as _;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
