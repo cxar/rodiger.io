@@ -494,16 +494,17 @@ setInterval(updateISS, 10000);
 // --- People in Space ---
 (async () => {
   try {
-    const d = await fetchJSON('https://api.open-notify.org/astros.json');
-    const byCraft = {};
+    const d = await fetchJSON('https://www.howmanypeopleareinspacerightnow.com/peopleinspace.json');
+    const byLocation = {};
     d.people.forEach(p => {
-      if (!byCraft[p.craft]) byCraft[p.craft] = [];
-      byCraft[p.craft].push(p.name);
+      const loc = p.location || 'Unknown';
+      if (!byLocation[loc]) byLocation[loc] = [];
+      byLocation[loc].push(p.name);
     });
     let list = '';
-    for (const [craft, people] of Object.entries(byCraft)) {
+    for (const [loc, people] of Object.entries(byLocation)) {
       people.forEach(name => {
-        list += `<li class="astro-item"><span class="astro-name">${name}</span><span class="astro-craft">${craft}</span></li>`;
+        list += `<li class="astro-item"><span class="astro-name">${name}</span><span class="astro-craft">${loc}</span></li>`;
       });
     }
     document.getElementById('astro-content').innerHTML =
