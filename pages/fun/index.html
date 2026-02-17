@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fun stuff happening right now</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --bg2: #24283b;
+  --fg: #c0caf5;
+  --h1: #f7768e;
+  --h2: #7aa2f7;
+  --h3: #ff9e64;
+  --link: #7dcfff;
+  --gray: #565f89;
+  --green: #9ece6a;
+  --yellow: #e0af68;
+  --border: #292e43;
+  --red: #f7768e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "IBM Plex Mono", "Roboto Mono", ui-monospace, "Cascadia Code",
+    "Segoe UI Mono", "Ubuntu Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 1em;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection { background: var(--h1); color: var(--bg); }
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 4rem;
+}
+
+nav.top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+
+nav.top .back {
+  font-size: 1rem;
+  border: none;
+  text-decoration: none;
+  color: var(--link);
+  padding: 0.2rem 0.4rem;
+}
+
+nav.top .back:hover { text-decoration: underline; }
+
+h1 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--h1);
+  margin: 0 0 0.3rem;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  color: var(--gray);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--gray);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card { animation: fadeIn 0.4s ease-out both; }
+.card:nth-child(2) { animation-delay: 0.05s; }
+.card:nth-child(3) { animation-delay: 0.1s; }
+.card:nth-child(4) { animation-delay: 0.15s; }
+.card:nth-child(5) { animation-delay: 0.2s; }
+.card:nth-child(6) { animation-delay: 0.25s; }
+
+.loading {
+  color: var(--gray);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+/* ISS */
+#iss-map {
+  width: 100%;
+  height: 160px;
+  border-radius: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+#iss-coords {
+  font-size: 0.85rem;
+  color: var(--fg);
+}
+
+#iss-coords span { color: var(--green); }
+
+/* APOD */
+#apod-img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 0.35rem;
+  margin-bottom: 0.5rem;
+  display: none;
+}
+
+#apod-title {
+  font-size: 0.95rem;
+  color: var(--h3);
+  font-weight: 600;
+}
+
+#apod-title a {
+  color: var(--h3);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255,158,100,0.2);
+}
+
+#apod-title a:hover { border-bottom-color: var(--h3); }
+
+/* Earthquakes */
+.quake-list { list-style: none; }
+
+.quake-item {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.quake-item:last-child { border-bottom: none; }
+
+.quake-mag {
+  display: inline-block;
+  min-width: 2.5em;
+  font-weight: 700;
+  margin-right: 0.5rem;
+}
+
+.mag-high { color: var(--red); }
+.mag-med { color: var(--yellow); }
+.mag-low { color: var(--green); }
+
+.quake-place { color: var(--fg); }
+.quake-time { color: var(--gray); font-size: 0.8rem; display: block; margin-top: 0.15rem; }
+
+/* Kp index */
+.kp-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.kp-label { font-size: 0.85rem; color: var(--gray); margin-bottom: 0.5rem; }
+.kp-bar-container { display: flex; gap: 3px; height: 18px; margin-top: 0.75rem; }
+.kp-bar { flex: 1; border-radius: 2px; background: var(--border); transition: background 0.3s; }
+
+/* Counters */
+.counter-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.counter-row:last-child { border-bottom: none; }
+.counter-label { color: var(--gray); }
+.counter-value { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* People in space */
+.astro-count {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--h2);
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.astro-label { font-size: 0.85rem; color: var(--gray); margin-bottom: 0.75rem; }
+
+.astro-list { list-style: none; }
+
+.astro-item {
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+.astro-name { color: var(--fg); }
+.astro-craft { color: var(--gray); font-size: 0.8rem; }
+
+.card-wide { grid-column: 1 / -1; }
+
+@media (max-width: 700px) {
+  .container { padding: 1rem; }
+  h1 { font-size: 1.5rem; }
+  .grid { grid-template-columns: 1fr; }
+  .card-wide { grid-column: auto; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top"><a href="/" class="back" aria-label="Back to home">&larr; back</a></nav>
+  <h1>fun stuff happening right now</h1>
+  <p class="subtitle">a dashboard of interesting things, updated live</p>
+
+  <div class="grid">
+    <!-- ISS Tracker -->
+    <div class="card">
+      <div class="card-title"><span class="live-dot"></span> ISS Tracker</div>
+      <canvas id="iss-map"></canvas>
+      <div id="iss-coords"><span class="loading">locating station…</span></div>
+    </div>
+
+    <!-- NASA APOD -->
+    <div class="card">
+      <div class="card-title">🔭 Astronomy Picture of the Day</div>
+      <img id="apod-img" alt="NASA APOD">
+      <div id="apod-title"><span class="loading">loading…</span></div>
+    </div>
+
+    <!-- Space Weather -->
+    <div class="card">
+      <div class="card-title"><span class="live-dot"></span> Space Weather</div>
+      <div id="kp-content"><span class="loading">checking solar wind…</span></div>
+    </div>
+
+    <!-- People in Space -->
+    <div class="card">
+      <div class="card-title">🧑‍🚀 People in Space</div>
+      <div id="astro-content"><span class="loading">counting…</span></div>
+    </div>
+
+    <!-- Earthquakes -->
+    <div class="card">
+      <div class="card-title">🌍 Recent Earthquakes (M2.5+ today)</div>
+      <div id="quake-content"><span class="loading">checking USGS…</span></div>
+    </div>
+
+    <!-- Counters -->
+    <div class="card">
+      <div class="card-title">⏱ Counters</div>
+      <div id="counters-content">
+        <div class="counter-row"><span class="counter-label">Unix timestamp</span><span class="counter-value" id="c-unix">—</span></div>
+        <div class="counter-row"><span class="counter-label">Next equinox/solstice</span><span class="counter-value" id="c-solstice">—</span></div>
+        <div class="counter-row"><span class="counter-label">Earth orbital speed</span><span class="counter-value" id="c-orbital">—</span></div>
+        <div class="counter-row"><span class="counter-label">Days this year</span><span class="counter-value" id="c-yearday">—</span></div>
+        <div class="counter-row"><span class="counter-label">% of year elapsed</span><span class="counter-value" id="c-yearpct">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Helpers ---
+function timeAgo(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+// --- ISS Tracker ---
+function drawMap(canvas, lat, lng) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.offsetWidth * 2;
+  const H = canvas.height = canvas.offsetHeight * 2;
+  ctx.scale(1, 1);
+
+  // Background
+  ctx.fillStyle = '#1a1b26';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw simplified world map (coastline rectangles for continents)
+  ctx.fillStyle = '#292e43';
+  // These are rough bounding boxes for visual effect
+  const continents = [
+    // North America
+    [[-170,72],[-50,15]],
+    // South America
+    [[-82,15],[-34,-56]],
+    // Europe
+    [[-10,72],[40,36]],
+    // Africa
+    [[-18,37],[52,-35]],
+    // Asia
+    [[40,72],[180,5]],
+    // Australia
+    [[112,-10],[155,-44]],
+  ];
+
+  function lngToX(ln) { return ((ln + 180) / 360) * W; }
+  function latToY(lt) { return ((90 - lt) / 180) * H; }
+
+  // Better: draw with small dots grid for a "data" look
+  ctx.fillStyle = '#292e43';
+  // Simple continent fill using polygons approximation via rectangles
+  continents.forEach(([[x1,y1],[x2,y2]]) => {
+    const sx = lngToX(x1), sy = latToY(y1);
+    const ex = lngToX(x2), ey = latToY(y2);
+    ctx.fillRect(sx, sy, ex - sx, ey - sy);
+  });
+
+  // Grid lines
+  ctx.strokeStyle = '#292e43';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 6; i++) {
+    const y = (i / 6) * H;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (let i = 0; i <= 12; i++) {
+    const x = (i / 12) * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // ISS dot
+  const ix = lngToX(lng), iy = latToY(lat);
+
+  // Glow
+  const grad = ctx.createRadialGradient(ix, iy, 0, ix, iy, 20);
+  grad.addColorStop(0, 'rgba(156,206,106,0.5)');
+  grad.addColorStop(1, 'rgba(156,206,106,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(ix, iy, 20, 0, Math.PI * 2); ctx.fill();
+
+  // Dot
+  ctx.fillStyle = '#9ece6a';
+  ctx.beginPath(); ctx.arc(ix, iy, 5, 0, Math.PI * 2); ctx.fill();
+
+  // Ring
+  ctx.strokeStyle = '#9ece6a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(ix, iy, 10, 0, Math.PI * 2); ctx.stroke();
+}
+
+async function updateISS() {
+  try {
+    const d = await fetchJSON('http://api.open-notify.org/iss-now.json');
+    const lat = parseFloat(d.iss_position.latitude);
+    const lng = parseFloat(d.iss_position.longitude);
+    drawMap(document.getElementById('iss-map'), lat, lng);
+    document.getElementById('iss-coords').innerHTML =
+      `<span>${lat.toFixed(4)}°</span>, <span>${lng.toFixed(4)}°</span>`;
+  } catch(e) {
+    document.getElementById('iss-coords').innerHTML = '<span class="loading">unavailable</span>';
+  }
+}
+updateISS();
+setInterval(updateISS, 10000);
+
+// --- APOD ---
+(async () => {
+  try {
+    const d = await fetchJSON('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+    const img = document.getElementById('apod-img');
+    if (d.media_type === 'image') {
+      img.src = d.url;
+      img.style.display = 'block';
+    }
+    document.getElementById('apod-title').innerHTML =
+      `<a href="${d.hdurl || d.url}" target="_blank" rel="noopener">${d.title}</a>`;
+  } catch(e) {
+    document.getElementById('apod-title').innerHTML = '<span class="loading">unavailable</span>';
+  }
+})();
+
+// --- Earthquakes ---
+(async () => {
+  try {
+    const d = await fetchJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson');
+    const quakes = d.features.slice(0, 8);
+    if (quakes.length === 0) {
+      document.getElementById('quake-content').innerHTML = '<span class="loading">no significant quakes today ✨</span>';
+      return;
+    }
+    const html = '<ul class="quake-list">' + quakes.map(q => {
+      const mag = q.properties.mag;
+      const cls = mag >= 5 ? 'mag-high' : mag >= 4 ? 'mag-med' : 'mag-low';
+      return `<li class="quake-item"><span class="quake-mag ${cls}">M${mag.toFixed(1)}</span><span class="quake-place">${q.properties.place}</span><span class="quake-time">${timeAgo(Date.now() - q.properties.time)}</span></li>`;
+    }).join('') + '</ul>';
+    document.getElementById('quake-content').innerHTML = html;
+  } catch(e) {
+    document.getElementById('quake-content').innerHTML = '<span class="loading">unavailable</span>';
+  }
+})();
+
+// --- Kp Index ---
+(async () => {
+  try {
+    const d = await fetchJSON('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+    // First row is headers, rest are data. Take last entry.
+    const rows = d.slice(1);
+    const last = rows[rows.length - 1];
+    const kp = parseFloat(last[1]);
+    const kpColor = kp >= 7 ? 'var(--red)' : kp >= 5 ? 'var(--yellow)' : kp >= 3 ? 'var(--h3)' : 'var(--green)';
+    const label = kp >= 7 ? 'Severe storm' : kp >= 5 ? 'Geomagnetic storm' : kp >= 3 ? 'Unsettled' : 'Quiet';
+
+    // Show recent bars (last 8)
+    const recent = rows.slice(-8);
+    const bars = recent.map(r => {
+      const v = parseFloat(r[1]);
+      const c = v >= 7 ? 'var(--red)' : v >= 5 ? 'var(--yellow)' : v >= 3 ? 'var(--h3)' : 'var(--green)';
+      return `<div class="kp-bar" style="background:${c};opacity:${0.4 + (v/9)*0.6}"></div>`;
+    }).join('');
+
+    document.getElementById('kp-content').innerHTML =
+      `<div class="kp-value" style="color:${kpColor}">Kp ${kp.toFixed(1)}</div>` +
+      `<div class="kp-label">${label}</div>` +
+      `<div class="kp-bar-container">${bars}</div>`;
+  } catch(e) {
+    document.getElementById('kp-content').innerHTML = '<span class="loading">unavailable</span>';
+  }
+})();
+
+// --- People in Space ---
+(async () => {
+  try {
+    const d = await fetchJSON('http://api.open-notify.org/astros.json');
+    const byCraft = {};
+    d.people.forEach(p => {
+      if (!byCraft[p.craft]) byCraft[p.craft] = [];
+      byCraft[p.craft].push(p.name);
+    });
+    let list = '';
+    for (const [craft, people] of Object.entries(byCraft)) {
+      people.forEach(name => {
+        list += `<li class="astro-item"><span class="astro-name">${name}</span><span class="astro-craft">${craft}</span></li>`;
+      });
+    }
+    document.getElementById('astro-content').innerHTML =
+      `<div class="astro-count">${d.number}</div>` +
+      `<div class="astro-label">humans in orbit right now</div>` +
+      `<ul class="astro-list">${list}</ul>`;
+  } catch(e) {
+    document.getElementById('astro-content').innerHTML = '<span class="loading">unavailable</span>';
+  }
+})();
+
+// --- Counters ---
+function nextSolsticeOrEquinox() {
+  const now = new Date();
+  const y = now.getFullYear();
+  // Approximate dates for equinoxes/solstices
+  const events = [
+    new Date(y, 2, 20),  // Mar equinox
+    new Date(y, 5, 21),  // Jun solstice
+    new Date(y, 8, 22),  // Sep equinox
+    new Date(y, 11, 21), // Dec solstice
+    new Date(y+1, 2, 20),
+  ];
+  for (const e of events) {
+    if (e > now) return e;
+  }
+  return events[events.length - 1];
+}
+
+function updateCounters() {
+  const now = new Date();
+  const unix = Math.floor(now.getTime() / 1000);
+  document.getElementById('c-unix').textContent = unix.toLocaleString();
+
+  const next = nextSolsticeOrEquinox();
+  const days = Math.ceil((next - now) / 86400000);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('c-solstice').textContent = `${days}d (${months[next.getMonth()]} ${next.getDate()})`;
+
+  // Earth orbital speed varies ~29.29-30.29 km/s, approximate with day of year
+  const start = new Date(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((now - start) / 86400000) + 1;
+  const totalDays = ((now.getFullYear() % 4 === 0) ? 366 : 365);
+  // Simplified: faster at perihelion (Jan 3), slower at aphelion (Jul 4)
+  const angle = ((dayOfYear - 3) / totalDays) * 2 * Math.PI;
+  const speed = 29.78 + 0.5 * Math.cos(angle); // km/s average ~29.78
+  document.getElementById('c-orbital').textContent = speed.toFixed(2) + ' km/s';
+
+  document.getElementById('c-yearday').textContent = `${dayOfYear} / ${totalDays}`;
+  document.getElementById('c-yearpct').textContent = ((dayOfYear / totalDays) * 100).toFixed(2) + '%';
+}
+
+updateCounters();
+setInterval(updateCounters, 1000);
+</script>
+</body>
+</html>

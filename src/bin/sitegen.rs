@@ -22,6 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Copy static assets
     copy_dir_all("static", out_dir.join("static"))?;
 
+    // Copy pages (e.g. pages/fun/index.html → dist/fun/index.html)
+    copy_dir_all("pages", &out_dir)?;
+
     // Google client
     let client = GoogleClient::new_from_env().await?;
 
