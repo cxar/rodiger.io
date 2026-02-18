@@ -472,7 +472,7 @@ setInterval(updateISS, 10000);
 // --- People in Space ---
 (async () => {
   try {
-    const d = await fetchJSON('https://www.howmanypeopleareinspacerightnow.com/peopleinspace.json');
+    const d = await fetchJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.howmanypeopleareinspacerightnow.com/peopleinspace.json'));
     const byLocation = {};
     d.people.forEach(p => {
       const loc = p.location || 'Unknown';
