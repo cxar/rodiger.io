@@ -408,7 +408,7 @@ setInterval(updateISS, 10000);
 // --- APOD ---
 (async () => {
   try {
-    const d = await fetchJSON('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+    const d = await fetchJSON('https://api.nasa.gov/planetary/apod?api_key=NgN7VB1wyYsUX0ngG6MdaJq748EK0KCaNYUGpAEd');
     const img = document.getElementById('apod-img');
     if (d.media_type === 'image') {
       img.src = d.url;
