@@ -633,27 +633,36 @@ async function main() {
     const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
 
     if (growthData.length > 0) {
+      // Group smaller growers into "Other"
+      const top6 = growthData.slice(0, 6);
+      const rest = growthData.slice(6);
+      const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
+      const pieData = [...top6];
+      if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isUsdg: false });
+
+      const pieColors = pieData.map(d => {
+        if (d.isUsdg) return '#7aa2f7';
+        const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
+        return palette[pieData.indexOf(d) % palette.length];
+      });
+
       new Chart(document.getElementById('capture-chart').getContext('2d'), {
-        type: 'bar',
+        type: 'doughnut',
         data: {
-          labels: growthData.map(d => d.symbol),
+          labels: pieData.map(d => d.symbol),
           datasets: [{
-            label: '30d Growth',
-            data: growthData.map(d => d.growth),
-            backgroundColor: growthData.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
-            borderColor: growthData.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
-            borderWidth: 1,
+            data: pieData.map(d => d.growth),
+            backgroundColor: pieColors,
+            borderColor: '#1a1b26',
+            borderWidth: 2,
           }]
         },
         options: {
           responsive: true,
+          cutout: '45%',
           plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) + ' (' + (ctx.parsed.y/totalPositiveGrowth*100).toFixed(1) + '% of growth)' } }
-          },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: '#565f89' } },
-            y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+            legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
+            tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPositiveGrowth*100).toFixed(1) + '%)' } }
           }
         }
       });
