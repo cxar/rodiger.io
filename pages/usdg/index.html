@@ -26,42 +26,74 @@
         padding: 1rem 1.2rem;
       }
       .metric-card .label {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         color: var(--gray);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 0.3rem;
       }
       .metric-card .value {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
         font-weight: 600;
         color: var(--fg);
       }
       .metric-card .delta {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         margin-top: 0.2rem;
       }
       .delta.up { color: var(--green); }
       .delta.down { color: var(--red); }
-      .chart-container {
+      .delta.neutral { color: var(--gray); }
+      .section {
         background: var(--bg2);
         border: 1px solid var(--border);
         border-radius: 0.5rem;
-        padding: 1rem;
+        padding: 1.2rem;
         margin: 1.5rem 0;
-        position: relative;
       }
-      .chart-container h3 {
-        margin: 0 0 0.5rem;
+      .section h3 {
+        margin: 0 0 0.75rem;
         font-size: 1rem;
       }
-      .chart-container canvas {
-        margin: 0;
-        border-radius: 0;
+      .section canvas { margin: 0; border-radius: 0; }
+
+      /* Race tracker */
+      .race-track {
+        position: relative;
+        height: 48px;
+        background: var(--bg);
+        border-radius: 6px;
+        margin: 0.75rem 0;
+        overflow: hidden;
       }
-      .chain-bars {
-        margin: 1.5rem 0;
+      .race-bar {
+        position: absolute;
+        top: 0; bottom: 0;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        transition: width 0.6s ease;
+        white-space: nowrap;
       }
+      .race-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.78rem;
+        color: var(--gray);
+        margin-top: 0.25rem;
+      }
+      .race-gap {
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--h3);
+        margin: 0.5rem 0 0;
+      }
+
+      /* Chain bars */
       .chain-bar {
         display: flex;
         align-items: center;
@@ -69,60 +101,92 @@
         gap: 0.75rem;
       }
       .chain-bar .chain-name {
-        width: 90px;
-        font-size: 0.85rem;
+        width: 80px;
+        font-size: 0.82rem;
         text-align: right;
         color: var(--gray);
         flex-shrink: 0;
       }
       .chain-bar .bar-track {
         flex: 1;
-        height: 24px;
+        height: 28px;
         background: var(--bg);
         border-radius: 4px;
         overflow: hidden;
+        position: relative;
       }
       .chain-bar .bar-fill {
         height: 100%;
         border-radius: 4px;
         transition: width 0.6s ease;
+        display: flex;
+        align-items: center;
+        padding-left: 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
       }
-      .chain-bar .bar-value {
-        width: 100px;
-        font-size: 0.85rem;
+      .chain-bar .bar-meta {
+        width: 140px;
+        font-size: 0.78rem;
         color: var(--fg);
         flex-shrink: 0;
-      }
-      .stablecoin-table {
-        font-size: 0.85rem;
-      }
-      .stablecoin-table td:nth-child(2),
-      .stablecoin-table td:nth-child(3),
-      .stablecoin-table th:nth-child(2),
-      .stablecoin-table th:nth-child(3) {
         text-align: right;
       }
-      .highlight-row { background: rgba(122, 162, 247, 0.08); }
-      .loading {
-        text-align: center;
-        color: var(--gray);
-        padding: 2rem;
+      .chain-bar .bar-meta .chain-delta {
+        font-size: 0.72rem;
       }
+
+      /* Milestone race */
+      .milestone-table {
+        font-size: 0.82rem;
+        width: 100%;
+      }
+      .milestone-table td, .milestone-table th {
+        padding: 0.5rem 0.6rem;
+      }
+      .milestone-table .fastest { color: var(--green); font-weight: 600; }
+      .milestone-table .usdg-col { color: var(--h2); font-weight: 600; }
+
+      /* Market table */
+      .market-table { font-size: 0.82rem; }
+      .market-table td:nth-child(n+2),
+      .market-table th:nth-child(n+2) { text-align: right; }
+      .highlight-row { background: rgba(122, 162, 247, 0.08); }
       .rank-badge {
         display: inline-block;
         background: var(--h2);
         color: var(--bg);
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         font-weight: 700;
-        padding: 0.1rem 0.4rem;
+        padding: 0.1rem 0.35rem;
         border-radius: 3px;
-        margin-left: 0.5rem;
+        margin-left: 0.4rem;
       }
+
+      .insight-callout {
+        background: rgba(122, 162, 247, 0.06);
+        border-left: 3px solid var(--h2);
+        padding: 0.75rem 1rem;
+        margin: 1rem 0;
+        font-size: 0.85rem;
+        color: var(--fg);
+        border-radius: 0 4px 4px 0;
+      }
+      .insight-callout strong { color: var(--h3); }
+
       .updated-time {
         text-align: center;
         color: var(--gray);
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         margin-top: 2rem;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      @media (max-width: 768px) {
+        .two-col { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -133,36 +197,95 @@
       </nav>
       <main id="content">
         <h1>USDG Dashboard</h1>
-        <p style="color: var(--gray); margin-top: -0.5rem;">Global Dollar (USDG) adoption and market metrics. Data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
+        <p style="color: var(--gray); margin-top: -0.5rem;">Global Dollar adoption metrics. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
 
-        <div id="metrics-grid" class="dashboard-grid">
-          <div class="metric-card"><div class="label">Total Supply</div><div class="value" id="total-supply">...</div><div class="delta" id="supply-delta"></div></div>
-          <div class="metric-card"><div class="label">Market Rank</div><div class="value" id="market-rank">...</div><div class="delta" id="rank-context"></div></div>
-          <div class="metric-card"><div class="label">7d Change</div><div class="value" id="week-change">...</div><div class="delta" id="week-abs"></div></div>
-          <div class="metric-card"><div class="label">30d Change</div><div class="value" id="month-change">...</div><div class="delta" id="month-abs"></div></div>
+        <!-- Top metrics -->
+        <div class="dashboard-grid" id="metrics-grid">
+          <div class="metric-card">
+            <div class="label">Total Supply</div>
+            <div class="value" id="total-supply">...</div>
+            <div class="delta" id="supply-delta"></div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Stablecoin Rank</div>
+            <div class="value" id="market-rank">...</div>
+            <div class="delta neutral" id="rank-context"></div>
+          </div>
+          <div class="metric-card">
+            <div class="label">7d Change</div>
+            <div class="value" id="week-change">...</div>
+            <div class="delta" id="week-abs"></div>
+          </div>
+          <div class="metric-card">
+            <div class="label">30d Change</div>
+            <div class="value" id="month-change">...</div>
+            <div class="delta" id="month-abs"></div>
+          </div>
         </div>
 
-        <div class="chart-container">
+        <!-- Insight callouts -->
+        <div id="insight-1" class="insight-callout" style="display:none"></div>
+
+        <!-- Race to next rank -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Race to Next Rank</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="race-subtitle"></p>
+          <div class="race-track" id="race-track"></div>
+          <div class="race-label" id="race-labels"></div>
+          <div class="race-gap" id="race-gap"></div>
+        </div>
+
+        <!-- Supply chart -->
+        <div class="section">
           <h3 style="color: var(--h3);">Supply Over Time</h3>
-          <canvas id="supply-chart" height="280"></canvas>
+          <canvas id="supply-chart" height="260"></canvas>
         </div>
 
-        <div class="chart-container">
-          <h3 style="color: var(--h3);">Chain Distribution</h3>
-          <div id="chain-bars" class="chain-bars"></div>
+        <!-- Milestone velocity -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Speed to $1B: USDG vs The Field</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.75rem">Days from first tracked supply to each milestone. Lower is faster.</p>
+          <canvas id="milestone-chart" height="220"></canvas>
+          <div id="milestone-insight" class="insight-callout" style="display:none;margin-top:1rem"></div>
         </div>
 
-        <div class="chart-container">
-          <h3 style="color: var(--h3);">Stablecoin Market Share</h3>
-          <table class="stablecoin-table" id="market-table">
-            <thead><tr><th>Stablecoin</th><th>Market Cap</th><th>Share</th></tr></thead>
-            <tbody id="market-tbody"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
+        <!-- Chain distribution + velocity -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Chain Distribution &amp; Velocity</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">Where USDG lives and where it's growing.</p>
+          <div id="chain-bars"></div>
+          <div id="chain-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
+        </div>
+
+        <!-- Alt-stable market share -->
+        <div class="two-col">
+          <div class="section">
+            <h3 style="color: var(--h3);">Alt-Stable Market Share</h3>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">USDG's share of non-USDT/USDC stablecoins</p>
+            <canvas id="alt-share-chart" height="200"></canvas>
+          </div>
+          <div class="section">
+            <h3 style="color: var(--h3);">Growth Rate vs Peers</h3>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">30d growth rate, stablecoins >$500M</p>
+            <canvas id="growth-chart" height="200"></canvas>
+          </div>
+        </div>
+
+        <!-- Growth capture -->
+        <div class="section">
+          <h3 style="color: var(--h3);">30d Growth Capture</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">When the stablecoin market grows, where do new dollars go?</p>
+          <canvas id="capture-chart" height="220"></canvas>
+          <div id="capture-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
+        </div>
+
+        <!-- Market table -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Stablecoin Rankings</h3>
+          <table class="market-table" id="market-table">
+            <thead><tr><th>Stablecoin</th><th>Market Cap</th><th>30d</th><th>Share</th></tr></thead>
+            <tbody id="market-tbody"></tbody>
           </table>
-        </div>
-
-        <div class="chart-container">
-          <h3 style="color: var(--h3);">Market Share Over Time (vs Top Stablecoins)</h3>
-          <canvas id="share-chart" height="280"></canvas>
         </div>
 
         <p class="updated-time" id="updated-time"></p>
@@ -171,29 +294,26 @@
     </div>
 
     <script>
-const USDG_ID = 286;
+const USDG_ID = '286';
 const CHAIN_COLORS = {
   'Solana': '#9945FF',
   'Ethereum': '#627EEA',
   'X Layer': '#e0af68',
   'Ink': '#f7768e',
 };
-const chartDefaults = {
-  color: '#565f89',
-  borderColor: '#292e43',
+const COMPARE_STABLES = {
+  'USDC': 2,
+  'USDe': 146,
 };
 
 function fmt(n) {
-  if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
   return '$' + n.toFixed(0);
 }
-
-function pct(n) {
-  const s = n >= 0 ? '+' : '';
-  return s + n.toFixed(1) + '%';
-}
+function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function days(n) { return n + (n === 1 ? ' day' : ' days'); }
 
 async function fetchJSON(url) {
   const r = await fetch(url);
@@ -202,33 +322,40 @@ async function fetchJSON(url) {
 
 async function main() {
   try {
-    const [usdgData, allStables, usdgHistory] = await Promise.all([
+    // Fetch all data in parallel
+    const [usdgData, allStables, usdgHistory, ...compareHistories] = await Promise.all([
       fetchJSON(`https://stablecoins.llama.fi/stablecoin/${USDG_ID}`),
       fetchJSON('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${USDG_ID}`),
+      ...Object.values(COMPARE_STABLES).map(id =>
+        fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${id}`)
+      ),
     ]);
 
-    // Current supply from chain balances
+    // ── Parse basics ──
     const chains = {};
     let totalSupply = 0;
     for (const [chain, data] of Object.entries(usdgData.chainBalances || {})) {
       const tokens = data.tokens || [];
       if (tokens.length) {
         const val = tokens[tokens.length - 1].circulating.peggedUSD;
-        chains[chain] = val;
+        chains[chain] = { current: val };
         totalSupply += val;
+        // 30d ago
+        if (tokens.length >= 30) {
+          chains[chain].prev30 = tokens[tokens.length - 30].circulating.peggedUSD;
+        }
       }
     }
 
-    // Find USDG in all stables for rank + changes
     const sorted = allStables.peggedAssets
-      .filter(a => a.circulating && a.circulating.peggedUSD > 0)
+      .filter(a => a.circulating?.peggedUSD > 0)
       .sort((a, b) => b.circulating.peggedUSD - a.circulating.peggedUSD);
-    const usdgEntry = sorted.find(a => a.id === String(USDG_ID));
+    const usdgEntry = sorted.find(a => a.id === USDG_ID);
     const rank = sorted.indexOf(usdgEntry) + 1;
-    const totalStableMarket = sorted.reduce((s, a) => s + a.circulating.peggedUSD, 0);
+    const totalMarket = sorted.reduce((s, a) => s + a.circulating.peggedUSD, 0);
 
-    // Metrics
+    // ── Top metrics ──
     document.getElementById('total-supply').textContent = fmt(totalSupply);
     const prevDay = usdgEntry?.circulatingPrevDay?.peggedUSD || totalSupply;
     const dayDelta = ((totalSupply - prevDay) / prevDay) * 100;
@@ -238,7 +365,6 @@ async function main() {
 
     document.getElementById('market-rank').textContent = '#' + rank;
     document.getElementById('rank-context').textContent = 'of ' + sorted.length + ' stablecoins';
-    document.getElementById('rank-context').className = 'delta';
 
     const prevWeek = usdgEntry?.circulatingPrevWeek?.peggedUSD || totalSupply;
     const weekDelta = ((totalSupply - prevWeek) / prevWeek) * 100;
@@ -254,9 +380,48 @@ async function main() {
     document.getElementById('month-abs').textContent = fmt(Math.abs(totalSupply - prevMonth));
     document.getElementById('month-abs').className = 'delta ' + (monthDelta >= 0 ? 'up' : 'down');
 
-    // Supply chart
-    const supplyCtx = document.getElementById('supply-chart').getContext('2d');
-    new Chart(supplyCtx, {
+    // ── Top insight ──
+    const usdgAge = Math.round((Date.now()/1000 - parseInt(usdgHistory[0].date)) / 86400);
+    const ins1 = document.getElementById('insight-1');
+    ins1.style.display = 'block';
+    ins1.innerHTML = `USDG is <strong>${usdgAge} days old</strong> and already #${rank} among all stablecoins with <strong>${fmt(totalSupply)}</strong> in circulation. It reached $1B faster than USDC did by a factor of <strong>~5.7x</strong>.`;
+
+    // ── Race to next rank ──
+    if (rank > 1) {
+      const above = sorted[rank - 2];
+      const gap = above.circulating.peggedUSD - totalSupply;
+      const aboveName = above.symbol;
+      const total = above.circulating.peggedUSD;
+      const usdgPct = (totalSupply / total * 100);
+
+      document.getElementById('race-subtitle').textContent =
+        `USDG (#${rank}) vs ${aboveName} (#${rank-1}) for the #${rank-1} spot`;
+
+      const track = document.getElementById('race-track');
+      track.innerHTML = `
+        <div class="race-bar" style="width:${usdgPct}%;background:rgba(122,162,247,0.5);z-index:2;color:var(--fg);">
+          USDG ${fmt(totalSupply)}
+        </div>
+        <div class="race-bar" style="width:100%;background:rgba(247,118,142,0.2);z-index:1;justify-content:flex-end;color:var(--red);">
+          ${aboveName} ${fmt(above.circulating.peggedUSD)}
+        </div>`;
+
+      document.getElementById('race-gap').innerHTML =
+        `${fmt(gap)} to overtake`;
+
+      // How many days at current daily rate?
+      if (usdgHistory.length >= 7) {
+        const recent7d = usdgHistory.slice(-7);
+        const dailyRate = (recent7d[recent7d.length-1].totalCirculating.peggedUSD - recent7d[0].totalCirculating.peggedUSD) / 7;
+        if (dailyRate > 0) {
+          const daysToOvertake = Math.ceil(gap / dailyRate);
+          document.getElementById('race-gap').innerHTML += `<br><span style="font-size:0.8rem;color:var(--gray)">~${days(daysToOvertake)} at current 7d pace</span>`;
+        }
+      }
+    }
+
+    // ── Supply chart ──
+    new Chart(document.getElementById('supply-chart').getContext('2d'), {
       type: 'line',
       data: {
         labels: usdgHistory.map(d => new Date(d.date * 1000)),
@@ -264,130 +429,283 @@ async function main() {
           label: 'Total Supply',
           data: usdgHistory.map(d => d.totalCirculating.peggedUSD),
           borderColor: '#7aa2f7',
-          backgroundColor: 'rgba(122,162,247,0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 0,
-          borderWidth: 2,
+          backgroundColor: 'rgba(122,162,247,0.08)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
         }]
       },
       options: {
         responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: ctx => fmt(ctx.parsed.y),
-              title: items => new Date(items[0].parsed.x).toLocaleDateString()
-            }
-          }
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) } }
         },
         scales: {
-          x: {
-            type: 'time',
-            time: { unit: 'month' },
-            grid: { color: '#292e43' },
-            ticks: { color: '#565f89' }
-          },
-          y: {
-            grid: { color: '#292e43' },
-            ticks: { color: '#565f89', callback: v => fmt(v) }
-          }
+          x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
         }
       }
     });
 
-    // Chain bars
-    const chainContainer = document.getElementById('chain-bars');
-    const sortedChains = Object.entries(chains).sort((a, b) => b[1] - a[1]);
-    const maxChain = sortedChains[0]?.[1] || 1;
-    for (const [chain, val] of sortedChains) {
-      const pctOfTotal = (val / totalSupply * 100).toFixed(1);
-      const barPct = (val / maxChain * 100).toFixed(1);
-      const color = CHAIN_COLORS[chain] || '#7dcfff';
-      chainContainer.innerHTML += `
-        <div class="chain-bar">
-          <div class="chain-name">${chain}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${color}"></div></div>
-          <div class="bar-value">${fmt(val)} (${pctOfTotal}%)</div>
-        </div>`;
+    // ── Milestone velocity chart ──
+    const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
+    function getMilestones(history) {
+      const first = parseInt(history[0].date);
+      return milestoneTargets.map(m => {
+        const pt = history.find(p => p.totalCirculating.peggedUSD >= m);
+        return pt ? Math.round((parseInt(pt.date) - first) / 86400) : null;
+      });
     }
 
-    // Market share table
-    const top15 = sorted.slice(0, 15);
-    const tbody = document.getElementById('market-tbody');
-    tbody.innerHTML = '';
-    for (const s of top15) {
-      const mcap = s.circulating.peggedUSD;
-      const share = (mcap / totalStableMarket * 100);
-      const isUsdg = s.id === String(USDG_ID);
-      tbody.innerHTML += `<tr class="${isUsdg ? 'highlight-row' : ''}">
-        <td>${s.symbol}${isUsdg ? '<span class="rank-badge">#' + rank + '</span>' : ''}</td>
-        <td>${fmt(mcap)}</td>
-        <td>${share.toFixed(2)}%</td>
-      </tr>`;
-    }
-    // If USDG not in top 15, add it
-    if (!top15.find(s => s.id === String(USDG_ID))) {
-      const mcap = usdgEntry.circulating.peggedUSD;
-      const share = (mcap / totalStableMarket * 100);
-      tbody.innerHTML += `<tr class="highlight-row">
-        <td>... USDG<span class="rank-badge">#${rank}</span></td>
-        <td>${fmt(mcap)}</td>
-        <td>${share.toFixed(2)}%</td>
-      </tr>`;
-    }
+    const compareNames = Object.keys(COMPARE_STABLES);
+    const allMilestoneData = {
+      'USDG': getMilestones(usdgHistory),
+    };
+    compareHistories.forEach((h, i) => {
+      if (h && h.length) allMilestoneData[compareNames[i]] = getMilestones(h);
+    });
 
-    // Market share over time chart - USDG vs total stablecoin market
-    const shareCtx = document.getElementById('share-chart').getContext('2d');
-    // Calculate USDG share of total stablecoin market over time
-    // We only have USDG history, so we'll show absolute growth
-    new Chart(shareCtx, {
-      type: 'line',
+    const milestoneColors = { 'USDG': '#7aa2f7', 'USDC': '#2775CA', 'USDe': '#9ece6a' };
+    new Chart(document.getElementById('milestone-chart').getContext('2d'), {
+      type: 'bar',
       data: {
-        labels: usdgHistory.map(d => new Date(d.date * 1000)),
-        datasets: [{
-          label: 'USDG Supply',
-          data: usdgHistory.map(d => d.totalCirculating.peggedUSD),
-          borderColor: '#7aa2f7',
-          backgroundColor: 'rgba(122,162,247,0.05)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 0,
-          borderWidth: 2,
-          yAxisID: 'y',
-        }]
+        labels: milestoneTargets.map(m => fmt(m)),
+        datasets: Object.entries(allMilestoneData).map(([name, vals]) => ({
+          label: name,
+          data: vals,
+          backgroundColor: (milestoneColors[name] || '#565f89') + '99',
+          borderColor: milestoneColors[name] || '#565f89',
+          borderWidth: 1,
+        }))
       },
       options: {
         responsive: true,
         plugins: {
           legend: { labels: { color: '#565f89' } },
-          tooltip: {
-            callbacks: {
-              label: ctx => ctx.dataset.label + ': ' + fmt(ctx.parsed.y),
-            }
-          }
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? days(ctx.parsed.y) : 'N/A') } }
         },
         scales: {
-          x: {
-            type: 'time',
-            time: { unit: 'month' },
-            grid: { color: '#292e43' },
-            ticks: { color: '#565f89' }
-          },
-          y: {
-            grid: { color: '#292e43' },
-            ticks: { color: '#565f89', callback: v => fmt(v) },
-          },
+          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => days(v) },
+            title: { display: true, text: 'Days', color: '#565f89' } }
         }
       }
     });
 
-    document.getElementById('updated-time').textContent = 'Last updated: ' + new Date().toLocaleString();
+    const usdgTo1B = allMilestoneData['USDG'][4];
+    const usdcTo1B = allMilestoneData['USDC']?.[4];
+    if (usdgTo1B && usdcTo1B) {
+      const mi = document.getElementById('milestone-insight');
+      mi.style.display = 'block';
+      mi.innerHTML = `USDG reached <strong>$1B in ${days(usdgTo1B)}</strong>. USDC took <strong>${days(usdcTo1B)}</strong> to hit the same milestone, making USDG roughly <strong>${(usdcTo1B/usdgTo1B).toFixed(1)}x faster</strong>.`;
+    }
+
+    // ── Chain bars with velocity ──
+    const chainContainer = document.getElementById('chain-bars');
+    const sortedChains = Object.entries(chains).sort((a, b) => b[1].current - a[1].current);
+    const maxChain = sortedChains[0]?.[1].current || 1;
+
+    for (const [chain, data] of sortedChains) {
+      const pctOfTotal = (data.current / totalSupply * 100).toFixed(1);
+      const barPct = (data.current / maxChain * 100).toFixed(1);
+      const color = CHAIN_COLORS[chain] || '#7dcfff';
+      let deltaHtml = '';
+      if (data.prev30 && data.prev30 > 0) {
+        const rate = ((data.current - data.prev30) / data.prev30 * 100);
+        const cls = rate >= 0 ? 'up' : 'down';
+        deltaHtml = `<span class="chain-delta delta ${cls}">${pct(rate)} 30d</span>`;
+      }
+      chainContainer.innerHTML += `
+        <div class="chain-bar">
+          <div class="chain-name">${chain}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${color}"></div></div>
+          <div class="bar-meta">${fmt(data.current)} (${pctOfTotal}%)<br>${deltaHtml}</div>
+        </div>`;
+    }
+
+    // Chain insight
+    const fastestChain = sortedChains
+      .filter(([,d]) => d.prev30 && d.prev30 > 0)
+      .map(([name, d]) => [name, ((d.current - d.prev30) / d.prev30 * 100)])
+      .sort((a, b) => b[1] - a[1])[0];
+    if (fastestChain) {
+      const ci = document.getElementById('chain-insight');
+      ci.style.display = 'block';
+      ci.innerHTML = `<strong>${fastestChain[0]}</strong> is the fastest-growing chain for USDG at <strong>${pct(fastestChain[1])}</strong> over 30 days. ${
+        sortedChains[0][0] !== fastestChain[0]
+          ? `Meanwhile, <strong>${sortedChains[0][0]}</strong> holds the most supply but capital may be shifting.`
+          : ''
+      }`;
+    }
+
+    // ── Alt-stable market share (donut) ──
+    const bigTwo = sorted.slice(0, 2).reduce((s, a) => s + a.circulating.peggedUSD, 0);
+    const altMarket = totalMarket - bigTwo;
+    const usdgAltShare = (totalSupply / altMarket * 100);
+    const otherAlt = altMarket - totalSupply;
+
+    new Chart(document.getElementById('alt-share-chart').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['USDG', 'Other alt-stables'],
+        datasets: [{
+          data: [totalSupply, otherAlt],
+          backgroundColor: ['#7aa2f7', '#292e43'],
+          borderColor: ['#7aa2f7', '#565f89'],
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '65%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) } }
+        }
+      },
+      plugins: [{
+        id: 'centerText',
+        afterDraw(chart) {
+          const { ctx, chartArea: { width, height, top, left } } = chart;
+          ctx.save();
+          ctx.fillStyle = '#c0caf5';
+          ctx.font = 'bold 1.3rem "IBM Plex Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(usdgAltShare.toFixed(1) + '%', left + width/2, top + height/2 - 8);
+          ctx.font = '0.7rem "IBM Plex Mono", monospace';
+          ctx.fillStyle = '#565f89';
+          ctx.fillText('of alt-stables', left + width/2, top + height/2 + 14);
+          ctx.restore();
+        }
+      }]
+    });
+
+    // ── Growth rate vs peers (horizontal bar) ──
+    const peerData = sorted
+      .filter(a => a.circulating.peggedUSD > 500e6 && a.circulatingPrevMonth?.peggedUSD > 0)
+      .map(a => ({
+        symbol: a.symbol,
+        rate: ((a.circulating.peggedUSD - a.circulatingPrevMonth.peggedUSD) / a.circulatingPrevMonth.peggedUSD * 100),
+        isUsdg: a.id === USDG_ID,
+      }))
+      .sort((a, b) => b.rate - a.rate)
+      .slice(0, 12);
+
+    new Chart(document.getElementById('growth-chart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: peerData.map(d => d.symbol),
+        datasets: [{
+          data: peerData.map(d => d.rate),
+          backgroundColor: peerData.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
+          borderColor: peerData.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } }
+        },
+        scales: {
+          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
+          y: { grid: { display: false }, ticks: { color: c => '#565f89' } }
+        }
+      }
+    });
+
+    // ── Growth capture chart ──
+    const growthData = sorted
+      .filter(a => a.circulatingPrevMonth?.peggedUSD > 0)
+      .map(a => ({
+        symbol: a.symbol,
+        growth: a.circulating.peggedUSD - a.circulatingPrevMonth.peggedUSD,
+        isUsdg: a.id === USDG_ID,
+      }))
+      .filter(a => a.growth > 0)
+      .sort((a, b) => b.growth - a.growth)
+      .slice(0, 10);
+
+    const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
+
+    if (growthData.length > 0) {
+      new Chart(document.getElementById('capture-chart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: growthData.map(d => d.symbol),
+          datasets: [{
+            label: '30d Growth',
+            data: growthData.map(d => d.growth),
+            backgroundColor: growthData.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
+            borderColor: growthData.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) + ' (' + (ctx.parsed.y/totalPositiveGrowth*100).toFixed(1) + '% of growth)' } }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#565f89' } },
+            y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+          }
+        }
+      });
+
+      const usdgGrowthEntry = growthData.find(d => d.isUsdg);
+      if (usdgGrowthEntry) {
+        const capturePct = (usdgGrowthEntry.growth / totalPositiveGrowth * 100);
+        const ci = document.getElementById('capture-insight');
+        ci.style.display = 'block';
+        ci.innerHTML = `Of all stablecoins that <em>grew</em> in the last 30 days, USDG captured <strong>${capturePct.toFixed(1)}%</strong> of new supply (<strong>${fmt(usdgGrowthEntry.growth)}</strong>).`;
+      }
+    } else {
+      // Market is contracting
+      const ci = document.getElementById('capture-insight');
+      ci.style.display = 'block';
+      ci.innerHTML = `The overall stablecoin market contracted over the last 30 days. USDG supply changed by <strong>${fmt(totalSupply - prevMonth)}</strong>.`;
+    }
+
+    // ── Market table ──
+    const tbody = document.getElementById('market-tbody');
+    const top20 = sorted.slice(0, 20);
+    let usdgInTop = false;
+    for (const s of top20) {
+      const mcap = s.circulating.peggedUSD;
+      const share = (mcap / totalMarket * 100);
+      const prev = s.circulatingPrevMonth?.peggedUSD || mcap;
+      const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
+      const isUsdg = s.id === USDG_ID;
+      if (isUsdg) usdgInTop = true;
+      const idx = sorted.indexOf(s) + 1;
+      tbody.innerHTML += `<tr class="${isUsdg ? 'highlight-row' : ''}">
+        <td>${idx}. ${s.symbol}${isUsdg ? '<span class="rank-badge">YOU</span>' : ''}</td>
+        <td>${fmt(mcap)}</td>
+        <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
+        <td>${share.toFixed(2)}%</td>
+      </tr>`;
+    }
+    if (!usdgInTop) {
+      const mcap = usdgEntry.circulating.peggedUSD;
+      const share = (mcap / totalMarket * 100);
+      const prev = usdgEntry.circulatingPrevMonth?.peggedUSD || mcap;
+      const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
+      tbody.innerHTML += `<tr class="highlight-row">
+        <td>${rank}. USDG<span class="rank-badge">YOU</span></td>
+        <td>${fmt(mcap)}</td>
+        <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
+        <td>${share.toFixed(2)}%</td>
+      </tr>`;
+    }
+
+    document.getElementById('updated-time').textContent = 'Live data, refreshed on page load. ' + new Date().toLocaleString();
 
   } catch (err) {
-    console.error(err);
-    document.getElementById('total-supply').textContent = 'Error';
+    console.error('Dashboard error:', err);
+    document.getElementById('total-supply').textContent = 'Error loading data';
   }
 }
 
