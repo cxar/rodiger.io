@@ -595,7 +595,7 @@ async function main() {
     new Chart(document.getElementById('growth-chart').getContext('2d'), {
       type: 'bar',
       data: {
-        labels: peerData.map(d => d.symbol),
+        labels: peerData.map(d => d.isUsdg ? 'USDG ◀' : d.symbol),
         datasets: [{
           data: peerData.map(d => d.rate),
           backgroundColor: peerData.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
@@ -612,7 +612,10 @@ async function main() {
         },
         scales: {
           x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
-          y: { grid: { display: false }, ticks: { color: c => '#565f89' } }
+          y: { grid: { display: false }, ticks: {
+            color: (ctx) => peerData[ctx.index]?.isUsdg ? '#7aa2f7' : '#565f89',
+            font: (ctx) => ({ weight: peerData[ctx.index]?.isUsdg ? 'bold' : 'normal' })
+          } }
         }
       }
     });
