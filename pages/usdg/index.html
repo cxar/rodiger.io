@@ -299,6 +299,15 @@
           </div>
         </div>
 
+        <!-- Paxos combined -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Paxos Stablecoins: USDG + PYUSD</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">Combined market presence of Paxos-issued stablecoins.</p>
+          <div class="dashboard-grid" id="paxos-metrics" style="margin-bottom:1rem"></div>
+          <canvas id="paxos-chart" height="260"></canvas>
+          <div id="paxos-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
+        </div>
+
         <!-- Growth capture -->
         <div class="section">
           <h3 style="color: var(--h3);">Growth Capture
@@ -328,6 +337,7 @@
 
     <script>
 const USDG_ID = '286';
+const PYUSD_ID = '116';
 const CHAIN_COLORS = {
   'Solana': '#9945FF',
   'Ethereum': '#627EEA',
@@ -356,10 +366,11 @@ async function fetchJSON(url) {
 async function main() {
   try {
     // Fetch all data in parallel
-    const [usdgData, allStables, usdgHistory, ...compareHistories] = await Promise.all([
+    const [usdgData, allStables, usdgHistory, pyusdHistory, ...compareHistories] = await Promise.all([
       fetchJSON(`https://stablecoins.llama.fi/stablecoin/${USDG_ID}`),
       fetchJSON('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${USDG_ID}`),
+      fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${PYUSD_ID}`),
       ...Object.values(COMPARE_STABLES).map(id =>
         fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${id}`)
       ),
@@ -613,6 +624,99 @@ async function main() {
         }
       }]
     });
+
+    // ── Paxos combined: USDG + PYUSD ──
+    const pyusdEntry = sorted.find(a => a.id === PYUSD_ID);
+    const pyusdSupply = pyusdEntry?.circulating?.peggedUSD || 0;
+    const combinedSupply = totalSupply + pyusdSupply;
+    const combinedShare = (combinedSupply / totalMarket * 100);
+
+    // Where would combined rank?
+    const combinedRank = sorted.filter(a => a.circulating.peggedUSD > combinedSupply).length + 1;
+
+    const paxosMetrics = document.getElementById('paxos-metrics');
+    paxosMetrics.innerHTML = `
+      <div class="metric-card">
+        <div class="label">USDG</div>
+        <div class="value">${fmt(totalSupply)}</div>
+        <div class="delta neutral">#${rank}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">PYUSD</div>
+        <div class="value">${fmt(pyusdSupply)}</div>
+        <div class="delta neutral">#${sorted.indexOf(pyusdEntry) + 1}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Combined</div>
+        <div class="value">${fmt(combinedSupply)}</div>
+        <div class="delta neutral">Would rank #${combinedRank} · ${combinedShare.toFixed(2)}% of market</div>
+      </div>
+    `;
+
+    // Combined supply over time chart
+    // Build aligned time series from both histories
+    const pyusdMap = new Map();
+    if (pyusdHistory && pyusdHistory.length) {
+      pyusdHistory.forEach(p => pyusdMap.set(p.date, p.totalCirculating.peggedUSD));
+    }
+    const usdgMap = new Map();
+    usdgHistory.forEach(p => usdgMap.set(p.date, p.totalCirculating.peggedUSD));
+
+    // Get all unique dates, sorted
+    const allDates = [...new Set([...usdgMap.keys(), ...pyusdMap.keys()])].sort((a, b) => a - b);
+
+    const paxosChartData = {
+      labels: allDates.map(d => new Date(d * 1000)),
+      usdg: allDates.map(d => usdgMap.get(d) || 0),
+      pyusd: allDates.map(d => pyusdMap.get(d) || 0),
+    };
+    paxosChartData.combined = allDates.map((_, i) => paxosChartData.usdg[i] + paxosChartData.pyusd[i]);
+
+    new Chart(document.getElementById('paxos-chart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: paxosChartData.labels,
+        datasets: [
+          {
+            label: 'Combined',
+            data: paxosChartData.combined,
+            borderColor: '#9ece6a',
+            backgroundColor: 'rgba(158,206,106,0.08)',
+            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+          },
+          {
+            label: 'USDG',
+            data: paxosChartData.usdg,
+            borderColor: '#7aa2f7',
+            backgroundColor: 'rgba(122,162,247,0.05)',
+            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+          },
+          {
+            label: 'PYUSD',
+            data: paxosChartData.pyusd,
+            borderColor: '#bb9af7',
+            backgroundColor: 'rgba(187,154,247,0.05)',
+            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#565f89' } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } }
+        },
+        scales: {
+          x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+        }
+      }
+    });
+
+    // Paxos insight
+    const pi = document.getElementById('paxos-insight');
+    pi.style.display = 'block';
+    pi.innerHTML = `Combined, Paxos-issued stablecoins hold <strong>${fmt(combinedSupply)}</strong> in circulation (<strong>${combinedShare.toFixed(2)}%</strong> of the total stablecoin market). As a single entity this would rank <strong>#${combinedRank}</strong>.`;
 
     // ── Growth rate vs peers (horizontal bar) ──
     let growthChart = null;
