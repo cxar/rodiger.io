@@ -635,9 +635,20 @@ async function main() {
     const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
 
     if (growthData.length > 0) {
-      // Group smaller growers into "Other"
-      const top6 = growthData.slice(0, 6);
+      // Group smaller growers into "Other", but always include USDG
+      const usdgInTop = growthData.slice(0, 6).some(d => d.isUsdg);
+      let top6 = growthData.slice(0, 6);
       const rest = growthData.slice(6);
+      // If USDG grew but isn't in top 6, swap it in for the last slot
+      if (!usdgInTop) {
+        const usdgItem = growthData.find(d => d.isUsdg);
+        if (usdgItem) {
+          top6 = [...growthData.slice(0, 5), usdgItem];
+          const restWithout = growthData.filter(d => !d.isUsdg && !top6.includes(d));
+          rest.length = 0;
+          rest.push(...growthData.slice(5).filter(d => !d.isUsdg));
+        }
+      }
       const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
       const pieData = [...top6];
       if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isUsdg: false });
