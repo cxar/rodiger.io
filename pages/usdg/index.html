@@ -380,12 +380,28 @@ async function main() {
     document.getElementById('month-abs').textContent = fmt(Math.abs(totalSupply - prevMonth));
     document.getElementById('month-abs').className = 'delta ' + (monthDelta >= 0 ? 'up' : 'down');
 
+    // ── Milestone helper (defined early so insight can use it) ──
+    const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
+    function getMilestones(history) {
+      const first = parseInt(history[0].date);
+      return milestoneTargets.map(m => {
+        const pt = history.find(p => p.totalCirculating.peggedUSD >= m);
+        return pt ? Math.round((parseInt(pt.date) - first) / 86400) : null;
+      });
+    }
+
+    const compareNames = Object.keys(COMPARE_STABLES);
+    const allMilestoneData = { 'USDG': getMilestones(usdgHistory) };
+    compareHistories.forEach((h, i) => {
+      if (h && h.length) allMilestoneData[compareNames[i]] = getMilestones(h);
+    });
+
     // ── Top insight ──
     const usdgAge = Math.round((Date.now()/1000 - parseInt(usdgHistory[0].date)) / 86400);
     const ins1 = document.getElementById('insight-1');
     ins1.style.display = 'block';
     const usdcTo1BDays = allMilestoneData['USDC']?.[4];
-    const usdgTo1BDays = getMilestones(usdgHistory)[4];
+    const usdgTo1BDays = allMilestoneData['USDG']?.[4];
     const speedFactor = (usdcTo1BDays && usdgTo1BDays) ? (usdcTo1BDays / usdgTo1BDays).toFixed(1) : null;
     ins1.innerHTML = `USDG is <strong>${usdgAge} days old</strong>, ranked #${rank} among stablecoins with <strong>${fmt(totalSupply)}</strong> in circulation.${speedFactor ? ` It reached $1B roughly <strong>${speedFactor}x faster</strong> than USDC did.` : ''}`;
 
@@ -449,23 +465,6 @@ async function main() {
     });
 
     // ── Milestone velocity chart ──
-    const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
-    function getMilestones(history) {
-      const first = parseInt(history[0].date);
-      return milestoneTargets.map(m => {
-        const pt = history.find(p => p.totalCirculating.peggedUSD >= m);
-        return pt ? Math.round((parseInt(pt.date) - first) / 86400) : null;
-      });
-    }
-
-    const compareNames = Object.keys(COMPARE_STABLES);
-    const allMilestoneData = {
-      'USDG': getMilestones(usdgHistory),
-    };
-    compareHistories.forEach((h, i) => {
-      if (h && h.length) allMilestoneData[compareNames[i]] = getMilestones(h);
-    });
-
     const milestoneColors = { 'USDG': '#7aa2f7', 'USDC': '#2775CA', 'USDe': '#9ece6a' };
     new Chart(document.getElementById('milestone-chart').getContext('2d'), {
       type: 'bar',
