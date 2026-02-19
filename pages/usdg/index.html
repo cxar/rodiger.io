@@ -197,7 +197,7 @@
       </nav>
       <main id="content">
         <h1>USDG Dashboard</h1>
-        <p style="color: var(--gray); margin-top: -0.5rem;">Global Dollar adoption metrics. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
+        <p style="color: var(--gray); margin-top: -0.5rem;">Global Dollar (USDG) growth metrics and market positioning. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
 
         <!-- Top metrics -->
         <div class="dashboard-grid" id="metrics-grid">
@@ -384,7 +384,10 @@ async function main() {
     const usdgAge = Math.round((Date.now()/1000 - parseInt(usdgHistory[0].date)) / 86400);
     const ins1 = document.getElementById('insight-1');
     ins1.style.display = 'block';
-    ins1.innerHTML = `USDG is <strong>${usdgAge} days old</strong> and already #${rank} among all stablecoins with <strong>${fmt(totalSupply)}</strong> in circulation. It reached $1B faster than USDC did by a factor of <strong>~5.7x</strong>.`;
+    const usdcTo1BDays = allMilestoneData['USDC']?.[4];
+    const usdgTo1BDays = getMilestones(usdgHistory)[4];
+    const speedFactor = (usdcTo1BDays && usdgTo1BDays) ? (usdcTo1BDays / usdgTo1BDays).toFixed(1) : null;
+    ins1.innerHTML = `USDG is <strong>${usdgAge} days old</strong>, ranked #${rank} among stablecoins with <strong>${fmt(totalSupply)}</strong> in circulation.${speedFactor ? ` It reached $1B roughly <strong>${speedFactor}x faster</strong> than USDC did.` : ''}`;
 
     // ── Race to next rank ──
     if (rank > 1) {
@@ -682,7 +685,7 @@ async function main() {
       if (isUsdg) usdgInTop = true;
       const idx = sorted.indexOf(s) + 1;
       tbody.innerHTML += `<tr class="${isUsdg ? 'highlight-row' : ''}">
-        <td>${idx}. ${s.symbol}${isUsdg ? '<span class="rank-badge">YOU</span>' : ''}</td>
+        <td>${idx}. ${s.symbol}${isUsdg ? '' : ''}</td>
         <td>${fmt(mcap)}</td>
         <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
         <td>${share.toFixed(2)}%</td>
@@ -694,7 +697,7 @@ async function main() {
       const prev = usdgEntry.circulatingPrevMonth?.peggedUSD || mcap;
       const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
       tbody.innerHTML += `<tr class="highlight-row">
-        <td>${rank}. USDG<span class="rank-badge">YOU</span></td>
+        <td>${rank}. USDG</td>
         <td>${fmt(mcap)}</td>
         <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
         <td>${share.toFixed(2)}%</td>
