@@ -174,6 +174,29 @@
       }
       .insight-callout strong { color: var(--h3); }
 
+      .toggle-group {
+        display: inline-flex;
+        background: var(--bg);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-left: 0.75rem;
+        vertical-align: middle;
+      }
+      .toggle-group button {
+        background: none;
+        border: none;
+        color: var(--gray);
+        font-family: inherit;
+        font-size: 0.75rem;
+        padding: 0.25rem 0.6rem;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .toggle-group button.active {
+        background: var(--h2);
+        color: var(--bg);
+        font-weight: 600;
+      }
       .updated-time {
         text-align: center;
         color: var(--gray);
@@ -265,16 +288,26 @@
             <canvas id="alt-share-chart" height="200"></canvas>
           </div>
           <div class="section">
-            <h3 style="color: var(--h3);">Growth Rate vs Peers</h3>
-            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">30d growth rate, stablecoins >$500M</p>
+            <h3 style="color: var(--h3);">Growth Rate vs Peers
+              <span class="toggle-group" id="growth-toggle">
+                <button data-period="7d">7d</button>
+                <button data-period="30d" class="active">30d</button>
+              </span>
+            </h3>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="growth-subtitle">30d growth rate, stablecoins >$500M</p>
             <canvas id="growth-chart" height="200"></canvas>
           </div>
         </div>
 
         <!-- Growth capture -->
         <div class="section">
-          <h3 style="color: var(--h3);">30d Growth Capture</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">When the stablecoin market grows, where do new dollars go?</p>
+          <h3 style="color: var(--h3);">Growth Capture
+            <span class="toggle-group" id="capture-toggle">
+              <button data-period="7d">7d</button>
+              <button data-period="30d" class="active">30d</button>
+            </span>
+          </h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="capture-subtitle">When the stablecoin market grows, where do new dollars go?</p>
           <canvas id="capture-chart" height="220"></canvas>
           <div id="capture-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
         </div>
@@ -582,117 +615,144 @@ async function main() {
     });
 
     // ── Growth rate vs peers (horizontal bar) ──
-    const peerData = sorted
-      .filter(a => a.circulating.peggedUSD > 500e6 && a.circulatingPrevMonth?.peggedUSD > 0)
-      .map(a => ({
-        symbol: a.symbol,
-        rate: ((a.circulating.peggedUSD - a.circulatingPrevMonth.peggedUSD) / a.circulatingPrevMonth.peggedUSD * 100),
-        isUsdg: a.id === USDG_ID,
-      }))
-      .sort((a, b) => b.rate - a.rate)
-      .slice(0, 12);
+    let growthChart = null;
+    function renderGrowthChart(period) {
+      const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
+      const pd = sorted
+        .filter(a => a.circulating.peggedUSD > 500e6 && a[prevKey]?.peggedUSD > 0)
+        .map(a => ({
+          symbol: a.symbol,
+          rate: ((a.circulating.peggedUSD - a[prevKey].peggedUSD) / a[prevKey].peggedUSD * 100),
+          isUsdg: a.id === USDG_ID,
+        }))
+        .sort((a, b) => b.rate - a.rate)
+        .slice(0, 12);
 
-    new Chart(document.getElementById('growth-chart').getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: peerData.map(d => d.isUsdg ? 'USDG ◀' : d.symbol),
-        datasets: [{
-          data: peerData.map(d => d.rate),
-          backgroundColor: peerData.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
-          borderColor: peerData.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
-          borderWidth: 1,
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } }
-        },
-        scales: {
-          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
-          y: { grid: { display: false }, ticks: {
-            color: (ctx) => peerData[ctx.index]?.isUsdg ? '#7aa2f7' : '#565f89',
-            font: (ctx) => ({ weight: peerData[ctx.index]?.isUsdg ? 'bold' : 'normal' })
-          } }
-        }
-      }
-    });
-
-    // ── Growth capture chart ──
-    const growthData = sorted
-      .filter(a => a.circulatingPrevMonth?.peggedUSD > 0)
-      .map(a => ({
-        symbol: a.symbol,
-        growth: a.circulating.peggedUSD - a.circulatingPrevMonth.peggedUSD,
-        isUsdg: a.id === USDG_ID,
-      }))
-      .filter(a => a.growth > 0)
-      .sort((a, b) => b.growth - a.growth)
-      .slice(0, 10);
-
-    const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
-
-    if (growthData.length > 0) {
-      // Group smaller growers into "Other", but always include USDG
-      const usdgInTop = growthData.slice(0, 6).some(d => d.isUsdg);
-      let top6 = growthData.slice(0, 6);
-      const rest = growthData.slice(6);
-      // If USDG grew but isn't in top 6, swap it in for the last slot
-      if (!usdgInTop) {
-        const usdgItem = growthData.find(d => d.isUsdg);
-        if (usdgItem) {
-          top6 = [...growthData.slice(0, 5), usdgItem];
-          const restWithout = growthData.filter(d => !d.isUsdg && !top6.includes(d));
-          rest.length = 0;
-          rest.push(...growthData.slice(5).filter(d => !d.isUsdg));
-        }
-      }
-      const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
-      const pieData = [...top6];
-      if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isUsdg: false });
-
-      const pieColors = pieData.map(d => {
-        if (d.isUsdg) return '#7aa2f7';
-        const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
-        return palette[pieData.indexOf(d) % palette.length];
-      });
-
-      new Chart(document.getElementById('capture-chart').getContext('2d'), {
-        type: 'doughnut',
+      document.getElementById('growth-subtitle').textContent = `${period} growth rate, stablecoins >$500M`;
+      if (growthChart) growthChart.destroy();
+      growthChart = new Chart(document.getElementById('growth-chart').getContext('2d'), {
+        type: 'bar',
         data: {
-          labels: pieData.map(d => d.symbol),
+          labels: pd.map(d => d.isUsdg ? 'USDG ◀' : d.symbol),
           datasets: [{
-            data: pieData.map(d => d.growth),
-            backgroundColor: pieColors,
-            borderColor: '#1a1b26',
-            borderWidth: 2,
+            data: pd.map(d => d.rate),
+            backgroundColor: pd.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
+            borderColor: pd.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
+            borderWidth: 1,
           }]
         },
         options: {
+          indexAxis: 'y',
           responsive: true,
-          cutout: '45%',
           plugins: {
-            legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
-            tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPositiveGrowth*100).toFixed(1) + '%)' } }
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } }
+          },
+          scales: {
+            x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
+            y: { grid: { display: false }, ticks: {
+              color: (ctx) => pd[ctx.index]?.isUsdg ? '#7aa2f7' : '#565f89',
+              font: (ctx) => ({ weight: pd[ctx.index]?.isUsdg ? 'bold' : 'normal' })
+            } }
           }
         }
       });
-
-      const usdgGrowthEntry = growthData.find(d => d.isUsdg);
-      if (usdgGrowthEntry) {
-        const capturePct = (usdgGrowthEntry.growth / totalPositiveGrowth * 100);
-        const ci = document.getElementById('capture-insight');
-        ci.style.display = 'block';
-        ci.innerHTML = `Of all stablecoins that <em>grew</em> in the last 30 days, USDG captured <strong>${capturePct.toFixed(1)}%</strong> of new supply (<strong>${fmt(usdgGrowthEntry.growth)}</strong>).`;
-      }
-    } else {
-      // Market is contracting
-      const ci = document.getElementById('capture-insight');
-      ci.style.display = 'block';
-      ci.innerHTML = `The overall stablecoin market contracted over the last 30 days. USDG supply changed by <strong>${fmt(totalSupply - prevMonth)}</strong>.`;
     }
+    renderGrowthChart('30d');
+
+    document.getElementById('growth-toggle').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      document.querySelectorAll('#growth-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderGrowthChart(btn.dataset.period);
+    });
+
+    // ── Growth capture chart ──
+    let captureChart = null;
+    function renderCaptureChart(period) {
+      const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
+      const label = period === '7d' ? '7 days' : '30 days';
+      const growthData = sorted
+        .filter(a => a[prevKey]?.peggedUSD > 0)
+        .map(a => ({
+          symbol: a.symbol,
+          growth: a.circulating.peggedUSD - a[prevKey].peggedUSD,
+          isUsdg: a.id === USDG_ID,
+        }))
+        .filter(a => a.growth > 0)
+        .sort((a, b) => b.growth - a.growth)
+        .slice(0, 10);
+
+      const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
+      const ci = document.getElementById('capture-insight');
+
+      if (captureChart) captureChart.destroy();
+
+      if (growthData.length > 0) {
+        const usdgInTopN = growthData.slice(0, 6).some(d => d.isUsdg);
+        let top6 = growthData.slice(0, 6);
+        let rest = growthData.slice(6);
+        if (!usdgInTopN) {
+          const usdgItem = growthData.find(d => d.isUsdg);
+          if (usdgItem) {
+            top6 = [...growthData.slice(0, 5), usdgItem];
+            rest = growthData.slice(5).filter(d => !d.isUsdg);
+          }
+        }
+        const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
+        const pieData = [...top6];
+        if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isUsdg: false });
+
+        const pieColors = pieData.map(d => {
+          if (d.isUsdg) return '#7aa2f7';
+          const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
+          return palette[pieData.indexOf(d) % palette.length];
+        });
+
+        captureChart = new Chart(document.getElementById('capture-chart').getContext('2d'), {
+          type: 'doughnut',
+          data: {
+            labels: pieData.map(d => d.symbol),
+            datasets: [{
+              data: pieData.map(d => d.growth),
+              backgroundColor: pieColors,
+              borderColor: '#1a1b26',
+              borderWidth: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            cutout: '45%',
+            plugins: {
+              legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
+              tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPositiveGrowth*100).toFixed(1) + '%)' } }
+            }
+          }
+        });
+
+        const usdgGrowthEntry = growthData.find(d => d.isUsdg);
+        if (usdgGrowthEntry) {
+          const capturePct = (usdgGrowthEntry.growth / totalPositiveGrowth * 100);
+          ci.style.display = 'block';
+          ci.innerHTML = `Of all stablecoins that <em>grew</em> in the last ${label}, USDG captured <strong>${capturePct.toFixed(1)}%</strong> of new supply (<strong>${fmt(usdgGrowthEntry.growth)}</strong>).`;
+        } else {
+          ci.style.display = 'none';
+        }
+      } else {
+        ci.style.display = 'block';
+        ci.innerHTML = `The overall stablecoin market contracted over the last ${label}.`;
+      }
+    }
+    renderCaptureChart('30d');
+
+    document.getElementById('capture-toggle').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      document.querySelectorAll('#capture-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCaptureChart(btn.dataset.period);
+    });
 
     // ── Market table ──
     const tbody = document.getElementById('market-tbody');
