@@ -51,13 +51,8 @@
         padding: 1.2rem;
         margin: 1.5rem 0;
       }
-      .section h3 {
-        margin: 0 0 0.75rem;
-        font-size: 1rem;
-      }
+      .section h3 { margin: 0 0 0.75rem; font-size: 1rem; }
       .section canvas { margin: 0; border-radius: 0; }
-
-      /* Race tracker */
       .race-track {
         position: relative;
         height: 48px;
@@ -78,13 +73,6 @@
         transition: width 0.6s ease;
         white-space: nowrap;
       }
-      .race-label {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.78rem;
-        color: var(--gray);
-        margin-top: 0.25rem;
-      }
       .race-gap {
         text-align: center;
         font-size: 1.1rem;
@@ -92,8 +80,6 @@
         color: var(--h3);
         margin: 0.5rem 0 0;
       }
-
-      /* Chain bars */
       .chain-bar {
         display: flex;
         align-items: center;
@@ -101,7 +87,7 @@
         gap: 0.75rem;
       }
       .chain-bar .chain-name {
-        width: 80px;
+        width: 100px;
         font-size: 0.82rem;
         text-align: right;
         color: var(--gray);
@@ -113,17 +99,11 @@
         background: var(--bg);
         border-radius: 4px;
         overflow: hidden;
-        position: relative;
       }
       .chain-bar .bar-fill {
         height: 100%;
         border-radius: 4px;
         transition: width 0.6s ease;
-        display: flex;
-        align-items: center;
-        padding-left: 8px;
-        font-size: 0.75rem;
-        font-weight: 600;
       }
       .chain-bar .bar-meta {
         width: 140px;
@@ -132,37 +112,11 @@
         flex-shrink: 0;
         text-align: right;
       }
-      .chain-bar .bar-meta .chain-delta {
-        font-size: 0.72rem;
-      }
-
-      /* Milestone race */
-      .milestone-table {
-        font-size: 0.82rem;
-        width: 100%;
-      }
-      .milestone-table td, .milestone-table th {
-        padding: 0.5rem 0.6rem;
-      }
-      .milestone-table .fastest { color: var(--green); font-weight: 600; }
-      .milestone-table .usdg-col { color: var(--h2); font-weight: 600; }
-
-      /* Market table */
+      .chain-bar .bar-meta .chain-delta { font-size: 0.72rem; }
       .market-table { font-size: 0.82rem; }
       .market-table td:nth-child(n+2),
       .market-table th:nth-child(n+2) { text-align: right; }
       .highlight-row { background: rgba(122, 162, 247, 0.08); }
-      .rank-badge {
-        display: inline-block;
-        background: var(--h2);
-        color: var(--bg);
-        font-size: 0.65rem;
-        font-weight: 700;
-        padding: 0.1rem 0.35rem;
-        border-radius: 3px;
-        margin-left: 0.4rem;
-      }
-
       .insight-callout {
         background: rgba(122, 162, 247, 0.06);
         border-left: 3px solid var(--h2);
@@ -173,22 +127,33 @@
         border-radius: 0 4px 4px 0;
       }
       .insight-callout strong { color: var(--h3); }
-
+      .global-controls {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 1rem 0 0.5rem;
+      }
+      .control-label {
+        font-size: 0.75rem;
+        color: var(--gray);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
       .toggle-group {
         display: inline-flex;
-        background: var(--bg);
+        background: var(--bg2);
+        border: 1px solid var(--border);
         border-radius: 4px;
         overflow: hidden;
-        margin-left: 0.75rem;
-        vertical-align: middle;
       }
       .toggle-group button {
         background: none;
         border: none;
         color: var(--gray);
         font-family: inherit;
-        font-size: 0.75rem;
-        padding: 0.25rem 0.6rem;
+        font-size: 0.78rem;
+        padding: 0.35rem 0.75rem;
         cursor: pointer;
         transition: all 0.15s;
       }
@@ -196,6 +161,9 @@
         background: var(--h2);
         color: var(--bg);
         font-weight: 600;
+      }
+      .toggle-group button:hover:not(.active) {
+        color: var(--fg);
       }
       .updated-time {
         text-align: center;
@@ -219,42 +187,35 @@
         <a href="/" class="back" aria-label="Back to home">&larr; back</a>
       </nav>
       <main id="content">
-        <h1>USDG Dashboard</h1>
-        <p style="color: var(--gray); margin-top: -0.5rem;">Global Dollar (USDG) growth metrics and market positioning. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
+        <h1>Paxos Stablecoin Dashboard</h1>
+        <p style="color: var(--gray); margin-top: -0.5rem;">Growth metrics and market positioning. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
 
-        <!-- Top metrics -->
-        <div class="dashboard-grid" id="metrics-grid">
-          <div class="metric-card">
-            <div class="label">Total Supply</div>
-            <div class="value" id="total-supply">...</div>
-            <div class="delta" id="supply-delta"></div>
-          </div>
-          <div class="metric-card">
-            <div class="label">Stablecoin Rank</div>
-            <div class="value" id="market-rank">...</div>
-            <div class="delta neutral" id="rank-context"></div>
-          </div>
-          <div class="metric-card">
-            <div class="label">7d Change</div>
-            <div class="value" id="week-change">...</div>
-            <div class="delta" id="week-abs"></div>
-          </div>
-          <div class="metric-card">
-            <div class="label">30d Change</div>
-            <div class="value" id="month-change">...</div>
-            <div class="delta" id="month-abs"></div>
-          </div>
+        <!-- Global controls -->
+        <div class="global-controls">
+          <span class="control-label">Asset:</span>
+          <span class="toggle-group" id="asset-toggle">
+            <button data-asset="usdg" class="active">USDG</button>
+            <button data-asset="pyusd">PYUSD</button>
+            <button data-asset="combined">USDG + PYUSD</button>
+          </span>
+          <span class="control-label" style="margin-left:0.5rem">Period:</span>
+          <span class="toggle-group" id="period-toggle">
+            <button data-period="7d">7d</button>
+            <button data-period="30d" class="active">30d</button>
+          </span>
         </div>
 
-        <!-- Insight callouts -->
+        <!-- Top metrics -->
+        <div class="dashboard-grid" id="metrics-grid"></div>
+
+        <!-- Insight -->
         <div id="insight-1" class="insight-callout" style="display:none"></div>
 
         <!-- Race to next rank -->
-        <div class="section">
+        <div class="section" id="race-section">
           <h3 style="color: var(--h3);">Race to Next Rank</h3>
           <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="race-subtitle"></p>
           <div class="race-track" id="race-track"></div>
-          <div class="race-label" id="race-labels"></div>
           <div class="race-gap" id="race-gap"></div>
         </div>
 
@@ -266,57 +227,38 @@
 
         <!-- Milestone velocity -->
         <div class="section">
-          <h3 style="color: var(--h3);">Speed to $1B: USDG vs The Field</h3>
+          <h3 style="color: var(--h3);" id="milestone-title">Speed to $1B vs The Field</h3>
           <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.75rem">Days from first tracked supply to each milestone. Lower is faster.</p>
           <canvas id="milestone-chart" height="220"></canvas>
           <div id="milestone-insight" class="insight-callout" style="display:none;margin-top:1rem"></div>
         </div>
 
-        <!-- Chain distribution + velocity -->
+        <!-- Chain distribution -->
         <div class="section">
           <h3 style="color: var(--h3);">Chain Distribution &amp; Velocity</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">Where USDG lives and where it's growing.</p>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="chain-subtitle"></p>
           <div id="chain-bars"></div>
           <div id="chain-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
         </div>
 
-        <!-- Alt-stable market share -->
+        <!-- Alt-stable + growth rate -->
         <div class="two-col">
           <div class="section">
             <h3 style="color: var(--h3);">Alt-Stable Market Share</h3>
-            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">USDG's share of non-USDT/USDC stablecoins</p>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="alt-subtitle"></p>
             <canvas id="alt-share-chart" height="200"></canvas>
           </div>
           <div class="section">
-            <h3 style="color: var(--h3);">Growth Rate vs Peers
-              <span class="toggle-group" id="growth-toggle">
-                <button data-period="7d">7d</button>
-                <button data-period="30d" class="active">30d</button>
-              </span>
-            </h3>
-            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="growth-subtitle">30d growth rate, stablecoins >$500M</p>
+            <h3 style="color: var(--h3);">Growth Rate vs Peers</h3>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="growth-subtitle"></p>
             <canvas id="growth-chart" height="200"></canvas>
           </div>
         </div>
 
-        <!-- Paxos combined -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Paxos Stablecoins: USDG + PYUSD</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem">Combined market presence of Paxos-issued stablecoins.</p>
-          <div class="dashboard-grid" id="paxos-metrics" style="margin-bottom:1rem"></div>
-          <canvas id="paxos-chart" height="260"></canvas>
-          <div id="paxos-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
-        </div>
-
         <!-- Growth capture -->
         <div class="section">
-          <h3 style="color: var(--h3);">Growth Capture
-            <span class="toggle-group" id="capture-toggle">
-              <button data-period="7d">7d</button>
-              <button data-period="30d" class="active">30d</button>
-            </span>
-          </h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="capture-subtitle">When the stablecoin market grows, where do new dollars go?</p>
+          <h3 style="color: var(--h3);">Growth Capture</h3>
+          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="capture-subtitle"></p>
           <canvas id="capture-chart" height="220"></canvas>
           <div id="capture-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
         </div>
@@ -324,8 +266,8 @@
         <!-- Market table -->
         <div class="section">
           <h3 style="color: var(--h3);">Stablecoin Rankings</h3>
-          <table class="market-table" id="market-table">
-            <thead><tr><th>Stablecoin</th><th>Market Cap</th><th>30d</th><th>Share</th></tr></thead>
+          <table class="market-table">
+            <thead><tr><th>Stablecoin</th><th>Market Cap</th><th id="table-period-header">30d</th><th>Share</th></tr></thead>
             <tbody id="market-tbody"></tbody>
           </table>
         </div>
@@ -339,15 +281,14 @@
 const USDG_ID = '286';
 const PYUSD_ID = '116';
 const CHAIN_COLORS = {
-  'Solana': '#9945FF',
-  'Ethereum': '#627EEA',
-  'X Layer': '#e0af68',
-  'Ink': '#f7768e',
+  'Solana': '#9945FF', 'Ethereum': '#627EEA', 'X Layer': '#e0af68', 'Ink': '#f7768e',
+  'Polygon': '#8247E5', 'Arbitrum': '#28A0F0', 'OP Mainnet': '#FF0420',
+  'ZKsync Era': '#4E529A', 'Linea': '#61DFFF', 'Mantle': '#000',
 };
-const COMPARE_STABLES = {
-  'USDC': 2,
-  'USDe': 146,
+const ASSET_COLORS = {
+  usdg: '#7aa2f7', pyusd: '#bb9af7', combined: '#9ece6a',
 };
+const COMPARE_STABLES = { 'USDC': 2, 'USDe': 146 };
 
 function fmt(n) {
   if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
@@ -356,18 +297,22 @@ function fmt(n) {
   return '$' + n.toFixed(0);
 }
 function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
-function days(n) { return n + (n === 1 ? ' day' : ' days'); }
+function daysStr(n) { return n + (n === 1 ? ' day' : ' days'); }
+async function fetchJSON(url) { return (await fetch(url)).json(); }
 
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  return r.json();
-}
+// Global state
+let STATE = { asset: 'usdg', period: '30d' };
+let DATA = {};
+
+// Chart instances for cleanup
+let charts = {};
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
 async function main() {
   try {
-    // Fetch all data in parallel
-    const [usdgData, allStables, usdgHistory, pyusdHistory, ...compareHistories] = await Promise.all([
+    const [usdgDetail, pyusdDetail, allStables, usdgHistory, pyusdHistory, ...compareHistories] = await Promise.all([
       fetchJSON(`https://stablecoins.llama.fi/stablecoin/${USDG_ID}`),
+      fetchJSON(`https://stablecoins.llama.fi/stablecoin/${PYUSD_ID}`),
       fetchJSON('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${USDG_ID}`),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${PYUSD_ID}`),
@@ -376,57 +321,70 @@ async function main() {
       ),
     ]);
 
-    // ── Parse basics ──
-    const chains = {};
-    let totalSupply = 0;
-    for (const [chain, data] of Object.entries(usdgData.chainBalances || {})) {
-      const tokens = data.tokens || [];
-      if (tokens.length) {
-        const val = tokens[tokens.length - 1].circulating.peggedUSD;
-        chains[chain] = { current: val };
-        totalSupply += val;
-        // 30d ago
-        if (tokens.length >= 30) {
-          chains[chain].prev30 = tokens[tokens.length - 30].circulating.peggedUSD;
+    // Parse chain data for both assets
+    function parseChains(detail) {
+      const chains = {};
+      for (const [chain, data] of Object.entries(detail.chainBalances || {})) {
+        const tokens = data.tokens || [];
+        if (tokens.length) {
+          const c = tokens[tokens.length - 1].circulating.peggedUSD;
+          chains[chain] = { current: c };
+          if (tokens.length >= 30) chains[chain].prev30 = tokens[tokens.length - 30].circulating.peggedUSD;
+          if (tokens.length >= 7) chains[chain].prev7 = tokens[tokens.length - 7].circulating.peggedUSD;
         }
       }
+      return chains;
     }
 
     const sorted = allStables.peggedAssets
       .filter(a => a.circulating?.peggedUSD > 0)
       .sort((a, b) => b.circulating.peggedUSD - a.circulating.peggedUSD);
-    const usdgEntry = sorted.find(a => a.id === USDG_ID);
-    const rank = sorted.indexOf(usdgEntry) + 1;
     const totalMarket = sorted.reduce((s, a) => s + a.circulating.peggedUSD, 0);
 
-    // ── Top metrics ──
-    document.getElementById('total-supply').textContent = fmt(totalSupply);
-    const prevDay = usdgEntry?.circulatingPrevDay?.peggedUSD || totalSupply;
-    const dayDelta = ((totalSupply - prevDay) / prevDay) * 100;
-    const el = document.getElementById('supply-delta');
-    el.textContent = pct(dayDelta) + ' (24h)';
-    el.className = 'delta ' + (dayDelta >= 0 ? 'up' : 'down');
+    const usdgEntry = sorted.find(a => a.id === USDG_ID);
+    const pyusdEntry = sorted.find(a => a.id === PYUSD_ID);
 
-    document.getElementById('market-rank').textContent = '#' + rank;
-    document.getElementById('rank-context').textContent = 'of ' + sorted.length + ' stablecoins';
+    // Build combined history (aligned by date)
+    const usdgMap = new Map(usdgHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
+    const pyusdMap = new Map((pyusdHistory||[]).map(p => [p.date, p.totalCirculating.peggedUSD]));
+    const allDates = [...new Set([...usdgMap.keys(), ...pyusdMap.keys()])].sort((a,b) => a - b);
+    const combinedHistory = allDates.map(d => ({
+      date: d,
+      totalCirculating: { peggedUSD: (usdgMap.get(d) || 0) + (pyusdMap.get(d) || 0) }
+    }));
 
-    const prevWeek = usdgEntry?.circulatingPrevWeek?.peggedUSD || totalSupply;
-    const weekDelta = ((totalSupply - prevWeek) / prevWeek) * 100;
-    document.getElementById('week-change').textContent = pct(weekDelta);
-    document.getElementById('week-change').style.color = weekDelta >= 0 ? 'var(--green)' : 'var(--red)';
-    document.getElementById('week-abs').textContent = fmt(Math.abs(totalSupply - prevWeek));
-    document.getElementById('week-abs').className = 'delta ' + (weekDelta >= 0 ? 'up' : 'down');
+    // Combined chains = merge both chain maps
+    function mergeChains(a, b) {
+      const merged = {};
+      for (const [chain, data] of Object.entries(a)) {
+        merged[chain] = { ...data };
+      }
+      for (const [chain, data] of Object.entries(b)) {
+        if (merged[chain]) {
+          merged[chain].current += data.current;
+          if (data.prev30 && merged[chain].prev30) merged[chain].prev30 += data.prev30;
+          if (data.prev7 && merged[chain].prev7) merged[chain].prev7 += data.prev7;
+        } else {
+          merged[chain] = { ...data };
+        }
+      }
+      return merged;
+    }
 
-    const prevMonth = usdgEntry?.circulatingPrevMonth?.peggedUSD || totalSupply;
-    const monthDelta = ((totalSupply - prevMonth) / prevMonth) * 100;
-    document.getElementById('month-change').textContent = pct(monthDelta);
-    document.getElementById('month-change').style.color = monthDelta >= 0 ? 'var(--green)' : 'var(--red)';
-    document.getElementById('month-abs').textContent = fmt(Math.abs(totalSupply - prevMonth));
-    document.getElementById('month-abs').className = 'delta ' + (monthDelta >= 0 ? 'up' : 'down');
+    const usdgChains = parseChains(usdgDetail);
+    const pyusdChains = parseChains(pyusdDetail);
 
-    // ── Milestone helper (defined early so insight can use it) ──
+    // Combined entry for rankings simulation
+    const combinedSupply = (usdgEntry?.circulating?.peggedUSD || 0) + (pyusdEntry?.circulating?.peggedUSD || 0);
+    const combinedPrevDay = (usdgEntry?.circulatingPrevDay?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevDay?.peggedUSD || 0);
+    const combinedPrevWeek = (usdgEntry?.circulatingPrevWeek?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevWeek?.peggedUSD || 0);
+    const combinedPrevMonth = (usdgEntry?.circulatingPrevMonth?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevMonth?.peggedUSD || 0);
+    const combinedRank = sorted.filter(a => a.circulating.peggedUSD > combinedSupply).length + 1;
+
+    // Milestone helper
     const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
     function getMilestones(history) {
+      if (!history || !history.length) return milestoneTargets.map(() => null);
       const first = parseInt(history[0].date);
       return milestoneTargets.map(m => {
         const pt = history.find(p => p.totalCirculating.peggedUSD >= m);
@@ -435,275 +393,221 @@ async function main() {
     }
 
     const compareNames = Object.keys(COMPARE_STABLES);
-    const allMilestoneData = { 'USDG': getMilestones(usdgHistory) };
+
+    // Store everything
+    DATA = {
+      sorted, totalMarket, usdgEntry, pyusdEntry,
+      usdgChains, pyusdChains,
+      usdgHistory, pyusdHistory: pyusdHistory || [], combinedHistory,
+      combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
+      milestoneData: {
+        'USDG': getMilestones(usdgHistory),
+        'PYUSD': getMilestones(pyusdHistory),
+        'Combined': getMilestones(combinedHistory),
+      },
+      compareHistories, compareNames,
+    };
     compareHistories.forEach((h, i) => {
-      if (h && h.length) allMilestoneData[compareNames[i]] = getMilestones(h);
+      if (h && h.length) DATA.milestoneData[compareNames[i]] = getMilestones(h);
     });
 
-    // ── Top insight ──
-    const usdgAge = Math.round((Date.now()/1000 - parseInt(usdgHistory[0].date)) / 86400);
-    const ins1 = document.getElementById('insight-1');
+    render();
+
+    // Toggle listeners
+    document.getElementById('asset-toggle').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      document.querySelectorAll('#asset-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.asset = btn.dataset.asset;
+      render();
+    });
+    document.getElementById('period-toggle').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      document.querySelectorAll('#period-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.period = btn.dataset.period;
+      render();
+    });
+
+    document.getElementById('updated-time').textContent = 'Live data, refreshed on page load. ' + new Date().toLocaleString();
+
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    document.getElementById('metrics-grid').innerHTML = '<div class="metric-card"><div class="label">Error</div><div class="value" style="font-size:1rem">Failed to load data. Check console.</div></div>';
+  }
+}
+
+function render() {
+  const { asset, period } = STATE;
+  const { sorted, totalMarket, usdgEntry, pyusdEntry, usdgChains, pyusdChains,
+    usdgHistory, pyusdHistory, combinedHistory,
+    combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
+    milestoneData } = DATA;
+
+  const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
+  const periodLabel = period === '7d' ? '7 days' : '30 days';
+  const color = ASSET_COLORS[asset];
+  const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
+  const assetIds = asset === 'usdg' ? [USDG_ID] : asset === 'pyusd' ? [PYUSD_ID] : [USDG_ID, PYUSD_ID];
+
+  // Resolve current asset's data
+  let supply, prevDay, prevWeek, prevMonth, rank, history, chains;
+  if (asset === 'usdg') {
+    supply = usdgEntry.circulating.peggedUSD;
+    prevDay = usdgEntry.circulatingPrevDay?.peggedUSD || supply;
+    prevWeek = usdgEntry.circulatingPrevWeek?.peggedUSD || supply;
+    prevMonth = usdgEntry.circulatingPrevMonth?.peggedUSD || supply;
+    rank = sorted.indexOf(usdgEntry) + 1;
+    history = usdgHistory;
+    chains = usdgChains;
+  } else if (asset === 'pyusd') {
+    supply = pyusdEntry.circulating.peggedUSD;
+    prevDay = pyusdEntry.circulatingPrevDay?.peggedUSD || supply;
+    prevWeek = pyusdEntry.circulatingPrevWeek?.peggedUSD || supply;
+    prevMonth = pyusdEntry.circulatingPrevMonth?.peggedUSD || supply;
+    rank = sorted.indexOf(pyusdEntry) + 1;
+    history = pyusdHistory;
+    chains = pyusdChains;
+  } else {
+    supply = combinedSupply;
+    prevDay = combinedPrevDay; prevWeek = combinedPrevWeek; prevMonth = combinedPrevMonth;
+    rank = combinedRank;
+    history = combinedHistory;
+    chains = {};
+    // merge chains
+    for (const [c, d] of Object.entries(usdgChains)) { chains[c] = { ...d }; }
+    for (const [c, d] of Object.entries(pyusdChains)) {
+      if (chains[c]) {
+        chains[c].current += d.current;
+        if (d.prev30 !== undefined && chains[c].prev30 !== undefined) chains[c].prev30 += d.prev30;
+        if (d.prev7 !== undefined && chains[c].prev7 !== undefined) chains[c].prev7 += d.prev7;
+      } else { chains[c] = { ...d }; }
+    }
+  }
+
+  const prevPeriod = period === '7d' ? prevWeek : prevMonth;
+  const dayDelta = prevDay > 0 ? ((supply - prevDay) / prevDay * 100) : 0;
+  const periodDelta = prevPeriod > 0 ? ((supply - prevPeriod) / prevPeriod * 100) : 0;
+
+  // ── Metrics cards ──
+  document.getElementById('metrics-grid').innerHTML = `
+    <div class="metric-card">
+      <div class="label">Total Supply</div>
+      <div class="value">${fmt(supply)}</div>
+      <div class="delta ${dayDelta >= 0 ? 'up' : 'down'}">${pct(dayDelta)} (24h)</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">${asset === 'combined' ? 'Effective Rank' : 'Stablecoin Rank'}</div>
+      <div class="value">#${rank}</div>
+      <div class="delta neutral">${asset === 'combined' ? 'if treated as one asset' : 'of ' + sorted.length + ' stablecoins'}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">${period} Change</div>
+      <div class="value" style="color:${periodDelta >= 0 ? 'var(--green)' : 'var(--red)'}">${pct(periodDelta)}</div>
+      <div class="delta ${periodDelta >= 0 ? 'up' : 'down'}">${fmt(Math.abs(supply - prevPeriod))}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Market Share</div>
+      <div class="value">${(supply / totalMarket * 100).toFixed(2)}%</div>
+      <div class="delta neutral">of ${fmt(totalMarket)} total</div>
+    </div>
+  `;
+
+  // ── Insight ──
+  const ins1 = document.getElementById('insight-1');
+  if (history && history.length) {
+    const age = Math.round((Date.now()/1000 - parseInt(history[0].date)) / 86400);
+    const assetMilestones = milestoneData[asset === 'combined' ? 'Combined' : asset.toUpperCase()];
+    const usdcTo1B = milestoneData['USDC']?.[4];
+    const thisTo1B = assetMilestones?.[4];
+    const speedFactor = (usdcTo1B && thisTo1B) ? (usdcTo1B / thisTo1B).toFixed(1) : null;
     ins1.style.display = 'block';
-    const usdcTo1BDays = allMilestoneData['USDC']?.[4];
-    const usdgTo1BDays = allMilestoneData['USDG']?.[4];
-    const speedFactor = (usdcTo1BDays && usdgTo1BDays) ? (usdcTo1BDays / usdgTo1BDays).toFixed(1) : null;
-    ins1.innerHTML = `USDG is <strong>${usdgAge} days old</strong>, ranked #${rank} among stablecoins with <strong>${fmt(totalSupply)}</strong> in circulation.${speedFactor ? ` It reached $1B roughly <strong>${speedFactor}x faster</strong> than USDC did.` : ''}`;
+    ins1.innerHTML = `${assetLabel} is <strong>${age} days old</strong>, ranked #${rank} with <strong>${fmt(supply)}</strong> in circulation.${speedFactor ? ` Reached $1B roughly <strong>${speedFactor}x faster</strong> than USDC.` : ''}`;
+  } else {
+    ins1.style.display = 'none';
+  }
 
-    // ── Race to next rank ──
-    if (rank > 1) {
-      const above = sorted[rank - 2];
-      const gap = above.circulating.peggedUSD - totalSupply;
-      const aboveName = above.symbol;
-      const total = above.circulating.peggedUSD;
-      const usdgPct = (totalSupply / total * 100);
-
+  // ── Race to next rank ──
+  const raceSection = document.getElementById('race-section');
+  // Find what's directly above in rankings
+  const effectiveRank = rank;
+  if (effectiveRank > 1) {
+    raceSection.style.display = '';
+    // For combined, we need to find who's above the combined supply
+    let aboveEntry;
+    if (asset === 'combined') {
+      aboveEntry = sorted.find(a => a.circulating.peggedUSD > supply && !assetIds.includes(a.id));
+      // actually find the one just above
+      const aboveAll = sorted.filter(a => a.circulating.peggedUSD > supply);
+      aboveEntry = aboveAll[aboveAll.length - 1]; // closest one above
+    } else {
+      aboveEntry = sorted[effectiveRank - 2];
+    }
+    if (aboveEntry) {
+      const gap = aboveEntry.circulating.peggedUSD - supply;
+      const abovePct = (supply / aboveEntry.circulating.peggedUSD * 100);
       document.getElementById('race-subtitle').textContent =
-        `USDG (#${rank}) vs ${aboveName} (#${rank-1}) for the #${rank-1} spot`;
-
-      const track = document.getElementById('race-track');
-      track.innerHTML = `
-        <div class="race-bar" style="width:${usdgPct}%;background:rgba(122,162,247,0.5);z-index:2;color:var(--fg);">
-          USDG ${fmt(totalSupply)}
+        `${assetLabel} (#${effectiveRank}) vs ${aboveEntry.symbol} (#${sorted.indexOf(aboveEntry)+1})`;
+      document.getElementById('race-track').innerHTML = `
+        <div class="race-bar" style="width:${abovePct}%;background:${color}88;z-index:2;color:var(--fg);">
+          ${assetLabel} ${fmt(supply)}
         </div>
         <div class="race-bar" style="width:100%;background:rgba(247,118,142,0.2);z-index:1;justify-content:flex-end;color:var(--red);">
-          ${aboveName} ${fmt(above.circulating.peggedUSD)}
+          ${aboveEntry.symbol} ${fmt(aboveEntry.circulating.peggedUSD)}
         </div>`;
-
-      document.getElementById('race-gap').innerHTML =
-        `${fmt(gap)} to overtake`;
-
-      // How many days at current daily rate?
-      if (usdgHistory.length >= 7) {
-        const recent7d = usdgHistory.slice(-7);
-        const dailyRate = (recent7d[recent7d.length-1].totalCirculating.peggedUSD - recent7d[0].totalCirculating.peggedUSD) / 7;
+      let gapHtml = fmt(gap) + ' to overtake';
+      if (history && history.length >= 7) {
+        const recent = history.slice(-7);
+        const dailyRate = (recent[recent.length-1].totalCirculating.peggedUSD - recent[0].totalCirculating.peggedUSD) / 7;
         if (dailyRate > 0) {
-          const daysToOvertake = Math.ceil(gap / dailyRate);
-          document.getElementById('race-gap').innerHTML += `<br><span style="font-size:0.8rem;color:var(--gray)">~${days(daysToOvertake)} at current 7d pace</span>`;
+          gapHtml += `<br><span style="font-size:0.8rem;color:var(--gray)">~${daysStr(Math.ceil(gap / dailyRate))} at current 7d pace</span>`;
         }
       }
+      document.getElementById('race-gap').innerHTML = gapHtml;
     }
+  } else {
+    raceSection.style.display = 'none';
+  }
 
-    // ── Supply chart ──
-    new Chart(document.getElementById('supply-chart').getContext('2d'), {
+  // ── Supply chart ──
+  destroyChart('supply');
+  if (history && history.length) {
+    const datasets = [];
+    if (asset === 'combined') {
+      // Show all three lines
+      const usdgMap = new Map(usdgHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
+      const pyusdMap = new Map(pyusdHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
+      datasets.push({
+        label: 'Combined', data: history.map(d => d.totalCirculating.peggedUSD),
+        borderColor: ASSET_COLORS.combined, backgroundColor: ASSET_COLORS.combined + '14',
+        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+      });
+      datasets.push({
+        label: 'USDG', data: history.map(d => usdgMap.get(d.date) || 0),
+        borderColor: ASSET_COLORS.usdg, backgroundColor: 'transparent',
+        fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+      });
+      datasets.push({
+        label: 'PYUSD', data: history.map(d => pyusdMap.get(d.date) || 0),
+        borderColor: ASSET_COLORS.pyusd, backgroundColor: 'transparent',
+        fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+      });
+    } else {
+      datasets.push({
+        label: assetLabel, data: history.map(d => d.totalCirculating.peggedUSD),
+        borderColor: color, backgroundColor: color + '14',
+        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+      });
+    }
+    charts['supply'] = new Chart(document.getElementById('supply-chart').getContext('2d'), {
       type: 'line',
-      data: {
-        labels: usdgHistory.map(d => new Date(d.date * 1000)),
-        datasets: [{
-          label: 'Total Supply',
-          data: usdgHistory.map(d => d.totalCirculating.peggedUSD),
-          borderColor: '#7aa2f7',
-          backgroundColor: 'rgba(122,162,247,0.08)',
-          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false },
-          tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) } }
-        },
-        scales: {
-          x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
-        }
-      }
-    });
-
-    // ── Milestone velocity chart ──
-    const milestoneColors = { 'USDG': '#7aa2f7', 'USDC': '#2775CA', 'USDe': '#9ece6a' };
-    new Chart(document.getElementById('milestone-chart').getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: milestoneTargets.map(m => fmt(m)),
-        datasets: Object.entries(allMilestoneData).map(([name, vals]) => ({
-          label: name,
-          data: vals,
-          backgroundColor: (milestoneColors[name] || '#565f89') + '99',
-          borderColor: milestoneColors[name] || '#565f89',
-          borderWidth: 1,
-        }))
-      },
+      data: { labels: history.map(d => new Date(d.date * 1000)), datasets },
       options: {
         responsive: true,
         plugins: {
-          legend: { labels: { color: '#565f89' } },
-          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? days(ctx.parsed.y) : 'N/A') } }
-        },
-        scales: {
-          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => days(v) },
-            title: { display: true, text: 'Days', color: '#565f89' } }
-        }
-      }
-    });
-
-    const usdgTo1B = allMilestoneData['USDG'][4];
-    const usdcTo1B = allMilestoneData['USDC']?.[4];
-    if (usdgTo1B && usdcTo1B) {
-      const mi = document.getElementById('milestone-insight');
-      mi.style.display = 'block';
-      mi.innerHTML = `USDG reached <strong>$1B in ${days(usdgTo1B)}</strong>. USDC took <strong>${days(usdcTo1B)}</strong> to hit the same milestone, making USDG roughly <strong>${(usdcTo1B/usdgTo1B).toFixed(1)}x faster</strong>.`;
-    }
-
-    // ── Chain bars with velocity ──
-    const chainContainer = document.getElementById('chain-bars');
-    const sortedChains = Object.entries(chains).sort((a, b) => b[1].current - a[1].current);
-    const maxChain = sortedChains[0]?.[1].current || 1;
-
-    for (const [chain, data] of sortedChains) {
-      const pctOfTotal = (data.current / totalSupply * 100).toFixed(1);
-      const barPct = (data.current / maxChain * 100).toFixed(1);
-      const color = CHAIN_COLORS[chain] || '#7dcfff';
-      let deltaHtml = '';
-      if (data.prev30 && data.prev30 > 0) {
-        const rate = ((data.current - data.prev30) / data.prev30 * 100);
-        const cls = rate >= 0 ? 'up' : 'down';
-        deltaHtml = `<span class="chain-delta delta ${cls}">${pct(rate)} 30d</span>`;
-      }
-      chainContainer.innerHTML += `
-        <div class="chain-bar">
-          <div class="chain-name">${chain}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${color}"></div></div>
-          <div class="bar-meta">${fmt(data.current)} (${pctOfTotal}%)<br>${deltaHtml}</div>
-        </div>`;
-    }
-
-    // Chain insight
-    const fastestChain = sortedChains
-      .filter(([,d]) => d.prev30 && d.prev30 > 0)
-      .map(([name, d]) => [name, ((d.current - d.prev30) / d.prev30 * 100)])
-      .sort((a, b) => b[1] - a[1])[0];
-    if (fastestChain) {
-      const ci = document.getElementById('chain-insight');
-      ci.style.display = 'block';
-      ci.innerHTML = `<strong>${fastestChain[0]}</strong> is the fastest-growing chain for USDG at <strong>${pct(fastestChain[1])}</strong> over 30 days. ${
-        sortedChains[0][0] !== fastestChain[0]
-          ? `Meanwhile, <strong>${sortedChains[0][0]}</strong> holds the most supply but capital may be shifting.`
-          : ''
-      }`;
-    }
-
-    // ── Alt-stable market share (donut) ──
-    const bigTwo = sorted.slice(0, 2).reduce((s, a) => s + a.circulating.peggedUSD, 0);
-    const altMarket = totalMarket - bigTwo;
-    const usdgAltShare = (totalSupply / altMarket * 100);
-    const otherAlt = altMarket - totalSupply;
-
-    new Chart(document.getElementById('alt-share-chart').getContext('2d'), {
-      type: 'doughnut',
-      data: {
-        labels: ['USDG', 'Other alt-stables'],
-        datasets: [{
-          data: [totalSupply, otherAlt],
-          backgroundColor: ['#7aa2f7', '#292e43'],
-          borderColor: ['#7aa2f7', '#565f89'],
-          borderWidth: 1,
-        }]
-      },
-      options: {
-        responsive: true,
-        cutout: '65%',
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) } }
-        }
-      },
-      plugins: [{
-        id: 'centerText',
-        afterDraw(chart) {
-          const { ctx, chartArea: { width, height, top, left } } = chart;
-          ctx.save();
-          ctx.fillStyle = '#c0caf5';
-          ctx.font = 'bold 1.3rem "IBM Plex Mono", monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(usdgAltShare.toFixed(1) + '%', left + width/2, top + height/2 - 8);
-          ctx.font = '0.7rem "IBM Plex Mono", monospace';
-          ctx.fillStyle = '#565f89';
-          ctx.fillText('of alt-stables', left + width/2, top + height/2 + 14);
-          ctx.restore();
-        }
-      }]
-    });
-
-    // ── Paxos combined: USDG + PYUSD ──
-    const pyusdEntry = sorted.find(a => a.id === PYUSD_ID);
-    const pyusdSupply = pyusdEntry?.circulating?.peggedUSD || 0;
-    const combinedSupply = totalSupply + pyusdSupply;
-    const combinedShare = (combinedSupply / totalMarket * 100);
-
-    // Where would combined rank?
-    const combinedRank = sorted.filter(a => a.circulating.peggedUSD > combinedSupply).length + 1;
-
-    const paxosMetrics = document.getElementById('paxos-metrics');
-    paxosMetrics.innerHTML = `
-      <div class="metric-card">
-        <div class="label">USDG</div>
-        <div class="value">${fmt(totalSupply)}</div>
-        <div class="delta neutral">#${rank}</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">PYUSD</div>
-        <div class="value">${fmt(pyusdSupply)}</div>
-        <div class="delta neutral">#${sorted.indexOf(pyusdEntry) + 1}</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Combined</div>
-        <div class="value">${fmt(combinedSupply)}</div>
-        <div class="delta neutral">Would rank #${combinedRank} · ${combinedShare.toFixed(2)}% of market</div>
-      </div>
-    `;
-
-    // Combined supply over time chart
-    // Build aligned time series from both histories
-    const pyusdMap = new Map();
-    if (pyusdHistory && pyusdHistory.length) {
-      pyusdHistory.forEach(p => pyusdMap.set(p.date, p.totalCirculating.peggedUSD));
-    }
-    const usdgMap = new Map();
-    usdgHistory.forEach(p => usdgMap.set(p.date, p.totalCirculating.peggedUSD));
-
-    // Get all unique dates, sorted
-    const allDates = [...new Set([...usdgMap.keys(), ...pyusdMap.keys()])].sort((a, b) => a - b);
-
-    const paxosChartData = {
-      labels: allDates.map(d => new Date(d * 1000)),
-      usdg: allDates.map(d => usdgMap.get(d) || 0),
-      pyusd: allDates.map(d => pyusdMap.get(d) || 0),
-    };
-    paxosChartData.combined = allDates.map((_, i) => paxosChartData.usdg[i] + paxosChartData.pyusd[i]);
-
-    new Chart(document.getElementById('paxos-chart').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: paxosChartData.labels,
-        datasets: [
-          {
-            label: 'Combined',
-            data: paxosChartData.combined,
-            borderColor: '#9ece6a',
-            backgroundColor: 'rgba(158,206,106,0.08)',
-            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
-          },
-          {
-            label: 'USDG',
-            data: paxosChartData.usdg,
-            borderColor: '#7aa2f7',
-            backgroundColor: 'rgba(122,162,247,0.05)',
-            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
-          },
-          {
-            label: 'PYUSD',
-            data: paxosChartData.pyusd,
-            borderColor: '#bb9af7',
-            backgroundColor: 'rgba(187,154,247,0.05)',
-            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
-          },
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { labels: { color: '#565f89' } },
+          legend: { display: asset === 'combined', labels: { color: '#565f89' } },
           tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } }
         },
         scales: {
@@ -712,189 +616,260 @@ async function main() {
         }
       }
     });
+  }
 
-    // Paxos insight
-    const pi = document.getElementById('paxos-insight');
-    pi.style.display = 'block';
-    pi.innerHTML = `Combined, Paxos-issued stablecoins hold <strong>${fmt(combinedSupply)}</strong> in circulation (<strong>${combinedShare.toFixed(2)}%</strong> of the total stablecoin market). As a single entity this would rank <strong>#${combinedRank}</strong>.`;
-
-    // ── Growth rate vs peers (horizontal bar) ──
-    let growthChart = null;
-    function renderGrowthChart(period) {
-      const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
-      const pd = sorted
-        .filter(a => a.circulating.peggedUSD > 500e6 && a[prevKey]?.peggedUSD > 0)
-        .map(a => ({
-          symbol: a.symbol,
-          rate: ((a.circulating.peggedUSD - a[prevKey].peggedUSD) / a[prevKey].peggedUSD * 100),
-          isUsdg: a.id === USDG_ID,
-        }))
-        .sort((a, b) => b.rate - a.rate)
-        .slice(0, 12);
-
-      document.getElementById('growth-subtitle').textContent = `${period} growth rate, stablecoins >$500M`;
-      if (growthChart) growthChart.destroy();
-      growthChart = new Chart(document.getElementById('growth-chart').getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: pd.map(d => d.isUsdg ? 'USDG ◀' : d.symbol),
-          datasets: [{
-            data: pd.map(d => d.rate),
-            backgroundColor: pd.map(d => d.isUsdg ? '#7aa2f7' : '#292e43'),
-            borderColor: pd.map(d => d.isUsdg ? '#7aa2f7' : '#565f89'),
-            borderWidth: 1,
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } }
-          },
-          scales: {
-            x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
-            y: { grid: { display: false }, ticks: {
-              color: (ctx) => pd[ctx.index]?.isUsdg ? '#7aa2f7' : '#565f89',
-              font: (ctx) => ({ weight: pd[ctx.index]?.isUsdg ? 'bold' : 'normal' })
-            } }
-          }
-        }
-      });
-    }
-    renderGrowthChart('30d');
-
-    document.getElementById('growth-toggle').addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      document.querySelectorAll('#growth-toggle button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderGrowthChart(btn.dataset.period);
-    });
-
-    // ── Growth capture chart ──
-    let captureChart = null;
-    function renderCaptureChart(period) {
-      const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
-      const label = period === '7d' ? '7 days' : '30 days';
-      const growthData = sorted
-        .filter(a => a[prevKey]?.peggedUSD > 0)
-        .map(a => ({
-          symbol: a.symbol,
-          growth: a.circulating.peggedUSD - a[prevKey].peggedUSD,
-          isUsdg: a.id === USDG_ID,
-        }))
-        .filter(a => a.growth > 0)
-        .sort((a, b) => b.growth - a.growth)
-        .slice(0, 10);
-
-      const totalPositiveGrowth = growthData.reduce((s, a) => s + a.growth, 0);
-      const ci = document.getElementById('capture-insight');
-
-      if (captureChart) captureChart.destroy();
-
-      if (growthData.length > 0) {
-        const usdgInTopN = growthData.slice(0, 6).some(d => d.isUsdg);
-        let top6 = growthData.slice(0, 6);
-        let rest = growthData.slice(6);
-        if (!usdgInTopN) {
-          const usdgItem = growthData.find(d => d.isUsdg);
-          if (usdgItem) {
-            top6 = [...growthData.slice(0, 5), usdgItem];
-            rest = growthData.slice(5).filter(d => !d.isUsdg);
-          }
-        }
-        const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
-        const pieData = [...top6];
-        if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isUsdg: false });
-
-        const pieColors = pieData.map(d => {
-          if (d.isUsdg) return '#7aa2f7';
-          const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
-          return palette[pieData.indexOf(d) % palette.length];
-        });
-
-        captureChart = new Chart(document.getElementById('capture-chart').getContext('2d'), {
-          type: 'doughnut',
-          data: {
-            labels: pieData.map(d => d.symbol),
-            datasets: [{
-              data: pieData.map(d => d.growth),
-              backgroundColor: pieColors,
-              borderColor: '#1a1b26',
-              borderWidth: 2,
-            }]
-          },
-          options: {
-            responsive: true,
-            cutout: '45%',
-            plugins: {
-              legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
-              tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPositiveGrowth*100).toFixed(1) + '%)' } }
-            }
-          }
-        });
-
-        const usdgGrowthEntry = growthData.find(d => d.isUsdg);
-        if (usdgGrowthEntry) {
-          const capturePct = (usdgGrowthEntry.growth / totalPositiveGrowth * 100);
-          ci.style.display = 'block';
-          ci.innerHTML = `Of all stablecoins that <em>grew</em> in the last ${label}, USDG captured <strong>${capturePct.toFixed(1)}%</strong> of new supply (<strong>${fmt(usdgGrowthEntry.growth)}</strong>).`;
-        } else {
-          ci.style.display = 'none';
-        }
-      } else {
-        ci.style.display = 'block';
-        ci.innerHTML = `The overall stablecoin market contracted over the last ${label}.`;
+  // ── Milestone chart ──
+  destroyChart('milestone');
+  const milestoneKey = asset === 'combined' ? 'Combined' : asset.toUpperCase();
+  const milestoneColors = { 'USDG': '#7aa2f7', 'PYUSD': '#bb9af7', 'Combined': '#9ece6a', 'USDC': '#2775CA', 'USDe': '#9ece6a' };
+  // Show current asset + comparisons
+  const milestoneEntries = [[milestoneKey, milestoneData[milestoneKey]]];
+  for (const name of Object.keys(COMPARE_STABLES)) {
+    if (milestoneData[name]) milestoneEntries.push([name, milestoneData[name]]);
+  }
+  const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
+  document.getElementById('milestone-title').textContent = `Speed to $1B: ${assetLabel} vs The Field`;
+  charts['milestone'] = new Chart(document.getElementById('milestone-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: milestoneTargets.map(m => fmt(m)),
+      datasets: milestoneEntries.map(([name, vals]) => ({
+        label: name, data: vals,
+        backgroundColor: (milestoneColors[name] || '#565f89') + '99',
+        borderColor: milestoneColors[name] || '#565f89', borderWidth: 1,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#565f89' } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? daysStr(ctx.parsed.y) : 'N/A') } }
+      },
+      scales: {
+        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => daysStr(v) },
+          title: { display: true, text: 'Days', color: '#565f89' } }
       }
     }
-    renderCaptureChart('30d');
+  });
+  const mi = document.getElementById('milestone-insight');
+  const thisTo1B = milestoneData[milestoneKey]?.[4];
+  const usdcTo1B = milestoneData['USDC']?.[4];
+  if (thisTo1B && usdcTo1B) {
+    mi.style.display = 'block';
+    mi.innerHTML = `${assetLabel} reached <strong>$1B in ${daysStr(thisTo1B)}</strong>. USDC took <strong>${daysStr(usdcTo1B)}</strong>, making ${assetLabel} roughly <strong>${(usdcTo1B/thisTo1B).toFixed(1)}x faster</strong>.`;
+  } else { mi.style.display = 'none'; }
 
-    document.getElementById('capture-toggle').addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      document.querySelectorAll('#capture-toggle button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderCaptureChart(btn.dataset.period);
+  // ── Chain bars ──
+  const chainContainer = document.getElementById('chain-bars');
+  chainContainer.innerHTML = '';
+  document.getElementById('chain-subtitle').textContent = `Where ${assetLabel} lives and where it's growing.`;
+  const sortedChains = Object.entries(chains).filter(([,d]) => d.current > 0).sort((a,b) => b[1].current - a[1].current);
+  const maxChain = sortedChains[0]?.[1].current || 1;
+  const chainTotal = sortedChains.reduce((s,[,d]) => s + d.current, 0);
+
+  for (const [chain, data] of sortedChains) {
+    const pctOfTotal = (data.current / chainTotal * 100).toFixed(1);
+    const barPct = (data.current / maxChain * 100).toFixed(1);
+    const clr = CHAIN_COLORS[chain] || '#7dcfff';
+    let deltaHtml = '';
+    const prevChain = period === '7d' ? data.prev7 : data.prev30;
+    if (prevChain && prevChain > 0) {
+      const rate = ((data.current - prevChain) / prevChain * 100);
+      deltaHtml = `<span class="chain-delta delta ${rate >= 0 ? 'up' : 'down'}">${pct(rate)} ${period}</span>`;
+    }
+    chainContainer.innerHTML += `
+      <div class="chain-bar">
+        <div class="chain-name">${chain}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${clr}"></div></div>
+        <div class="bar-meta">${fmt(data.current)} (${pctOfTotal}%)<br>${deltaHtml}</div>
+      </div>`;
+  }
+
+  const ci = document.getElementById('chain-insight');
+  const prevChainKey = period === '7d' ? 'prev7' : 'prev30';
+  const fastest = sortedChains
+    .filter(([,d]) => d[prevChainKey] && d[prevChainKey] > 0)
+    .map(([name, d]) => [name, ((d.current - d[prevChainKey]) / d[prevChainKey] * 100)])
+    .sort((a,b) => b[1] - a[1])[0];
+  if (fastest) {
+    ci.style.display = 'block';
+    ci.innerHTML = `<strong>${fastest[0]}</strong> is the fastest-growing chain at <strong>${pct(fastest[1])}</strong> over ${periodLabel}.${
+      sortedChains[0][0] !== fastest[0] ? ` Meanwhile, <strong>${sortedChains[0][0]}</strong> holds the most supply.` : ''
+    }`;
+  } else { ci.style.display = 'none'; }
+
+  // ── Alt-stable share ──
+  destroyChart('altShare');
+  const bigTwo = sorted.slice(0, 2).reduce((s, a) => s + a.circulating.peggedUSD, 0);
+  const altMarket = totalMarket - bigTwo;
+  const altShare = (supply / altMarket * 100);
+  document.getElementById('alt-subtitle').textContent = `${assetLabel}'s share of non-USDT/USDC stablecoins`;
+  charts['altShare'] = new Chart(document.getElementById('alt-share-chart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: [assetLabel, 'Other alt-stables'],
+      datasets: [{ data: [supply, altMarket - supply], backgroundColor: [color, '#292e43'], borderColor: [color, '#565f89'], borderWidth: 1 }]
+    },
+    options: {
+      responsive: true, cutout: '65%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) } } }
+    },
+    plugins: [{
+      id: 'centerText',
+      afterDraw(chart) {
+        const { ctx, chartArea: { width, height, top, left } } = chart;
+        ctx.save();
+        ctx.fillStyle = '#c0caf5';
+        ctx.font = 'bold 1.3rem "IBM Plex Mono", monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(altShare.toFixed(1) + '%', left + width/2, top + height/2 - 8);
+        ctx.font = '0.7rem "IBM Plex Mono", monospace';
+        ctx.fillStyle = '#565f89';
+        ctx.fillText('of alt-stables', left + width/2, top + height/2 + 14);
+        ctx.restore();
+      }
+    }]
+  });
+
+  // ── Growth rate vs peers ──
+  destroyChart('growth');
+  const pd = sorted
+    .filter(a => a.circulating.peggedUSD > 500e6 && a[prevKey]?.peggedUSD > 0)
+    .map(a => ({
+      symbol: a.symbol, id: a.id,
+      rate: ((a.circulating.peggedUSD - a[prevKey].peggedUSD) / a[prevKey].peggedUSD * 100),
+      isTarget: assetIds.includes(a.id),
+    }))
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, 12);
+  document.getElementById('growth-subtitle').textContent = `${period} growth rate, stablecoins >$500M`;
+  charts['growth'] = new Chart(document.getElementById('growth-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: pd.map(d => d.isTarget ? d.symbol + ' ◀' : d.symbol),
+      datasets: [{
+        data: pd.map(d => d.rate),
+        backgroundColor: pd.map(d => d.isTarget ? color : '#292e43'),
+        borderColor: pd.map(d => d.isTarget ? color : '#565f89'),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } } },
+      scales: {
+        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
+        y: { grid: { display: false }, ticks: {
+          color: ctx => pd[ctx.index]?.isTarget ? color : '#565f89',
+          font: ctx => ({ weight: pd[ctx.index]?.isTarget ? 'bold' : 'normal' })
+        } }
+      }
+    }
+  });
+
+  // ── Growth capture ──
+  destroyChart('capture');
+  const growthData = sorted
+    .filter(a => a[prevKey]?.peggedUSD > 0)
+    .map(a => ({
+      symbol: a.symbol, id: a.id,
+      growth: a.circulating.peggedUSD - a[prevKey].peggedUSD,
+      isTarget: assetIds.includes(a.id),
+    }))
+    .filter(a => a.growth > 0)
+    .sort((a, b) => b.growth - a.growth)
+    .slice(0, 10);
+  const totalPosGrowth = growthData.reduce((s, a) => s + a.growth, 0);
+  const capCI = document.getElementById('capture-insight');
+  document.getElementById('capture-subtitle').textContent = `${period}: when the market grows, where do new dollars go?`;
+
+  if (growthData.length > 0) {
+    // Ensure target assets in top 6
+    const targetInTop = growthData.slice(0, 6).some(d => d.isTarget);
+    let top6 = growthData.slice(0, 6);
+    let rest = growthData.slice(6);
+    if (!targetInTop) {
+      const targetItem = growthData.find(d => d.isTarget);
+      if (targetItem) {
+        top6 = [...growthData.slice(0, 5), targetItem];
+        rest = growthData.slice(5).filter(d => !d.isTarget);
+      }
+    }
+    const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
+    const pieData = [...top6];
+    if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isTarget: false });
+
+    const pieColors = pieData.map(d => {
+      if (d.isTarget) return color;
+      const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
+      return palette[pieData.indexOf(d) % palette.length];
     });
 
-    // ── Market table ──
-    const tbody = document.getElementById('market-tbody');
-    const top20 = sorted.slice(0, 20);
-    let usdgInTop = false;
-    for (const s of top20) {
-      const mcap = s.circulating.peggedUSD;
+    charts['capture'] = new Chart(document.getElementById('capture-chart').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: pieData.map(d => d.symbol),
+        datasets: [{ data: pieData.map(d => d.growth), backgroundColor: pieColors, borderColor: '#1a1b26', borderWidth: 2 }]
+      },
+      options: {
+        responsive: true, cutout: '45%',
+        plugins: {
+          legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPosGrowth*100).toFixed(1) + '%)' } }
+        }
+      }
+    });
+
+    // Sum target assets' growth for insight
+    const targetGrowth = growthData.filter(d => d.isTarget).reduce((s, d) => s + d.growth, 0);
+    if (targetGrowth > 0) {
+      capCI.style.display = 'block';
+      capCI.innerHTML = `Of all stablecoins that grew in the last ${periodLabel}, ${assetLabel} captured <strong>${(targetGrowth/totalPosGrowth*100).toFixed(1)}%</strong> of new supply (<strong>${fmt(targetGrowth)}</strong>).`;
+    } else { capCI.style.display = 'none'; }
+  } else {
+    capCI.style.display = 'block';
+    capCI.innerHTML = `The stablecoin market contracted over the last ${periodLabel}.`;
+  }
+
+  // ── Market table ──
+  document.getElementById('table-period-header').textContent = period;
+  const tbody = document.getElementById('market-tbody');
+  tbody.innerHTML = '';
+  const top20 = sorted.slice(0, 20);
+  let targetInTable = false;
+  for (const s of top20) {
+    const mcap = s.circulating.peggedUSD;
+    const share = (mcap / totalMarket * 100);
+    const prev = s[prevKey]?.peggedUSD || mcap;
+    const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
+    const isTarget = assetIds.includes(s.id);
+    if (isTarget) targetInTable = true;
+    const idx = sorted.indexOf(s) + 1;
+    tbody.innerHTML += `<tr class="${isTarget ? 'highlight-row' : ''}">
+      <td>${idx}. ${s.symbol}</td>
+      <td>${fmt(mcap)}</td>
+      <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
+      <td>${share.toFixed(2)}%</td>
+    </tr>`;
+  }
+  if (!targetInTable) {
+    // Add target rows
+    for (const id of assetIds) {
+      const entry = sorted.find(a => a.id === id);
+      if (!entry) continue;
+      const mcap = entry.circulating.peggedUSD;
       const share = (mcap / totalMarket * 100);
-      const prev = s.circulatingPrevMonth?.peggedUSD || mcap;
+      const prev = entry[prevKey]?.peggedUSD || mcap;
       const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
-      const isUsdg = s.id === USDG_ID;
-      if (isUsdg) usdgInTop = true;
-      const idx = sorted.indexOf(s) + 1;
-      tbody.innerHTML += `<tr class="${isUsdg ? 'highlight-row' : ''}">
-        <td>${idx}. ${s.symbol}${isUsdg ? '' : ''}</td>
-        <td>${fmt(mcap)}</td>
-        <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
-        <td>${share.toFixed(2)}%</td>
-      </tr>`;
-    }
-    if (!usdgInTop) {
-      const mcap = usdgEntry.circulating.peggedUSD;
-      const share = (mcap / totalMarket * 100);
-      const prev = usdgEntry.circulatingPrevMonth?.peggedUSD || mcap;
-      const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
+      const idx = sorted.indexOf(entry) + 1;
       tbody.innerHTML += `<tr class="highlight-row">
-        <td>${rank}. USDG</td>
+        <td>${idx}. ${entry.symbol}</td>
         <td>${fmt(mcap)}</td>
         <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
         <td>${share.toFixed(2)}%</td>
       </tr>`;
     }
-
-    document.getElementById('updated-time').textContent = 'Live data, refreshed on page load. ' + new Date().toLocaleString();
-
-  } catch (err) {
-    console.error('Dashboard error:', err);
-    document.getElementById('total-supply').textContent = 'Error loading data';
   }
 }
 
