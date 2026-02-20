@@ -927,7 +927,7 @@ function renderDune() {
   const wantUSDG = asset === 'usdg' || asset === 'combined';
   const wantPYUSD = asset === 'pyusd' || asset === 'combined';
 
-  // Collect all summary rows from ALL chains
+  // Collect all summary rows from ALL chains (evm_summary + sol_summary)
   const summaryKeys = Object.keys(d).filter(k => k.endsWith('_summary'));
   const allSummary = summaryKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
   // Filter to selected asset(s)
