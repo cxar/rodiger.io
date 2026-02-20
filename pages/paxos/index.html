@@ -907,7 +907,7 @@ main();
 let DUNE_DATA = null;
 async function loadDuneData() {
   try {
-    const res = await fetch('/api/dune');
+    const res = await fetch('/data/dune.json');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     DUNE_DATA = await res.json();
     document.getElementById('dune-section').style.display = '';
