@@ -173,7 +173,7 @@ async function executeDuneQuery(sql) {
   return data.execution_id;
 }
 
-async function pollResults(executionId, maxWaitMs = 120000) {
+async function pollResults(executionId, maxWaitMs = 45000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     const res = await fetch(`https://api.dune.com/api/v1/execution/${executionId}/results`, {
@@ -187,7 +187,7 @@ async function pollResults(executionId, maxWaitMs = 120000) {
   throw new Error('Query timed out');
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (!DUNE_API_KEY) return res.status(500).json({ error: 'Missing DUNE_API_KEY env var' });
 
   try {
@@ -211,4 +211,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-};
+}
+
+module.exports = handler;
+module.exports.maxDuration = 60;
