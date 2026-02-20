@@ -924,40 +924,40 @@ function renderDune() {
   const color = ASSET_COLORS[asset];
   const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
   const is7d = period === '7d';
+  const wantUSDG = asset === 'usdg' || asset === 'combined';
+  const wantPYUSD = asset === 'pyusd' || asset === 'combined';
 
-  // ── Summary metrics ──
-  const grid = document.getElementById('dune-metrics-grid');
-  const pyusdSummary = Array.isArray(d.pyusd_eth_summary) ? d.pyusd_eth_summary[0] : null;
-  const usdgSummary = Array.isArray(d.usdg_sol_summary) ? d.usdg_sol_summary[0] : null;
-
+  // Collect all summary rows from both chains
+  const allSummary = [
+    ...(Array.isArray(d.eth_summary) ? d.eth_summary : []),
+    ...(Array.isArray(d.usdg_sol) ? d.usdg_sol : []),
+    ...(Array.isArray(d.pyusd_sol) ? d.pyusd_sol : []),
+  ];
+  // Filter to selected asset(s)
+  const relevant = allSummary.filter(r =>
+    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+  );
   let holders = 0, activeAddrs = 0, transfers = 0, volume = 0;
-
-  if (asset === 'usdg' || asset === 'combined') {
-    if (usdgSummary) {
-      activeAddrs += is7d ? (usdgSummary.active_7d || 0) : (usdgSummary.active_30d || 0);
-      transfers += is7d ? (usdgSummary.transfers_7d || 0) : (usdgSummary.transfers_30d || 0);
-      volume += is7d ? (usdgSummary.volume_7d || 0) : (usdgSummary.volume_30d || 0);
-    }
+  for (const r of relevant) {
+    holders += r.holders || 0;
+    activeAddrs += is7d ? (r.active_7d || 0) : (r.active_30d || 0);
+    transfers += is7d ? (r.transfers_7d || 0) : (r.transfers_30d || 0);
+    volume += is7d ? (r.volume_7d || 0) : (r.volume_30d || 0);
   }
-  if (asset === 'pyusd' || asset === 'combined') {
-    if (pyusdSummary) {
-      holders += pyusdSummary.holders || 0;
-      activeAddrs += is7d ? (pyusdSummary.active_7d || 0) : (pyusdSummary.active_30d || 0);
-      transfers += is7d ? (pyusdSummary.transfers_7d || 0) : (pyusdSummary.transfers_30d || 0);
-      volume += is7d ? (pyusdSummary.volume_7d || 0) : (pyusdSummary.volume_30d || 0);
-    }
-  }
+  // Chain breakdown for subtitle
+  const chainBreakdown = relevant.map(r => `${r.token} on ${r.chain}`).join(', ');
 
+  const grid = document.getElementById('dune-metrics-grid');
   grid.innerHTML = `
     ${holders ? `<div class="metric-card">
-      <div class="label">Holders</div>
+      <div class="label">Holders (Ethereum)</div>
       <div class="value">${holders.toLocaleString()}</div>
       <div class="delta neutral">unique addresses with balance</div>
     </div>` : ''}
     <div class="metric-card">
       <div class="label">Active Addresses (${period})</div>
       <div class="value">${activeAddrs.toLocaleString()}</div>
-      <div class="delta neutral">unique senders + receivers</div>
+      <div class="delta neutral">${chainBreakdown || 'across chains'}</div>
     </div>
     <div class="metric-card">
       <div class="label">Transfers (${period})</div>
@@ -971,30 +971,22 @@ function renderDune() {
 
   // ── Daily volume chart ──
   destroyChart('volume');
-  let dailyData = [];
-  const pyusdDaily = Array.isArray(d.pyusd_eth_daily) ? d.pyusd_eth_daily : [];
-  const usdgDaily = Array.isArray(d.usdg_sol_daily) ? d.usdg_sol_daily : [];
+  // Merge all daily data from both chains
+  const allDaily = [
+    ...(Array.isArray(d.eth_daily) ? d.eth_daily : []),
+    ...(Array.isArray(d.sol_daily) ? d.sol_daily : []),
+  ].filter(r => (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD'));
 
-  if (asset === 'usdg') {
-    dailyData = usdgDaily;
-  } else if (asset === 'pyusd') {
-    dailyData = pyusdDaily;
-  } else {
-    // Merge by date
-    const map = new Map();
-    for (const r of pyusdDaily) {
-      const key = r.day.split(' ')[0];
-      map.set(key, { day: key, volume_m: r.volume_m || 0, transfers: r.transfers || 0 });
-    }
-    for (const r of usdgDaily) {
-      const key = r.day.split(' ')[0];
-      const existing = map.get(key) || { day: key, volume_m: 0, transfers: 0 };
-      existing.volume_m += (r.volume_m || 0);
-      existing.transfers += (r.transfers || 0);
-      map.set(key, existing);
-    }
-    dailyData = [...map.values()].sort((a,b) => a.day.localeCompare(b.day));
+  // Aggregate by date
+  const dailyMap = new Map();
+  for (const r of allDaily) {
+    const key = r.day.split(' ')[0];
+    const existing = dailyMap.get(key) || { day: key, volume_m: 0, transfers: 0 };
+    existing.volume_m += (r.volume_m || 0);
+    existing.transfers += (r.transfers || 0);
+    dailyMap.set(key, existing);
   }
+  const dailyData = [...dailyMap.values()].sort((a,b) => a.day.localeCompare(b.day));
 
   if (dailyData.length > 0) {
     charts['volume'] = new Chart(document.getElementById('volume-chart').getContext('2d'), {
@@ -1026,26 +1018,31 @@ function renderDune() {
   // ── Whale concentration ──
   destroyChart('whale');
   const whaleSection = document.getElementById('whale-section');
-  const whaleData = Array.isArray(d.pyusd_eth_whales) ? d.pyusd_eth_whales : [];
-  if (whaleData.length > 0 && (asset === 'pyusd' || asset === 'combined')) {
+  const allWhales = Array.isArray(d.eth_whales) ? d.eth_whales : [];
+  const whaleData = allWhales.filter(r =>
+    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+  );
+  if (whaleData.length > 0) {
     whaleSection.style.display = '';
-    document.getElementById('whale-subtitle').textContent = 'PYUSD top 20 holders on Ethereum by share of supply';
-    const labels = whaleData.map(r => r.address.slice(0, 6) + '...' + r.address.slice(-4));
+    const tokens = [...new Set(whaleData.map(r => r.token))];
+    document.getElementById('whale-subtitle').textContent = `Top holders on Ethereum: ${tokens.join(' & ')}`;
+    const labels = whaleData.map(r => (tokens.length > 1 ? r.token + ' ' : '') + r.address.slice(0, 6) + '...' + r.address.slice(-4));
+    const barColors = whaleData.map(r => r.token === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd);
     charts['whale'] = new Chart(document.getElementById('whale-chart').getContext('2d'), {
       type: 'bar',
       data: {
         labels,
         datasets: [{
           data: whaleData.map(r => r.pct),
-          backgroundColor: '#bb9af766',
-          borderColor: '#bb9af7',
+          backgroundColor: barColors.map(c => c + '66'),
+          borderColor: barColors,
           borderWidth: 1,
         }]
       },
       options: {
         indexAxis: 'y', responsive: true,
         plugins: { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => whaleData[ctx.dataIndex].address + ': ' + fmt(whaleData[ctx.dataIndex].balance) + ' (' + ctx.parsed.x.toFixed(1) + '%)' }
+          callbacks: { label: ctx => whaleData[ctx.dataIndex].token + ' ' + whaleData[ctx.dataIndex].address + ': ' + fmt(whaleData[ctx.dataIndex].balance) + ' (' + ctx.parsed.x.toFixed(1) + '%)' }
         }},
         scales: {
           x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => v.toFixed(0) + '%' } },
@@ -1053,28 +1050,38 @@ function renderDune() {
         }
       }
     });
-    const top10Pct = whaleData.slice(0, 10).reduce((s,r) => s + r.pct, 0);
+    // Insight per token
     const wi = document.getElementById('whale-insight');
+    const insights = [];
+    for (const token of tokens) {
+      const tw = whaleData.filter(r => r.token === token);
+      const top10 = tw.slice(0, 10).reduce((s,r) => s + r.pct, 0);
+      insights.push(`Top 10 ${token} holders control <strong>${top10.toFixed(1)}%</strong> of Ethereum supply.`);
+    }
     wi.style.display = 'block';
-    wi.innerHTML = `Top 10 holders control <strong>${top10Pct.toFixed(1)}%</strong> of PYUSD supply on Ethereum.`;
+    wi.innerHTML = insights.join(' ');
   } else {
-    whaleSection.style.display = asset === 'usdg' ? 'none' : '';
+    whaleSection.style.display = 'none';
   }
 
   // ── DEX trading ──
   const dexSection = document.getElementById('dex-section');
-  const dexData = Array.isArray(d.dex_volume) ? d.dex_volume : [];
-  if (dexData.length > 0 && asset !== 'usdg') {
+  const allDex = Array.isArray(d.dex_volume) ? d.dex_volume : [];
+  const dexData = allDex.filter(r =>
+    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+  );
+  if (dexData.length > 0) {
     dexSection.style.display = '';
     const dexBars = document.getElementById('dex-bars');
     dexBars.innerHTML = '';
     const maxVol = dexData[0]?.volume_30d || 1;
-    for (const row of dexData.slice(0, 10)) {
+    for (const row of dexData.slice(0, 12)) {
       const barPct = (row.volume_30d / maxVol * 100).toFixed(1);
+      const barColor = row.token === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd;
       dexBars.innerHTML += `
         <div class="chain-bar">
-          <div class="chain-name" style="width:140px">${row.project}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:#bb9af7"></div></div>
+          <div class="chain-name" style="width:140px">${row.token} / ${row.project}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
           <div class="bar-meta" style="width:180px">${fmt(row.volume_30d)}<br><span style="font-size:0.72rem;color:var(--gray)">${row.token_pair} (${row.trades.toLocaleString()} trades)</span></div>
         </div>`;
     }
