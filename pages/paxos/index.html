@@ -319,12 +319,13 @@ const ASSET_COLORS = {
 const COMPARE_STABLES = { 'USDC': 2, 'USDe': 146 };
 
 function fmt(n) {
+  n = n || 0;
   if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
   if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
   if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
   return '$' + n.toFixed(0);
 }
-function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function pct(n) { n = n || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
 function daysStr(n) { return n + (n === 1 ? ' day' : ' days'); }
 async function fetchJSON(url) { return (await fetch(url)).json(); }
 
