@@ -263,6 +263,34 @@
           </div>
         </div>
 
+        <!-- On-chain metrics (Dune) -->
+        <div id="dune-section" style="display:none">
+          <h2 style="color: var(--h2); margin-top: 2rem;">On-Chain Metrics</h2>
+          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Live on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. Updates hourly.</p>
+
+          <div class="dashboard-grid" id="dune-metrics-grid"></div>
+
+          <!-- Transfer volume chart -->
+          <div class="section">
+            <h3 style="color: var(--h3);">Daily Transfer Volume (90d)</h3>
+            <canvas id="volume-chart" height="260"></canvas>
+          </div>
+
+          <!-- Whale concentration -->
+          <div class="section" id="whale-section">
+            <h3 style="color: var(--h3);">Top Holder Concentration</h3>
+            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="whale-subtitle"></p>
+            <canvas id="whale-chart" height="220"></canvas>
+            <div id="whale-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
+          </div>
+
+          <!-- DEX liquidity -->
+          <div class="section" id="dex-section">
+            <h3 style="color: var(--h3);">DEX Trading Activity (30d)</h3>
+            <div id="dex-bars"></div>
+          </div>
+        </div>
+
         <!-- Market table -->
         <div class="section">
           <h3 style="color: var(--h3);">Stablecoin Rankings</h3>
@@ -874,6 +902,192 @@ function render() {
 }
 
 main();
+
+// ── Dune Analytics on-chain data ──
+let DUNE_DATA = null;
+async function loadDuneData() {
+  try {
+    const res = await fetch('/api/dune');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DUNE_DATA = await res.json();
+    document.getElementById('dune-section').style.display = '';
+    renderDune();
+  } catch (err) {
+    console.warn('Dune data unavailable:', err.message);
+  }
+}
+
+function renderDune() {
+  if (!DUNE_DATA?.data) return;
+  const { asset, period } = STATE;
+  const d = DUNE_DATA.data;
+  const color = ASSET_COLORS[asset];
+  const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
+  const is7d = period === '7d';
+
+  // ── Summary metrics ──
+  const grid = document.getElementById('dune-metrics-grid');
+  const pyusdSummary = Array.isArray(d.pyusd_eth_summary) ? d.pyusd_eth_summary[0] : null;
+  const usdgSummary = Array.isArray(d.usdg_sol_summary) ? d.usdg_sol_summary[0] : null;
+
+  let holders = 0, activeAddrs = 0, transfers = 0, volume = 0;
+
+  if (asset === 'usdg' || asset === 'combined') {
+    if (usdgSummary) {
+      activeAddrs += is7d ? (usdgSummary.active_7d || 0) : (usdgSummary.active_30d || 0);
+      transfers += is7d ? (usdgSummary.transfers_7d || 0) : (usdgSummary.transfers_30d || 0);
+      volume += is7d ? (usdgSummary.volume_7d || 0) : (usdgSummary.volume_30d || 0);
+    }
+  }
+  if (asset === 'pyusd' || asset === 'combined') {
+    if (pyusdSummary) {
+      holders += pyusdSummary.holders || 0;
+      activeAddrs += is7d ? (pyusdSummary.active_7d || 0) : (pyusdSummary.active_30d || 0);
+      transfers += is7d ? (pyusdSummary.transfers_7d || 0) : (pyusdSummary.transfers_30d || 0);
+      volume += is7d ? (pyusdSummary.volume_7d || 0) : (pyusdSummary.volume_30d || 0);
+    }
+  }
+
+  grid.innerHTML = `
+    ${holders ? `<div class="metric-card">
+      <div class="label">Holders</div>
+      <div class="value">${holders.toLocaleString()}</div>
+      <div class="delta neutral">unique addresses with balance</div>
+    </div>` : ''}
+    <div class="metric-card">
+      <div class="label">Active Addresses (${period})</div>
+      <div class="value">${activeAddrs.toLocaleString()}</div>
+      <div class="delta neutral">unique senders + receivers</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Transfers (${period})</div>
+      <div class="value">${transfers.toLocaleString()}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Transfer Volume (${period})</div>
+      <div class="value">${fmt(volume)}</div>
+    </div>
+  `;
+
+  // ── Daily volume chart ──
+  destroyChart('volume');
+  let dailyData = [];
+  const pyusdDaily = Array.isArray(d.pyusd_eth_daily) ? d.pyusd_eth_daily : [];
+  const usdgDaily = Array.isArray(d.usdg_sol_daily) ? d.usdg_sol_daily : [];
+
+  if (asset === 'usdg') {
+    dailyData = usdgDaily;
+  } else if (asset === 'pyusd') {
+    dailyData = pyusdDaily;
+  } else {
+    // Merge by date
+    const map = new Map();
+    for (const r of pyusdDaily) {
+      const key = r.day.split(' ')[0];
+      map.set(key, { day: key, volume_m: r.volume_m || 0, transfers: r.transfers || 0 });
+    }
+    for (const r of usdgDaily) {
+      const key = r.day.split(' ')[0];
+      const existing = map.get(key) || { day: key, volume_m: 0, transfers: 0 };
+      existing.volume_m += (r.volume_m || 0);
+      existing.transfers += (r.transfers || 0);
+      map.set(key, existing);
+    }
+    dailyData = [...map.values()].sort((a,b) => a.day.localeCompare(b.day));
+  }
+
+  if (dailyData.length > 0) {
+    charts['volume'] = new Chart(document.getElementById('volume-chart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: dailyData.map(r => new Date(r.day)),
+        datasets: [{
+          label: 'Volume',
+          data: dailyData.map(r => r.volume_m || 0),
+          backgroundColor: color + '66',
+          borderColor: color,
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) } }
+        },
+        scales: {
+          x: { type: 'time', time: { unit: 'week' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+        }
+      }
+    });
+  }
+
+  // ── Whale concentration ──
+  destroyChart('whale');
+  const whaleSection = document.getElementById('whale-section');
+  const whaleData = Array.isArray(d.pyusd_eth_whales) ? d.pyusd_eth_whales : [];
+  if (whaleData.length > 0 && (asset === 'pyusd' || asset === 'combined')) {
+    whaleSection.style.display = '';
+    document.getElementById('whale-subtitle').textContent = 'PYUSD top 20 holders on Ethereum by share of supply';
+    const labels = whaleData.map(r => r.address.slice(0, 6) + '...' + r.address.slice(-4));
+    charts['whale'] = new Chart(document.getElementById('whale-chart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: whaleData.map(r => r.pct),
+          backgroundColor: '#bb9af766',
+          borderColor: '#bb9af7',
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => whaleData[ctx.dataIndex].address + ': ' + fmt(whaleData[ctx.dataIndex].balance) + ' (' + ctx.parsed.x.toFixed(1) + '%)' }
+        }},
+        scales: {
+          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => v.toFixed(0) + '%' } },
+          y: { grid: { display: false }, ticks: { color: '#565f89', font: { size: 10 } } }
+        }
+      }
+    });
+    const top10Pct = whaleData.slice(0, 10).reduce((s,r) => s + r.pct, 0);
+    const wi = document.getElementById('whale-insight');
+    wi.style.display = 'block';
+    wi.innerHTML = `Top 10 holders control <strong>${top10Pct.toFixed(1)}%</strong> of PYUSD supply on Ethereum.`;
+  } else {
+    whaleSection.style.display = asset === 'usdg' ? 'none' : '';
+  }
+
+  // ── DEX trading ──
+  const dexSection = document.getElementById('dex-section');
+  const dexData = Array.isArray(d.dex_volume) ? d.dex_volume : [];
+  if (dexData.length > 0 && asset !== 'usdg') {
+    dexSection.style.display = '';
+    const dexBars = document.getElementById('dex-bars');
+    dexBars.innerHTML = '';
+    const maxVol = dexData[0]?.volume_30d || 1;
+    for (const row of dexData.slice(0, 10)) {
+      const barPct = (row.volume_30d / maxVol * 100).toFixed(1);
+      dexBars.innerHTML += `
+        <div class="chain-bar">
+          <div class="chain-name" style="width:140px">${row.project}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:#bb9af7"></div></div>
+          <div class="bar-meta" style="width:180px">${fmt(row.volume_30d)}<br><span style="font-size:0.72rem;color:var(--gray)">${row.token_pair} (${row.trades.toLocaleString()} trades)</span></div>
+        </div>`;
+    }
+  } else {
+    dexSection.style.display = 'none';
+  }
+}
+
+// Hook Dune re-render into toggle changes
+const origRender = render;
+render = function() { origRender(); if (DUNE_DATA) renderDune(); };
+
+loadDuneData();
     </script>
   </body>
 </html>
