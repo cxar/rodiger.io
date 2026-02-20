@@ -927,12 +927,9 @@ function renderDune() {
   const wantUSDG = asset === 'usdg' || asset === 'combined';
   const wantPYUSD = asset === 'pyusd' || asset === 'combined';
 
-  // Collect all summary rows from both chains
-  const allSummary = [
-    ...(Array.isArray(d.eth_summary) ? d.eth_summary : []),
-    ...(Array.isArray(d.usdg_sol) ? d.usdg_sol : []),
-    ...(Array.isArray(d.pyusd_sol) ? d.pyusd_sol : []),
-  ];
+  // Collect all summary rows from ALL chains
+  const summaryKeys = Object.keys(d).filter(k => k.endsWith('_summary'));
+  const allSummary = summaryKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
   // Filter to selected asset(s)
   const relevant = allSummary.filter(r =>
     (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
@@ -971,11 +968,10 @@ function renderDune() {
 
   // ── Daily volume chart ──
   destroyChart('volume');
-  // Merge all daily data from both chains
-  const allDaily = [
-    ...(Array.isArray(d.eth_daily) ? d.eth_daily : []),
-    ...(Array.isArray(d.sol_daily) ? d.sol_daily : []),
-  ].filter(r => (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD'));
+  // Merge all daily data from ALL chains
+  const dailyKeys = Object.keys(d).filter(k => k.endsWith('_daily'));
+  const allDaily = dailyKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : [])
+    .filter(r => (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD'));
 
   // Aggregate by date
   const dailyMap = new Map();
@@ -1018,15 +1014,18 @@ function renderDune() {
   // ── Whale concentration ──
   destroyChart('whale');
   const whaleSection = document.getElementById('whale-section');
-  const allWhales = Array.isArray(d.eth_whales) ? d.eth_whales : [];
+  const whaleKeys = Object.keys(d).filter(k => k.endsWith('_whales'));
+  const allWhales = whaleKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
   const whaleData = allWhales.filter(r =>
     (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
   );
   if (whaleData.length > 0) {
     whaleSection.style.display = '';
     const tokens = [...new Set(whaleData.map(r => r.token))];
-    document.getElementById('whale-subtitle').textContent = `Top holders on Ethereum: ${tokens.join(' & ')}`;
-    const labels = whaleData.map(r => (tokens.length > 1 ? r.token + ' ' : '') + r.address.slice(0, 6) + '...' + r.address.slice(-4));
+    const whaleChains = [...new Set(whaleData.map(r => r.chain))];
+    document.getElementById('whale-subtitle').textContent = `Top holders on ${whaleChains.join(', ')}: ${tokens.join(' & ')}`;
+    const multiContext = tokens.length > 1 || whaleChains.length > 1;
+    const labels = whaleData.map(r => (multiContext ? r.token + '/' + r.chain + ' ' : '') + r.address.slice(0, 6) + '...' + r.address.slice(-4));
     const barColors = whaleData.map(r => r.token === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd);
     charts['whale'] = new Chart(document.getElementById('whale-chart').getContext('2d'), {
       type: 'bar',
@@ -1054,9 +1053,12 @@ function renderDune() {
     const wi = document.getElementById('whale-insight');
     const insights = [];
     for (const token of tokens) {
-      const tw = whaleData.filter(r => r.token === token);
-      const top10 = tw.slice(0, 10).reduce((s,r) => s + r.pct, 0);
-      insights.push(`Top 10 ${token} holders control <strong>${top10.toFixed(1)}%</strong> of Ethereum supply.`);
+      for (const chain of whaleChains) {
+        const tw = whaleData.filter(r => r.token === token && r.chain === chain);
+        if (!tw.length) continue;
+        const top10 = tw.slice(0, 10).reduce((s,r) => s + r.pct, 0);
+        insights.push(`Top 10 ${token} holders on ${chain} control <strong>${top10.toFixed(1)}%</strong> of supply.`);
+      }
     }
     wi.style.display = 'block';
     wi.innerHTML = insights.join(' ');
