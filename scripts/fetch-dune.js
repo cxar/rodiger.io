@@ -201,7 +201,11 @@ async function main() {
     }
   }));
 
-  const output = { updated: new Date().toISOString(), data: results };
+  // Only update timestamp if we actually fetched fresh data for at least one query
+  const freshCount = Object.values(results).filter(v => Array.isArray(v) && !Object.values(existingData).includes(v)).length;
+  const updated = freshCount > 0 ? new Date().toISOString() : (existing && existing.updated) || new Date().toISOString();
+  const output = { updated, data: results };
+  console.log(`  Fresh queries: ${freshCount}, timestamp: ${freshCount > 0 ? 'updated' : 'preserved from last fetch'}`);
 
   // Write to dist/ (for Vercel build) and static/ (for local dev)
   for (const dir of ['dist', 'static']) {
