@@ -126,10 +126,33 @@ async function pollResults(executionId, maxWaitMs = 600000) {
   throw new Error('Query timed out after ' + (maxWaitMs/1000) + 's');
 }
 
+function loadExisting() {
+  for (const dir of ['dist', 'static']) {
+    const p = path.join(__dirname, '..', dir, 'data', 'dune.json');
+    if (fs.existsSync(p)) {
+      try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch {}
+    }
+  }
+  return null;
+}
+
 async function main() {
+  // Check if existing data is fresh (<24h old)
+  const existing = loadExisting();
+  if (existing && existing.updated) {
+    const age = Date.now() - new Date(existing.updated).getTime();
+    const hours = age / (1000 * 60 * 60);
+    if (hours < 24) {
+      console.log(`Dune data is fresh (${hours.toFixed(1)}h old, <24h), skipping fetch`);
+      process.exit(0);
+    }
+    console.log(`Dune data is ${hours.toFixed(1)}h old, refreshing...`);
+  }
+
   console.log('Fetching Dune data...');
+  const existingData = (existing && existing.data) || {};
   const results = {};
-  
+
   // Execute all queries first (to get them queued)
   const executions = [];
   for (const [name, sql] of Object.entries(QUERIES)) {
@@ -139,8 +162,19 @@ async function main() {
       executions.push({ name, id });
       console.log(`  Submitted: ${name} -> ${id}`);
     } catch (err) {
-      console.error(`  Failed to submit ${name}: ${err.message}`);
-      results[name] = { error: err.message };
+      const msg = err.message || '';
+      if (msg.includes('exceed your configured datapoint limit')) {
+        console.warn(`  Quota exceeded on submit for ${name}, preserving existing data`);
+        if (Array.isArray(existingData[name])) results[name] = existingData[name];
+      } else {
+        console.error(`  Failed to submit ${name}: ${msg}`);
+        if (Array.isArray(existingData[name])) {
+          console.log(`    Preserving existing data for ${name}`);
+          results[name] = existingData[name];
+        } else {
+          results[name] = { error: msg };
+        }
+      }
     }
     // Small delay between submissions
     await new Promise(r => setTimeout(r, 300));
@@ -152,13 +186,23 @@ async function main() {
       results[name] = await pollResults(id);
       console.log(`  Completed: ${name} (${results[name].length} rows)`);
     } catch (err) {
-      console.error(`  Failed: ${name}: ${err.message}`);
-      results[name] = { error: err.message };
+      const msg = err.message || '';
+      if (msg.includes('exceed your configured datapoint limit')) {
+        console.warn(`  Quota exceeded polling ${name}, preserving existing data`);
+      } else {
+        console.error(`  Failed: ${name}: ${msg}`);
+      }
+      if (Array.isArray(existingData[name])) {
+        console.log(`    Preserving existing data for ${name}`);
+        results[name] = existingData[name];
+      } else {
+        results[name] = { error: msg };
+      }
     }
   }));
 
   const output = { updated: new Date().toISOString(), data: results };
-  
+
   // Write to dist/ (for Vercel build) and static/ (for local dev)
   for (const dir of ['dist', 'static']) {
     const outDir = path.join(__dirname, '..', dir, 'data');
