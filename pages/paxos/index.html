@@ -266,7 +266,7 @@
         <!-- On-chain metrics (Dune) -->
         <div id="dune-section" style="display:none">
           <h2 style="color: var(--h2); margin-top: 2rem;">On-Chain Metrics</h2>
-          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Live on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. Updates hourly.</p>
+          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Live on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. Updates daily. <span id="dune-updated-at"></span></p>
 
           <div class="dashboard-grid" id="dune-metrics-grid"></div>
 
@@ -912,6 +912,10 @@ async function loadDuneData() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     DUNE_DATA = await res.json();
     document.getElementById('dune-section').style.display = '';
+    if (DUNE_DATA.updated) {
+      const dt = new Date(DUNE_DATA.updated);
+      document.getElementById('dune-updated-at').textContent = 'Last updated ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '.';
+    }
     renderDune();
   } catch (err) {
     console.warn('Dune data unavailable:', err.message);
