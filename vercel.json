@@ -16,6 +16,6 @@
     { "source": "/usdg", "destination": "/paxos", "permanent": true }
   ],
   "crons": [
-    { "path": "/api/redeploy", "schedule": "0 * * * *" }
+    { "path": "/api/redeploy", "schedule": "0 6 * * *" }
   ]
 }
