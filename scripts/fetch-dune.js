@@ -172,7 +172,7 @@ async function executeDuneQuery(sql) {
   const res = await fetch('https://api.dune.com/api/v1/sql/execute', {
     method: 'POST',
     headers: { 'X-Dune-Api-Key': DUNE_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sql, performance: 'low' }),
+    body: JSON.stringify({ sql, performance: 'medium' }),
   });
   const data = await res.json();
   if (!data.execution_id) throw new Error(JSON.stringify(data.error || data));
