@@ -225,13 +225,7 @@
           <canvas id="supply-chart" height="260"></canvas>
         </div>
 
-        <!-- Milestone velocity -->
-        <div class="section">
-          <h3 style="color: var(--h3);" id="milestone-title">Speed to $1B vs The Field</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.75rem">Days from first tracked supply to each milestone. Lower is faster.</p>
-          <canvas id="milestone-chart" height="220"></canvas>
-          <div id="milestone-insight" class="insight-callout" style="display:none;margin-top:1rem"></div>
-        </div>
+
 
         <!-- Chain distribution -->
         <div class="section">
@@ -316,7 +310,7 @@ const CHAIN_COLORS = {
 const ASSET_COLORS = {
   usdg: '#7aa2f7', pyusd: '#bb9af7', combined: '#9ece6a',
 };
-const COMPARE_STABLES = { 'USDC': 2, 'USDe': 146 };
+
 
 function fmt(n) {
   n = n || 0;
@@ -346,15 +340,12 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 
 async function main() {
   try {
-    const [usdgDetail, pyusdDetail, allStables, usdgHistory, pyusdHistory, ...compareHistories] = await Promise.all([
+    const [usdgDetail, pyusdDetail, allStables, usdgHistory, pyusdHistory] = await Promise.all([
       fetchJSON(`https://stablecoins.llama.fi/stablecoin/${USDG_ID}`),
       fetchJSON(`https://stablecoins.llama.fi/stablecoin/${PYUSD_ID}`),
       fetchJSON('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${USDG_ID}`),
       fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${PYUSD_ID}`),
-      ...Object.values(COMPARE_STABLES).map(id =>
-        fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${id}`)
-      ),
     ]);
 
     // Parse chain data for both assets
@@ -417,18 +408,7 @@ async function main() {
     const combinedPrevMonth = (usdgEntry?.circulatingPrevMonth?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevMonth?.peggedUSD || 0);
     const combinedRank = sorted.filter(a => a.circulating.peggedUSD > combinedSupply).length + 1;
 
-    // Milestone helper
-    const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
-    function getMilestones(history) {
-      if (!history || !history.length) return milestoneTargets.map(() => null);
-      const first = parseInt(history[0].date);
-      return milestoneTargets.map(m => {
-        const pt = history.find(p => p.totalCirculating.peggedUSD >= m);
-        return pt ? Math.round((parseInt(pt.date) - first) / 86400) : null;
-      });
-    }
 
-    const compareNames = Object.keys(COMPARE_STABLES);
 
     // Store everything
     DATA = {
@@ -436,16 +416,8 @@ async function main() {
       usdgChains, pyusdChains,
       usdgHistory, pyusdHistory: pyusdHistory || [], combinedHistory,
       combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
-      milestoneData: {
-        'USDG': getMilestones(usdgHistory),
-        'PYUSD': getMilestones(pyusdHistory),
-        'Combined': getMilestones(combinedHistory),
-      },
-      compareHistories, compareNames,
+
     };
-    compareHistories.forEach((h, i) => {
-      if (h && h.length) DATA.milestoneData[compareNames[i]] = getMilestones(h);
-    });
 
     render();
 
@@ -480,7 +452,7 @@ function render() {
   const { sorted, totalMarket, usdgEntry, pyusdEntry, usdgChains, pyusdChains,
     usdgHistory, pyusdHistory, combinedHistory,
     combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
-    milestoneData } = DATA;
+    } = DATA;
 
   const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
   const periodLabel = period === '7d' ? '7 days' : '30 days';
@@ -555,12 +527,8 @@ function render() {
   const ins1 = document.getElementById('insight-1');
   if (history && history.length) {
     const age = Math.round((Date.now()/1000 - parseInt(history[0].date)) / 86400);
-    const assetMilestones = milestoneData[asset === 'combined' ? 'Combined' : asset.toUpperCase()];
-    const usdcTo1B = milestoneData['USDC']?.[4];
-    const thisTo1B = assetMilestones?.[4];
-    const speedFactor = (usdcTo1B && thisTo1B) ? (usdcTo1B / thisTo1B).toFixed(1) : null;
     ins1.style.display = 'block';
-    ins1.innerHTML = `${assetLabel} is <strong>${age} days old</strong>, ranked #${rank} with <strong>${fmt(supply)}</strong> in circulation.${speedFactor ? ` Reached $1B roughly <strong>${speedFactor}x faster</strong> than USDC.` : ''}`;
+    ins1.innerHTML = `${assetLabel} is <strong>${age} days old</strong>, ranked #${rank} with <strong>${fmt(supply)}</strong> in circulation.`;
   } else {
     ins1.style.display = 'none';
   }
@@ -654,47 +622,6 @@ function render() {
     });
   }
 
-  // ── Milestone chart ──
-  destroyChart('milestone');
-  const milestoneKey = asset === 'combined' ? 'Combined' : asset.toUpperCase();
-  const milestoneColors = { 'USDG': '#7aa2f7', 'PYUSD': '#bb9af7', 'Combined': '#9ece6a', 'USDC': '#2775CA', 'USDe': '#9ece6a' };
-  // Show current asset + comparisons
-  const milestoneEntries = [[milestoneKey, milestoneData[milestoneKey]]];
-  for (const name of Object.keys(COMPARE_STABLES)) {
-    if (milestoneData[name]) milestoneEntries.push([name, milestoneData[name]]);
-  }
-  const milestoneTargets = [100e6, 250e6, 500e6, 750e6, 1e9];
-  document.getElementById('milestone-title').textContent = `Speed to $1B: ${assetLabel} vs The Field`;
-  charts['milestone'] = new Chart(document.getElementById('milestone-chart').getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: milestoneTargets.map(m => fmt(m)),
-      datasets: milestoneEntries.map(([name, vals]) => ({
-        label: name, data: vals,
-        backgroundColor: (milestoneColors[name] || '#565f89') + '99',
-        borderColor: milestoneColors[name] || '#565f89', borderWidth: 1,
-      }))
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { labels: { color: '#565f89' } },
-        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? daysStr(ctx.parsed.y) : 'N/A') } }
-      },
-      scales: {
-        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => daysStr(v) },
-          title: { display: true, text: 'Days', color: '#565f89' } }
-      }
-    }
-  });
-  const mi = document.getElementById('milestone-insight');
-  const thisTo1B = milestoneData[milestoneKey]?.[4];
-  const usdcTo1B = milestoneData['USDC']?.[4];
-  if (thisTo1B && usdcTo1B) {
-    mi.style.display = 'block';
-    mi.innerHTML = `${assetLabel} reached <strong>$1B in ${daysStr(thisTo1B)}</strong>. USDC took <strong>${daysStr(usdcTo1B)}</strong>, making ${assetLabel} roughly <strong>${(usdcTo1B/thisTo1B).toFixed(1)}x faster</strong>.`;
-  } else { mi.style.display = 'none'; }
 
   // ── Chain bars ──
   const chainContainer = document.getElementById('chain-bars');
