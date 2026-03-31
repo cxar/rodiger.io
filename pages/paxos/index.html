@@ -327,7 +327,14 @@ function fmt(n) {
 }
 function pct(n) { n = n || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
 function daysStr(n) { return n + (n === 1 ? ' day' : ' days'); }
-async function fetchJSON(url) { return (await fetch(url)).json(); }
+async function fetchJSON(url) {
+  // Proxy DefiLlama calls through our API to avoid CORS issues
+  if (url.includes('stablecoins.llama.fi')) {
+    const path = url.replace('https://stablecoins.llama.fi', '');
+    url = '/api/llama?path=' + encodeURIComponent(path);
+  }
+  return (await fetch(url)).json();
+}
 
 // Global state
 let STATE = { asset: 'usdg', period: '30d' };
