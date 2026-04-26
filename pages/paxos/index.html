@@ -13,6 +13,67 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
+      .paxos-dashboard .container {
+        max-width: 1080px;
+        padding: 0 1rem;
+      }
+      .dashboard-hero {
+        background: linear-gradient(135deg, rgba(122, 162, 247, 0.12), rgba(187, 154, 247, 0.08));
+        border: 1px solid var(--border);
+        border-radius: 0.9rem;
+        padding: 1.4rem;
+        margin: 1rem 0 1.2rem;
+      }
+      .dashboard-hero h1 { margin: 0 0 0.55rem; }
+      .dashboard-hero p { max-width: 820px; margin: 0; color: var(--gray); }
+      .source-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+      .source-pill {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0.28rem 0.65rem;
+        font-size: 0.74rem;
+        color: var(--gray);
+        background: rgba(26, 27, 38, 0.55);
+      }
+      .source-pill.live { color: var(--green); border-color: rgba(158, 206, 106, 0.35); }
+      .source-pill.warn { color: var(--yellow); border-color: rgba(224, 175, 104, 0.35); }
+      .dashboard-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 1.2rem 0 0.6rem;
+      }
+      .dashboard-toolbar .global-controls { margin: 0; }
+      .adoption-brief {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.8rem;
+        margin: 1rem 0 1.4rem;
+      }
+      .brief-card {
+        background: rgba(36, 40, 59, 0.72);
+        border: 1px solid var(--border);
+        border-radius: 0.7rem;
+        padding: 0.85rem 1rem;
+      }
+      .brief-card .kicker {
+        color: var(--gray);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.25rem;
+      }
+      .brief-card .takeaway { color: var(--fg); font-size: 0.9rem; }
+      .live-graph-grid { align-items: stretch; }
+      .section canvas { max-height: 360px; }
+      .chart-note { font-size:0.78rem;color:var(--gray);margin:0.35rem 0 0; }
       .dashboard-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -181,35 +242,44 @@
       }
     </style>
   </head>
-  <body>
+  <body class="paxos-dashboard">
     <div class="container">
       <nav class="top">
         <a href="/" class="back" aria-label="Back to home">&larr; back</a>
       </nav>
       <main id="content">
-        <h1>Paxos Stablecoin Dashboard</h1>
-        <p style="color: var(--gray); margin-top: -0.5rem;">Growth metrics and market positioning. Live data from <a href="https://defillama.com" target="_blank">DefiLlama</a>.</p>
+        <section class="dashboard-hero">
+          <h1>Paxos Stablecoin Dashboard</h1>
+          <p>Live USDG / PYUSD growth, chain adoption, supply momentum, and activity signals. Built for trend-reading rather than one-off point-in-time screenshots.</p>
+          <div class="source-row" aria-label="Data sources">
+            <span class="source-pill live" id="llama-status">DefiLlama live on page load</span>
+            <span class="source-pill" id="dune-status">Dune activity cache loading…</span>
+            <span class="source-pill">USDG + PYUSD focus</span>
+          </div>
+        </section>
 
         <!-- Global controls -->
-        <div class="global-controls">
-          <span class="control-label">Asset:</span>
-          <span class="toggle-group" id="asset-toggle">
-            <button data-asset="usdg" class="active">USDG</button>
-            <button data-asset="pyusd">PYUSD</button>
-            <button data-asset="combined">USDG + PYUSD</button>
-          </span>
-          <span class="control-label" style="margin-left:0.5rem">Period:</span>
-          <span class="toggle-group" id="period-toggle">
-            <button data-period="7d">7d</button>
-            <button data-period="30d" class="active">30d</button>
-          </span>
+        <div class="dashboard-toolbar">
+          <div class="global-controls">
+            <span class="control-label">Asset:</span>
+            <span class="toggle-group" id="asset-toggle">
+              <button data-asset="usdg" class="active">USDG</button>
+              <button data-asset="pyusd">PYUSD</button>
+              <button data-asset="combined">USDG + PYUSD</button>
+            </span>
+            <span class="control-label" style="margin-left:0.5rem">Period:</span>
+            <span class="toggle-group" id="period-toggle">
+              <button data-period="7d">7d</button>
+              <button data-period="30d" class="active">30d</button>
+            </span>
+          </div>
         </div>
 
         <!-- Top metrics -->
         <div class="dashboard-grid" id="metrics-grid"></div>
 
-        <!-- Insight -->
-        <div id="insight-1" class="insight-callout" style="display:none"></div>
+        <!-- Adoption brief -->
+        <div id="adoption-brief" class="adoption-brief"></div>
 
         <!-- Race to next rank -->
         <div class="section" id="race-section">
@@ -222,10 +292,30 @@
         <!-- Supply chart -->
         <div class="section">
           <h3 style="color: var(--h3);">Supply Over Time</h3>
+          <p class="chart-note">Live circulating supply history from DefiLlama.</p>
           <canvas id="supply-chart" height="260"></canvas>
         </div>
 
+        <!-- Momentum + mix -->
+        <div class="two-col live-graph-grid">
+          <div class="section">
+            <h3 style="color: var(--h3);">Supply Momentum</h3>
+            <p class="chart-note" id="momentum-subtitle"></p>
+            <canvas id="supply-momentum-chart" height="260"></canvas>
+          </div>
+          <div class="section">
+            <h3 style="color: var(--h3);">USDG vs PYUSD Supply</h3>
+            <p class="chart-note" id="paxos-mix-subtitle"></p>
+            <canvas id="paxos-mix-chart" height="260"></canvas>
+          </div>
+        </div>
 
+        <!-- Chain adoption trend -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Chain Adoption Trend</h3>
+          <p class="chart-note" id="chain-trend-subtitle"></p>
+          <canvas id="chain-trend-chart" height="300"></canvas>
+        </div>
 
         <!-- Chain distribution -->
         <div class="section">
@@ -260,13 +350,13 @@
         <!-- On-chain metrics (Dune) -->
         <div id="dune-section" style="display:none">
           <h2 style="color: var(--h2); margin-top: 2rem;">On-Chain Metrics</h2>
-          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Live on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. Updates daily. <span id="dune-updated-at"></span></p>
+          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Daily refreshed on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. <span id="dune-updated-at"></span></p>
 
           <div class="dashboard-grid" id="dune-metrics-grid"></div>
 
           <!-- Transfer volume chart -->
           <div class="section">
-            <h3 style="color: var(--h3);">Daily Transfer Volume (30d)</h3>
+            <h3 style="color: var(--h3);">Daily Transfer Volume &amp; Chain-Summed Senders</h3>
             <canvas id="volume-chart" height="260"></canvas>
           </div>
 
@@ -313,21 +403,29 @@ const ASSET_COLORS = {
 
 
 function fmt(n) {
-  n = n || 0;
+  n = Number(n) || 0;
   if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
   if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
   if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
   return '$' + n.toFixed(0);
 }
-function pct(n) { n = n || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function pct(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
 function daysStr(n) { return n + (n === 1 ? ' day' : ' days'); }
+function esc(value) {
+  const span = document.createElement('span');
+  span.textContent = String(value ?? '');
+  return span.innerHTML;
+}
+function stableId(asset) { return String(asset?.id ?? ''); }
 async function fetchJSON(url) {
   // Proxy DefiLlama calls through our API to avoid CORS issues
   if (url.includes('stablecoins.llama.fi')) {
     const path = url.replace('https://stablecoins.llama.fi', '');
     url = '/api/llama?path=' + encodeURIComponent(path);
   }
-  return (await fetch(url)).json();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
+  return res.json();
 }
 
 // Global state
@@ -337,6 +435,176 @@ let DATA = {};
 // Chart instances for cleanup
 let charts = {};
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+const PALETTE = ['#7aa2f7', '#bb9af7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#ff9e64'];
+function chartColor(i) { return PALETTE[i % PALETTE.length]; }
+function stableValue(point) {
+  return Number(point?.totalCirculating?.peggedUSD ?? point?.totalCirculatingUSD?.peggedUSD ?? point?.circulating?.peggedUSD ?? 0) || 0;
+}
+function normalizeHistory(history) {
+  return (history || [])
+    .map(p => ({ date: Number(p.date), value: stableValue(p) }))
+    .filter(p => Number.isFinite(p.date) && p.value >= 0)
+    .sort((a, b) => a.date - b.date);
+}
+function movingAverage(values, window = 7) {
+  return values.map((_, i) => {
+    const start = Math.max(0, i - window + 1);
+    const slice = values.slice(start, i + 1);
+    return slice.reduce((s, v) => s + v, 0) / slice.length;
+  });
+}
+function buildMomentumSeries(history, maxDays = 120) {
+  const series = normalizeHistory(history);
+  const deltas = [];
+  for (let i = 1; i < series.length; i++) {
+    deltas.push({ date: series[i].date, net: series[i].value - series[i - 1].value });
+  }
+  const trimmed = deltas.slice(-maxDays);
+  const ma7 = movingAverage(trimmed.map(p => p.net), 7);
+  return trimmed.map((p, i) => ({ ...p, ma7: ma7[i] }));
+}
+function buildPaxosMixSeries(usdgHistory, pyusdHistory, maxDays = 240) {
+  const usdg = new Map(normalizeHistory(usdgHistory).map(p => [p.date, p.value]));
+  const pyusd = new Map(normalizeHistory(pyusdHistory).map(p => [p.date, p.value]));
+  const dates = [...new Set([...usdg.keys(), ...pyusd.keys()])].sort((a, b) => a - b).slice(-maxDays);
+  return dates.map(date => {
+    const u = usdg.get(date) || 0;
+    const p = pyusd.get(date) || 0;
+    const total = u + p;
+    return { date, usdg: u, pyusd: p, usdgShare: total ? (u / total * 100) : 0 };
+  });
+}
+function buildChainTrendSeries(chainBalanceMaps, maxChains = 5, maxDays = 180) {
+  const chainMaps = new Map();
+  for (const balances of chainBalanceMaps.filter(Boolean)) {
+    for (const [chain, data] of Object.entries(balances || {})) {
+      const map = chainMaps.get(chain) || new Map();
+      for (const point of data.tokens || []) {
+        const date = Number(point.date);
+        const value = stableValue(point);
+        if (!Number.isFinite(date)) continue;
+        map.set(date, (map.get(date) || 0) + value);
+      }
+      chainMaps.set(chain, map);
+    }
+  }
+  const rankedChains = [...chainMaps.entries()]
+    .map(([chain, map]) => {
+      const dates = [...map.keys()].sort((a, b) => a - b);
+      return { chain, map, latest: dates.length ? map.get(dates[dates.length - 1]) : 0 };
+    })
+    .filter(row => row.latest > 0)
+    .sort((a, b) => b.latest - a.latest)
+    .slice(0, maxChains);
+  const dates = [...new Set(rankedChains.flatMap(row => [...row.map.keys()]))]
+    .sort((a, b) => a - b)
+    .slice(-maxDays);
+  return { dates, chains: rankedChains };
+}
+function sumNet(series, days) {
+  return series.slice(-days).reduce((s, p) => s + (p.net || 0), 0);
+}
+function renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket }) {
+  const brief = document.getElementById('adoption-brief');
+  if (!brief) return;
+  const safeAssetLabel = esc(assetLabel);
+  const momentum = buildMomentumSeries(history, 45);
+  const net7 = sumNet(momentum, 7);
+  const net30 = sumNet(momentum, 30);
+  const sortedChains = Object.entries(chains || {}).filter(([,d]) => d.current > 0).sort((a,b) => b[1].current - a[1].current);
+  const topChain = sortedChains[0];
+  const chainTotal = sortedChains.reduce((s, [,d]) => s + d.current, 0) || supply || 1;
+  const fastest = sortedChains
+    .filter(([,d]) => d.prev30 && d.prev30 > 0)
+    .map(([name, d]) => [name, ((d.current - d.prev30) / d.prev30 * 100)])
+    .sort((a,b) => b[1] - a[1])[0];
+  brief.innerHTML = `
+    <div class="brief-card"><div class="kicker">Live adoption read</div><div class="takeaway"><strong>${safeAssetLabel}</strong> ranks <strong>#${rank}</strong> with <strong>${fmt(supply)}</strong> circulating.</div></div>
+    <div class="brief-card"><div class="kicker">Net issuance</div><div class="takeaway"><strong>${fmt(net7)}</strong> 7d / <strong>${fmt(net30)}</strong> 30d. ${periodDelta >= 0 ? 'Supply is expanding' : 'Supply is contracting'} over the selected window.</div></div>
+    <div class="brief-card"><div class="kicker">Chain concentration</div><div class="takeaway">${topChain ? `<strong>${esc(topChain[0])}</strong> holds <strong>${(topChain[1].current / chainTotal * 100).toFixed(1)}%</strong> of visible supply.` : 'No chain split available.'}</div></div>
+    <div class="brief-card"><div class="kicker">Fastest chain</div><div class="takeaway">${fastest ? `<strong>${esc(fastest[0])}</strong> is up <strong>${pct(fastest[1])}</strong> over 30d.` : 'Not enough chain history yet.'} Market share is <strong>${(supply / totalMarket * 100).toFixed(2)}%</strong>.</div></div>
+  `;
+}
+function renderSupplyMomentum(history, color, assetLabel) {
+  destroyChart('momentum');
+  const data = buildMomentumSeries(history, 120);
+  document.getElementById('momentum-subtitle').textContent = `Daily net issuance for ${assetLabel}; line is 7-day average.`;
+  if (!data.length) return;
+  charts['momentum'] = new Chart(document.getElementById('supply-momentum-chart').getContext('2d'), {
+    data: {
+      labels: data.map(d => new Date(d.date * 1000)),
+      datasets: [
+        { type: 'bar', label: 'Daily net issuance', data: data.map(d => d.net), backgroundColor: data.map(d => d.net >= 0 ? color + '66' : '#f7768e66'), borderColor: data.map(d => d.net >= 0 ? color : '#f7768e'), borderWidth: 1 },
+        { type: 'line', label: '7d avg', data: data.map(d => d.ma7), borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
+      scales: {
+        x: { type: 'time', time: { unit: 'week' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+      }
+    }
+  });
+}
+function renderPaxosMix(usdgHistory, pyusdHistory) {
+  destroyChart('paxosMix');
+  const data = buildPaxosMixSeries(usdgHistory, pyusdHistory, 240);
+  document.getElementById('paxos-mix-subtitle').textContent = 'Absolute USDG and PYUSD supply lines, live from DefiLlama.';
+  if (!data.length) return;
+  charts['paxosMix'] = new Chart(document.getElementById('paxos-mix-chart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: data.map(d => new Date(d.date * 1000)),
+      datasets: [
+        { label: 'USDG', data: data.map(d => d.usdg), borderColor: ASSET_COLORS.usdg, backgroundColor: ASSET_COLORS.usdg + '12', fill: true, pointRadius: 0, tension: 0.25, borderWidth: 2 },
+        { label: 'PYUSD', data: data.map(d => d.pyusd), borderColor: ASSET_COLORS.pyusd, backgroundColor: ASSET_COLORS.pyusd + '12', fill: true, pointRadius: 0, tension: 0.25, borderWidth: 2 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
+      scales: {
+        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+        y: { stacked: false, grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+      }
+    }
+  });
+}
+function renderChainTrend(chainBalanceMaps, assetLabel) {
+  destroyChart('chainTrend');
+  const { dates, chains } = buildChainTrendSeries(chainBalanceMaps, 5, 180);
+  const topNames = chains.map(c => c.chain).join(', ');
+  document.getElementById('chain-trend-subtitle').textContent = topNames ? `Top live chains for ${assetLabel}: ${topNames}.` : `No chain history available for ${assetLabel}.`;
+  if (!dates.length || !chains.length) return;
+  charts['chainTrend'] = new Chart(document.getElementById('chain-trend-chart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: dates.map(d => new Date(d * 1000)),
+      datasets: chains.map((row, i) => ({
+        label: row.chain,
+        data: dates.map(d => row.map.get(d) ?? null),
+        borderColor: CHAIN_COLORS[row.chain] || chartColor(i),
+        backgroundColor: (CHAIN_COLORS[row.chain] || chartColor(i)) + '12',
+        fill: false,
+        pointRadius: 0,
+        spanGaps: true,
+        tension: 0.25,
+        borderWidth: 2,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
+      scales: {
+        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
+        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+      }
+    }
+  });
+}
 
 async function main() {
   try {
@@ -354,10 +622,10 @@ async function main() {
       for (const [chain, data] of Object.entries(detail.chainBalances || {})) {
         const tokens = data.tokens || [];
         if (tokens.length) {
-          const c = tokens[tokens.length - 1].circulating.peggedUSD;
+          const c = stableValue(tokens[tokens.length - 1]);
           chains[chain] = { current: c };
-          if (tokens.length >= 30) chains[chain].prev30 = tokens[tokens.length - 30].circulating.peggedUSD;
-          if (tokens.length >= 7) chains[chain].prev7 = tokens[tokens.length - 7].circulating.peggedUSD;
+          if (tokens.length >= 30) chains[chain].prev30 = stableValue(tokens[tokens.length - 30]);
+          if (tokens.length >= 7) chains[chain].prev7 = stableValue(tokens[tokens.length - 7]);
         }
       }
       return chains;
@@ -368,8 +636,8 @@ async function main() {
       .sort((a, b) => b.circulating.peggedUSD - a.circulating.peggedUSD);
     const totalMarket = sorted.reduce((s, a) => s + a.circulating.peggedUSD, 0);
 
-    const usdgEntry = sorted.find(a => a.id === USDG_ID);
-    const pyusdEntry = sorted.find(a => a.id === PYUSD_ID);
+    const usdgEntry = sorted.find(a => stableId(a) === USDG_ID);
+    const pyusdEntry = sorted.find(a => stableId(a) === PYUSD_ID);
 
     // Build combined history (aligned by date)
     const usdgMap = new Map(usdgHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
@@ -415,6 +683,7 @@ async function main() {
       sorted, totalMarket, usdgEntry, pyusdEntry,
       usdgChains, pyusdChains,
       usdgHistory, pyusdHistory: pyusdHistory || [], combinedHistory,
+      usdgChainBalances: usdgDetail.chainBalances || {}, pyusdChainBalances: pyusdDetail.chainBalances || {},
       combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
 
     };
@@ -451,6 +720,7 @@ function render() {
   const { asset, period } = STATE;
   const { sorted, totalMarket, usdgEntry, pyusdEntry, usdgChains, pyusdChains,
     usdgHistory, pyusdHistory, combinedHistory,
+    usdgChainBalances, pyusdChainBalances,
     combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
     } = DATA;
 
@@ -523,15 +793,8 @@ function render() {
     </div>
   `;
 
-  // ── Insight ──
-  const ins1 = document.getElementById('insight-1');
-  if (history && history.length) {
-    const age = Math.round((Date.now()/1000 - parseInt(history[0].date)) / 86400);
-    ins1.style.display = 'block';
-    ins1.innerHTML = `${assetLabel} is <strong>${age} days old</strong>, ranked #${rank} with <strong>${fmt(supply)}</strong> in circulation.`;
-  } else {
-    ins1.style.display = 'none';
-  }
+  // ── Adoption brief ──
+  renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket });
 
   // ── Race to next rank ──
   const raceSection = document.getElementById('race-section');
@@ -542,9 +805,9 @@ function render() {
     // For combined, we need to find who's above the combined supply
     let aboveEntry;
     if (asset === 'combined') {
-      aboveEntry = sorted.find(a => a.circulating.peggedUSD > supply && !assetIds.includes(a.id));
+      aboveEntry = sorted.find(a => a.circulating.peggedUSD > supply && !assetIds.includes(stableId(a)));
       // actually find the one just above
-      const aboveAll = sorted.filter(a => a.circulating.peggedUSD > supply);
+      const aboveAll = sorted.filter(a => a.circulating.peggedUSD > supply && !assetIds.includes(stableId(a)));
       aboveEntry = aboveAll[aboveAll.length - 1]; // closest one above
     } else {
       aboveEntry = sorted[effectiveRank - 2];
@@ -556,10 +819,10 @@ function render() {
         `${assetLabel} (#${effectiveRank}) vs ${aboveEntry.symbol} (#${sorted.indexOf(aboveEntry)+1})`;
       document.getElementById('race-track').innerHTML = `
         <div class="race-bar" style="width:${abovePct}%;background:${color}88;z-index:2;color:var(--fg);">
-          ${assetLabel} ${fmt(supply)}
+          ${esc(assetLabel)} ${fmt(supply)}
         </div>
         <div class="race-bar" style="width:100%;background:rgba(247,118,142,0.2);z-index:1;justify-content:flex-end;color:var(--red);">
-          ${aboveEntry.symbol} ${fmt(aboveEntry.circulating.peggedUSD)}
+          ${esc(aboveEntry.symbol)} ${fmt(aboveEntry.circulating.peggedUSD)}
         </div>`;
       let gapHtml = fmt(gap) + ' to overtake';
       if (history && history.length >= 7) {
@@ -623,6 +886,12 @@ function render() {
   }
 
 
+  // ── Live graph extras ──
+  renderSupplyMomentum(history, color, assetLabel);
+  renderPaxosMix(usdgHistory, pyusdHistory);
+  const chainBalanceMaps = asset === 'usdg' ? [usdgChainBalances] : asset === 'pyusd' ? [pyusdChainBalances] : [usdgChainBalances, pyusdChainBalances];
+  renderChainTrend(chainBalanceMaps, assetLabel);
+
   // ── Chain bars ──
   const chainContainer = document.getElementById('chain-bars');
   chainContainer.innerHTML = '';
@@ -643,7 +912,7 @@ function render() {
     }
     chainContainer.innerHTML += `
       <div class="chain-bar">
-        <div class="chain-name">${chain}</div>
+        <div class="chain-name">${esc(chain)}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${clr}"></div></div>
         <div class="bar-meta">${fmt(data.current)} (${pctOfTotal}%)<br>${deltaHtml}</div>
       </div>`;
@@ -657,8 +926,8 @@ function render() {
     .sort((a,b) => b[1] - a[1])[0];
   if (fastest) {
     ci.style.display = 'block';
-    ci.innerHTML = `<strong>${fastest[0]}</strong> is the fastest-growing chain at <strong>${pct(fastest[1])}</strong> over ${periodLabel}.${
-      sortedChains[0][0] !== fastest[0] ? ` Meanwhile, <strong>${sortedChains[0][0]}</strong> holds the most supply.` : ''
+    ci.innerHTML = `<strong>${esc(fastest[0])}</strong> is the fastest-growing chain at <strong>${pct(fastest[1])}</strong> over ${periodLabel}.${
+      sortedChains[0][0] !== fastest[0] ? ` Meanwhile, <strong>${esc(sortedChains[0][0])}</strong> holds the most supply.` : ''
     }`;
   } else { ci.style.display = 'none'; }
 
@@ -702,7 +971,7 @@ function render() {
     .map(a => ({
       symbol: a.symbol, id: a.id,
       rate: ((a.circulating.peggedUSD - a[prevKey].peggedUSD) / a[prevKey].peggedUSD * 100),
-      isTarget: assetIds.includes(a.id),
+      isTarget: assetIds.includes(stableId(a)),
     }))
     .sort((a, b) => b.rate - a.rate)
     .slice(0, 12);
@@ -738,7 +1007,7 @@ function render() {
     .map(a => ({
       symbol: a.symbol, id: a.id,
       growth: a.circulating.peggedUSD - a[prevKey].peggedUSD,
-      isTarget: assetIds.includes(a.id),
+      isTarget: assetIds.includes(stableId(a)),
     }))
     .filter(a => a.growth > 0)
     .sort((a, b) => b.growth - a.growth)
@@ -806,11 +1075,11 @@ function render() {
     const share = (mcap / totalMarket * 100);
     const prev = s[prevKey]?.peggedUSD || mcap;
     const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
-    const isTarget = assetIds.includes(s.id);
+    const isTarget = assetIds.includes(stableId(s));
     if (isTarget) targetInTable = true;
     const idx = sorted.indexOf(s) + 1;
     tbody.innerHTML += `<tr class="${isTarget ? 'highlight-row' : ''}">
-      <td>${idx}. ${s.symbol}</td>
+      <td>${idx}. ${esc(s.symbol)}</td>
       <td>${fmt(mcap)}</td>
       <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
       <td>${share.toFixed(2)}%</td>
@@ -819,7 +1088,7 @@ function render() {
   if (!targetInTable) {
     // Add target rows
     for (const id of assetIds) {
-      const entry = sorted.find(a => a.id === id);
+      const entry = sorted.find(a => stableId(a) === id);
       if (!entry) continue;
       const mcap = entry.circulating.peggedUSD;
       const share = (mcap / totalMarket * 100);
@@ -827,7 +1096,7 @@ function render() {
       const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
       const idx = sorted.indexOf(entry) + 1;
       tbody.innerHTML += `<tr class="highlight-row">
-        <td>${idx}. ${entry.symbol}</td>
+        <td>${idx}. ${esc(entry.symbol)}</td>
         <td>${fmt(mcap)}</td>
         <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
         <td>${share.toFixed(2)}%</td>
@@ -848,10 +1117,23 @@ async function loadDuneData() {
     document.getElementById('dune-section').style.display = '';
     if (DUNE_DATA.updated) {
       const dt = new Date(DUNE_DATA.updated);
-      document.getElementById('dune-updated-at').textContent = 'Last updated ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '.';
+      const status = document.getElementById('dune-status');
+      if (Number.isFinite(dt.getTime())) {
+        const ageDays = Math.max(0, Math.round((Date.now() - dt.getTime()) / 86400000));
+        if (status) {
+          status.textContent = ageDays > 2 ? `Dune activity cache ${ageDays}d old` : 'Dune activity cache fresh';
+          status.classList.toggle('warn', ageDays > 2);
+        }
+        document.getElementById('dune-updated-at').textContent = 'Last updated ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '.';
+      } else if (status) {
+        status.textContent = 'Dune activity cache timestamp invalid';
+        status.classList.add('warn');
+      }
     }
     renderDune();
   } catch (err) {
+    const status = document.getElementById('dune-status');
+    if (status) { status.textContent = 'Dune activity cache unavailable'; status.classList.add('warn'); }
     console.warn('Dune data unavailable:', err.message);
   }
 }
@@ -871,29 +1153,29 @@ function renderDune() {
   const allSummary = summaryKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
   // Filter to selected asset(s)
   const relevant = allSummary.filter(r =>
-    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
   );
   let holders = 0, activeAddrs = 0, transfers = 0, volume = 0;
   for (const r of relevant) {
-    holders += r.holders || 0;
-    activeAddrs += is7d ? (r.active_7d || 0) : (r.active_30d || 0);
-    transfers += is7d ? (r.transfers_7d || 0) : (r.transfers_30d || 0);
-    volume += is7d ? (r.volume_7d || 0) : (r.volume_30d || 0);
+    holders += Number(r.holders) || 0;
+    activeAddrs += is7d ? (Number(r.active_7d) || 0) : (Number(r.active_30d) || 0);
+    transfers += is7d ? (Number(r.transfers_7d) || 0) : (Number(r.transfers_30d) || 0);
+    volume += is7d ? (Number(r.volume_7d) || 0) : (Number(r.volume_30d) || 0);
   }
   // Chain breakdown for subtitle
-  const chainBreakdown = relevant.map(r => `${r.token} on ${r.chain}`).join(', ');
+  const chainBreakdown = relevant.map(r => `${esc(r.token)} on ${esc(r.chain)}`).join(', ');
 
   const grid = document.getElementById('dune-metrics-grid');
   grid.innerHTML = `
     ${holders ? `<div class="metric-card">
-      <div class="label">Holders (Ethereum)</div>
+      <div class="label">Known Holders</div>
       <div class="value">${holders.toLocaleString()}</div>
-      <div class="delta neutral">unique addresses with balance</div>
+      <div class="delta neutral">EVM balance holders; activity spans all cached chains</div>
     </div>` : ''}
     <div class="metric-card">
-      <div class="label">Active Addresses (${period})</div>
+      <div class="label">Chain-summed Active Addresses (${period})</div>
       <div class="value">${activeAddrs.toLocaleString()}</div>
-      <div class="delta neutral">${chainBreakdown || 'across chains'}</div>
+      <div class="delta neutral">${chainBreakdown || 'across chains'}; not globally de-duplicated</div>
     </div>
     <div class="metric-card">
       <div class="label">Transfers (${period})</div>
@@ -910,41 +1192,50 @@ function renderDune() {
   // Merge all daily data from ALL chains
   const dailyKeys = Object.keys(d).filter(k => k.endsWith('_daily'));
   const allDaily = dailyKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : [])
-    .filter(r => (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD'));
+    .filter(r => (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD'));
 
   // Aggregate by date
   const dailyMap = new Map();
   for (const r of allDaily) {
-    const key = r.day.split(' ')[0];
-    const existing = dailyMap.get(key) || { day: key, volume_m: 0, transfers: 0 };
-    existing.volume_m += (r.volume_m || 0);
-    existing.transfers += (r.transfers || 0);
+    const key = String(r.day || '').split(' ')[0];
+    if (!key) continue;
+    const existing = dailyMap.get(key) || { day: key, volume_m: 0, transfers: 0, unique_senders: 0 };
+    existing.volume_m += Number(r.volume_m) || 0;
+    existing.transfers += Number(r.transfers) || 0;
+    existing.unique_senders += Number(r.unique_senders) || 0;
     dailyMap.set(key, existing);
   }
-  const dailyData = [...dailyMap.values()].sort((a,b) => a.day.localeCompare(b.day));
+  const dailyData = [...dailyMap.values()].sort((a,b) => a.day.localeCompare(b.day)).slice(is7d ? -7 : -30);
 
   if (dailyData.length > 0) {
     charts['volume'] = new Chart(document.getElementById('volume-chart').getContext('2d'), {
-      type: 'bar',
       data: {
         labels: dailyData.map(r => new Date(r.day)),
-        datasets: [{
-          label: 'Volume',
-          data: dailyData.map(r => r.volume_m || 0),
-          backgroundColor: color + '66',
-          borderColor: color,
-          borderWidth: 1,
-        }]
+        datasets: [
+          {
+            type: 'bar', label: 'Transfer volume',
+            data: dailyData.map(r => r.volume_m || 0),
+            backgroundColor: color + '66', borderColor: color, borderWidth: 1,
+            yAxisID: 'y'
+          },
+          {
+            type: 'line', label: 'Chain-summed senders',
+            data: dailyData.map(r => r.unique_senders || 0),
+            borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2,
+            yAxisID: 'y1'
+          }
+        ]
       },
       options: {
         responsive: true,
         plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => fmt(ctx.parsed.y) } }
+          legend: { labels: { color: '#565f89' } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label === 'Transfer volume' ? fmt(ctx.parsed.y) : ctx.parsed.y.toLocaleString() + ' senders' } }
         },
         scales: {
           x: { type: 'time', time: { unit: 'week' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
+          y: { position: 'left', grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } },
+          y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#565f89' } }
         }
       }
     });
@@ -956,7 +1247,7 @@ function renderDune() {
   const whaleKeys = Object.keys(d).filter(k => k.endsWith('_whales'));
   const allWhales = whaleKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
   const whaleData = allWhales.filter(r =>
-    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
   );
   if (whaleData.length > 0) {
     whaleSection.style.display = '';
@@ -996,7 +1287,7 @@ function renderDune() {
         const tw = whaleData.filter(r => r.token === token && r.chain === chain);
         if (!tw.length) continue;
         const top10 = tw.slice(0, 10).reduce((s,r) => s + r.pct, 0);
-        insights.push(`Top 10 ${token} holders on ${chain} control <strong>${top10.toFixed(1)}%</strong> of supply.`);
+        insights.push(`Top 10 ${esc(token)} holders on ${esc(chain)} control <strong>${top10.toFixed(1)}%</strong> of supply.`);
       }
     }
     wi.style.display = 'block';
@@ -1009,21 +1300,23 @@ function renderDune() {
   const dexSection = document.getElementById('dex-section');
   const allDex = Array.isArray(d.dex_volume) ? d.dex_volume : [];
   const dexData = allDex.filter(r =>
-    (wantUSDG && r.token === 'USDG') || (wantPYUSD && r.token === 'PYUSD')
+    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
   );
   if (dexData.length > 0) {
     dexSection.style.display = '';
     const dexBars = document.getElementById('dex-bars');
     dexBars.innerHTML = '';
-    const maxVol = dexData[0]?.volume_30d || 1;
+    const maxVol = Number(dexData[0]?.volume_30d) || 1;
     for (const row of dexData.slice(0, 12)) {
-      const barPct = (row.volume_30d / maxVol * 100).toFixed(1);
-      const barColor = row.token === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd;
+      const volume30d = Number(row.volume_30d) || 0;
+      const trades = Number(row.trades) || 0;
+      const barPct = (volume30d / maxVol * 100).toFixed(1);
+      const barColor = String(row.token) === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd;
       dexBars.innerHTML += `
         <div class="chain-bar">
-          <div class="chain-name" style="width:140px">${row.token} / ${row.project}</div>
+          <div class="chain-name" style="width:140px">${esc(row.token)} / ${esc(row.project)}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
-          <div class="bar-meta" style="width:180px">${fmt(row.volume_30d)}<br><span style="font-size:0.72rem;color:var(--gray)">${row.token_pair} (${row.trades.toLocaleString()} trades)</span></div>
+          <div class="bar-meta" style="width:180px">${fmt(volume30d)}<br><span style="font-size:0.72rem;color:var(--gray)">${esc(row.token_pair)} (${trades.toLocaleString()} trades)</span></div>
         </div>`;
     }
   } else {
