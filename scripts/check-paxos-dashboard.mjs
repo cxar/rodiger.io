@@ -27,6 +27,8 @@ assertIncludes('id="driver-waterfall-chart"', 'dashboard should include a dynami
 assertIncludes('id="watchlist-alerts"', 'dashboard should include a dynamic watchlist/alert section');
 assertIncludes('renderExecutiveReadout', 'dashboard JS should render business readout from live metrics');
 assertIncludes('buildBusinessSnapshot', 'dashboard JS should derive doing-well/needs-attention/watchlist signals dynamically');
+assertIncludes('peerPositionHeadline', 'executive readout should use a data-only peer-position tile, not an opinionated action recommendation');
+assertIncludes('Peer position', 'executive readout should label the fourth tile as data, not recommended action');
 assertIncludes('renderDriverWaterfall', 'dashboard JS should render selected-period drivers, not fixed-window data');
 assertIncludes('selectedPeriodDelta', 'dashboard JS should compute deltas using the selected period');
 assertIncludes('renderSupplyMomentum(history, color, assetLabel, period)', 'supply momentum smoothing should follow the selected period');
@@ -44,6 +46,11 @@ assertIncludes('function stableId(asset)', 'dashboard should normalize DefiLlama
 assertIncludes('Number(row.trades_7d) || 0', 'Dune DEX 7d trade counts should be numeric-coerced before innerHTML insertion');
 assertIncludes('Number(row.trades_30d ?? row.trades) || 0', 'Dune DEX 30d trade counts should be numeric-coerced with backward-compatible cached-data fallback');
 assert.ok(!html.includes('Live on-chain data from <a href="https://dune.com"'), 'Dune cache must not be mislabeled as live data');
+assert.ok(!html.includes('Recommended action'), 'executive readout must not include opinionated recommended-action copy');
+assert.ok(!html.includes('const recommended'), 'business snapshot should not synthesize subjective recommendations');
+assert.ok(!html.includes('snapshot.recommended'), 'executive readout should render data signals directly');
+assert.ok(!html.includes('Investigate '), 'dashboard should not tell the reader what to investigate from generated opinion copy');
+assert.ok(!html.includes('Use the peer and chain leaders'), 'dashboard should not emit subjective recommended-action fallback copy');
 assert.ok(!html.includes('DEX Trading Activity (30d)'), 'DEX section title must not be fixed to 30d');
 assert.ok(!html.includes('buildMomentumSeries(history, 45)'), 'adoption/momentum panels must not trim to a hidden fixed 45-day window');
 assert.ok(!html.includes('buildMomentumSeries(history, 120)'), 'supply momentum graph must not trim to a hidden fixed 120-day window');

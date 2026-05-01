@@ -847,10 +847,15 @@ function buildBusinessSnapshot(ctx) {
   if (peers.percentile < 50) watchlist.push(`${snap.label} is under the peer median for selected-period growth.`);
   const diverged = productDrivers.some(r => r.rate > 0) && productDrivers.some(r => r.rate < 0);
   if (asset === 'combined' && diverged) needsAttention.push(`Portfolio story is split: ${productDrivers.map(r => `${r.name} ${pct(r.rate)}`).join(' vs ')}.`);
-  const recommended = weakest
-    ? `Investigate ${weakest.name} outflows first, then compare against ${fastest ? fastest.name + ' inflows' : 'positive-chain inflows'} to separate migration from true redemptions.`
-    : `Use the peer and chain leaders to find the integrations or venues driving the strongest selected-window growth.`;
-  return { ...snap, period, periodLabel, totalMarket, chainRows, fastest, weakest, topChain, topChainShare, peers, productDrivers, dune, doingWell, needsAttention, watchlist, recommended };
+  return { ...snap, period, periodLabel, totalMarket, chainRows, fastest, weakest, topChain, topChainShare, peers, productDrivers, dune, doingWell, needsAttention, watchlist };
+}
+function peerPositionHeadline(snapshot) {
+  if (!snapshot.peers.count) return 'Peer sample unavailable';
+  return `Growth rank #${snapshot.peers.rank} / ${snapshot.peers.count}`;
+}
+function peerPositionDetail(snapshot) {
+  if (!snapshot.peers.count) return `${pct(snapshot.delta.rate)} selected-period growth; no $500M+ peer sample available.`;
+  return `Peer percentile ${snapshot.peers.percentile.toFixed(0)} / 100; ${snapshot.periodLabel} growth ${pct(snapshot.delta.rate)}; peer median ${pct(snapshot.peers.median)}.`;
 }
 function signalCard(kind, kicker, headline, detail) {
   return `<div class="signal-card ${kind}"><div class="kicker">${esc(kicker)}</div><div class="headline">${headline}</div><div class="detail">${detail}</div></div>`;
@@ -863,7 +868,7 @@ function renderExecutiveReadout(snapshot) {
     signalCard('good', 'Doing well', esc(primaryGood), `Rank #${snapshot.rank}; market share ${(pctOf(snapshot.supply, snapshot.totalMarket)).toFixed(2)}%.`),
     signalCard('warn', 'Needs attention', esc(primaryNeed), snapshot.weakest ? `Biggest negative chain contribution: ${esc(snapshot.weakest.name)} ${fmt(snapshot.weakest.change)}.` : 'Watch selected-window net issuance and peer-relative growth.'),
     signalCard('info', 'Biggest mover', mover, snapshot.fastest ? `${fmt(snapshot.fastest.change)} selected-window chain contribution.` : 'No chain history available for the selected window.'),
-    signalCard('risk', 'Recommended action', esc(snapshot.recommended), `Peer percentile: ${snapshot.peers.percentile.toFixed(0)} / 100 among ${snapshot.peers.count} $500M+ stablecoins.`),
+    signalCard('risk', 'Peer position', esc(peerPositionHeadline(snapshot)), esc(peerPositionDetail(snapshot))),
   ].join('');
 }
 function renderPortfolioScorecard(period) {
