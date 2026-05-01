@@ -71,6 +71,54 @@
         margin-bottom: 0.25rem;
       }
       .brief-card .takeaway { color: var(--fg); font-size: 0.9rem; }
+      .business-readout,
+      .watchlist-alerts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 0.85rem;
+        margin: 1rem 0 1.4rem;
+      }
+      .signal-card {
+        background: rgba(36, 40, 59, 0.78);
+        border: 1px solid var(--border);
+        border-radius: 0.7rem;
+        padding: 0.9rem 1rem;
+        min-height: 104px;
+      }
+      .signal-card.good { border-color: rgba(158, 206, 106, 0.35); }
+      .signal-card.warn { border-color: rgba(224, 175, 104, 0.38); }
+      .signal-card.risk { border-color: rgba(247, 118, 142, 0.36); }
+      .signal-card.info { border-color: rgba(122, 162, 247, 0.34); }
+      .signal-card .kicker,
+      .score-row .kicker {
+        color: var(--gray);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.25rem;
+      }
+      .signal-card .headline { color: var(--fg); font-weight: 600; margin-bottom: 0.35rem; }
+      .signal-card .detail { color: var(--gray); font-size: 0.8rem; line-height: 1.45; }
+      .scorecard-list { display: grid; gap: 0.65rem; }
+      .score-row {
+        background: rgba(26, 27, 38, 0.55);
+        border: 1px solid var(--border);
+        border-radius: 0.55rem;
+        padding: 0.75rem 0.85rem;
+      }
+      .score-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+      .score-row strong { color: var(--fg); }
+      .score-row .score { font-weight: 700; }
+      .score-row .score.strong { color: var(--green); }
+      .score-row .score.watch { color: var(--yellow); }
+      .score-row .score.weak { color: var(--red); }
+      .score-row .detail { color: var(--gray); font-size: 0.78rem; margin-top: 0.3rem; }
+      .mini-bars { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
+      .mini-bar { display: grid; grid-template-columns: 120px 1fr 96px; gap: 0.55rem; align-items: center; font-size: 0.78rem; }
+      .mini-bar-name { color: var(--gray); text-align: right; }
+      .mini-bar-track { height: 22px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+      .mini-bar-fill { height: 100%; border-radius: 4px; }
+      .mini-bar-value { text-align: right; color: var(--fg); }
       .live-graph-grid { align-items: stretch; }
       .section canvas { max-height: 360px; }
       .chart-note { font-size:0.78rem;color:var(--gray);margin:0.35rem 0 0; }
@@ -281,6 +329,34 @@
         <!-- Adoption brief -->
         <div id="adoption-brief" class="adoption-brief"></div>
 
+        <!-- Executive business readout -->
+        <div id="executive-readout" class="business-readout"></div>
+
+        <!-- Portfolio and momentum scorecards -->
+        <div class="two-col live-graph-grid">
+          <div class="section">
+            <h3 style="color: var(--h3);">Portfolio Momentum Scorecard</h3>
+            <p class="chart-note">USDG, PYUSD, and combined Paxos momentum from the selected window.</p>
+            <div id="portfolio-scorecard" class="scorecard-list"></div>
+          </div>
+          <div class="section">
+            <h3 style="color: var(--h3);">Selected-Period Momentum Scorecard</h3>
+            <p class="chart-note">Supply, adoption, liquidity, distribution, competitive position, and risk flags.</p>
+            <div id="momentum-scorecard" class="scorecard-list"></div>
+          </div>
+        </div>
+
+        <!-- Drivers of change -->
+        <div class="section">
+          <h3 style="color: var(--h3);">Drivers of Change</h3>
+          <p class="chart-note" id="drivers-subtitle"></p>
+          <canvas id="driver-waterfall-chart" height="260"></canvas>
+          <div id="driver-waterfall-detail" class="mini-bars"></div>
+        </div>
+
+        <!-- Watchlist alerts -->
+        <div id="watchlist-alerts" class="watchlist-alerts"></div>
+
         <!-- Race to next rank -->
         <div class="section" id="race-section">
           <h3 style="color: var(--h3);">Race to Next Rank</h3>
@@ -370,7 +446,8 @@
 
           <!-- DEX liquidity -->
           <div class="section" id="dex-section">
-            <h3 style="color: var(--h3);">DEX Trading Activity (30d)</h3>
+            <h3 style="color: var(--h3);" id="dex-title">DEX Trading Activity</h3>
+            <p class="chart-note" id="dex-subtitle"></p>
             <div id="dex-bars"></div>
           </div>
         </div>
@@ -417,6 +494,29 @@ function esc(value) {
   return span.innerHTML;
 }
 function stableId(asset) { return String(asset?.id ?? ''); }
+function periodDays(period = STATE.period) { return period === '7d' ? 7 : 30; }
+function periodPrevKey(period = STATE.period) { return period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth'; }
+function periodChainPrevKey(period = STATE.period) { return period === '7d' ? 'prev7' : 'prev30'; }
+function periodLabelFor(period = STATE.period) { return period === '7d' ? '7 days' : '30 days'; }
+function selectedPeriodDelta(current, previous) {
+  current = Number(current) || 0;
+  previous = Number(previous) || 0;
+  const change = current - previous;
+  return { change, rate: previous > 0 ? (change / previous * 100) : 0 };
+}
+function classifyScore(score) {
+  if (score >= 70) return 'strong';
+  if (score >= 45) return 'watch';
+  return 'weak';
+}
+function scoreLabel(score) {
+  if (score >= 70) return 'Strong';
+  if (score >= 45) return 'Watch';
+  return 'Weak';
+}
+function pctOf(value, total) { total = Number(total) || 0; return total ? (Number(value) || 0) / total * 100 : 0; }
+function entrySupply(entry) { return Number(entry?.circulating?.peggedUSD) || 0; }
+function entryPrev(entry, period) { return Number(entry?.[periodPrevKey(period)]?.peggedUSD) || entrySupply(entry); }
 async function fetchJSON(url) {
   // Proxy DefiLlama calls through our API to avoid CORS issues
   if (url.includes('stablecoins.llama.fi')) {
@@ -454,20 +554,21 @@ function movingAverage(values, window = 7) {
     return slice.reduce((s, v) => s + v, 0) / slice.length;
   });
 }
-function buildMomentumSeries(history, maxDays = 120) {
+function buildMomentumSeries(history, maxDays = null, maWindow = 7) {
   const series = normalizeHistory(history);
   const deltas = [];
   for (let i = 1; i < series.length; i++) {
     deltas.push({ date: series[i].date, net: series[i].value - series[i - 1].value });
   }
-  const trimmed = deltas.slice(-maxDays);
-  const ma7 = movingAverage(trimmed.map(p => p.net), 7);
-  return trimmed.map((p, i) => ({ ...p, ma7: ma7[i] }));
+  const trimmed = Number.isFinite(maxDays) ? deltas.slice(-maxDays) : deltas;
+  const movingAvg = movingAverage(trimmed.map(p => p.net), maWindow);
+  return trimmed.map((p, i) => ({ ...p, movingAvg: movingAvg[i] }));
 }
-function buildPaxosMixSeries(usdgHistory, pyusdHistory, maxDays = 240) {
+function buildPaxosMixSeries(usdgHistory, pyusdHistory, maxDays = null) {
   const usdg = new Map(normalizeHistory(usdgHistory).map(p => [p.date, p.value]));
   const pyusd = new Map(normalizeHistory(pyusdHistory).map(p => [p.date, p.value]));
-  const dates = [...new Set([...usdg.keys(), ...pyusd.keys()])].sort((a, b) => a - b).slice(-maxDays);
+  const allDates = [...new Set([...usdg.keys(), ...pyusd.keys()])].sort((a, b) => a - b);
+  const dates = Number.isFinite(maxDays) ? allDates.slice(-maxDays) : allDates;
   return dates.map(date => {
     const u = usdg.get(date) || 0;
     const p = pyusd.get(date) || 0;
@@ -475,7 +576,7 @@ function buildPaxosMixSeries(usdgHistory, pyusdHistory, maxDays = 240) {
     return { date, usdg: u, pyusd: p, usdgShare: total ? (u / total * 100) : 0 };
   });
 }
-function buildChainTrendSeries(chainBalanceMaps, maxChains = 5, maxDays = 180) {
+function buildChainTrendSeries(chainBalanceMaps, maxChains = 5, maxDays = null) {
   const chainMaps = new Map();
   for (const balances of chainBalanceMaps.filter(Boolean)) {
     for (const [chain, data] of Object.entries(balances || {})) {
@@ -497,46 +598,48 @@ function buildChainTrendSeries(chainBalanceMaps, maxChains = 5, maxDays = 180) {
     .filter(row => row.latest > 0)
     .sort((a, b) => b.latest - a.latest)
     .slice(0, maxChains);
-  const dates = [...new Set(rankedChains.flatMap(row => [...row.map.keys()]))]
-    .sort((a, b) => a - b)
-    .slice(-maxDays);
+  const allDates = [...new Set(rankedChains.flatMap(row => [...row.map.keys()]))]
+    .sort((a, b) => a - b);
+  const dates = Number.isFinite(maxDays) ? allDates.slice(-maxDays) : allDates;
   return { dates, chains: rankedChains };
 }
 function sumNet(series, days) {
   return series.slice(-days).reduce((s, p) => s + (p.net || 0), 0);
 }
-function renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket }) {
+function renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket, period, periodLabel }) {
   const brief = document.getElementById('adoption-brief');
   if (!brief) return;
   const safeAssetLabel = esc(assetLabel);
-  const momentum = buildMomentumSeries(history, 45);
-  const net7 = sumNet(momentum, 7);
-  const net30 = sumNet(momentum, 30);
+  const momentum = buildMomentumSeries(history);
+  const selectedDays = periodDays(period);
+  const selectedNet = sumNet(momentum, selectedDays);
   const sortedChains = Object.entries(chains || {}).filter(([,d]) => d.current > 0).sort((a,b) => b[1].current - a[1].current);
   const topChain = sortedChains[0];
   const chainTotal = sortedChains.reduce((s, [,d]) => s + d.current, 0) || supply || 1;
+  const chainPrevKey = periodChainPrevKey(period);
   const fastest = sortedChains
-    .filter(([,d]) => d.prev30 && d.prev30 > 0)
-    .map(([name, d]) => [name, ((d.current - d.prev30) / d.prev30 * 100)])
+    .filter(([,d]) => d[chainPrevKey] && d[chainPrevKey] > 0)
+    .map(([name, d]) => [name, selectedPeriodDelta(d.current, d[chainPrevKey]).rate])
     .sort((a,b) => b[1] - a[1])[0];
   brief.innerHTML = `
     <div class="brief-card"><div class="kicker">Live adoption read</div><div class="takeaway"><strong>${safeAssetLabel}</strong> ranks <strong>#${rank}</strong> with <strong>${fmt(supply)}</strong> circulating.</div></div>
-    <div class="brief-card"><div class="kicker">Net issuance</div><div class="takeaway"><strong>${fmt(net7)}</strong> 7d / <strong>${fmt(net30)}</strong> 30d. ${periodDelta >= 0 ? 'Supply is expanding' : 'Supply is contracting'} over the selected window.</div></div>
+    <div class="brief-card"><div class="kicker">Net issuance</div><div class="takeaway"><strong>${fmt(selectedNet)}</strong> over ${esc(periodLabel)}. ${periodDelta >= 0 ? 'Supply is expanding' : 'Supply is contracting'} over the selected window.</div></div>
     <div class="brief-card"><div class="kicker">Chain concentration</div><div class="takeaway">${topChain ? `<strong>${esc(topChain[0])}</strong> holds <strong>${(topChain[1].current / chainTotal * 100).toFixed(1)}%</strong> of visible supply.` : 'No chain split available.'}</div></div>
-    <div class="brief-card"><div class="kicker">Fastest chain</div><div class="takeaway">${fastest ? `<strong>${esc(fastest[0])}</strong> is up <strong>${pct(fastest[1])}</strong> over 30d.` : 'Not enough chain history yet.'} Market share is <strong>${(supply / totalMarket * 100).toFixed(2)}%</strong>.</div></div>
+    <div class="brief-card"><div class="kicker">Fastest chain</div><div class="takeaway">${fastest ? `<strong>${esc(fastest[0])}</strong> is up <strong>${pct(fastest[1])}</strong> over ${esc(periodLabel)}.` : 'Not enough chain history yet.'} Market share is <strong>${(supply / totalMarket * 100).toFixed(2)}%</strong>.</div></div>
   `;
 }
-function renderSupplyMomentum(history, color, assetLabel) {
+function renderSupplyMomentum(history, color, assetLabel, period) {
   destroyChart('momentum');
-  const data = buildMomentumSeries(history, 120);
-  document.getElementById('momentum-subtitle').textContent = `Daily net issuance for ${assetLabel}; line is 7-day average.`;
+  const avgWindow = periodDays(period);
+  const data = buildMomentumSeries(history, null, avgWindow);
+  document.getElementById('momentum-subtitle').textContent = `Daily net issuance for ${assetLabel}; line is trailing ${periodLabelFor(period)} average.`;
   if (!data.length) return;
   charts['momentum'] = new Chart(document.getElementById('supply-momentum-chart').getContext('2d'), {
     data: {
       labels: data.map(d => new Date(d.date * 1000)),
       datasets: [
         { type: 'bar', label: 'Daily net issuance', data: data.map(d => d.net), backgroundColor: data.map(d => d.net >= 0 ? color + '66' : '#f7768e66'), borderColor: data.map(d => d.net >= 0 ? color : '#f7768e'), borderWidth: 1 },
-        { type: 'line', label: '7d avg', data: data.map(d => d.ma7), borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2 }
+        { type: 'line', label: `${period} avg`, data: data.map(d => d.movingAvg), borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2 }
       ]
     },
     options: {
@@ -551,7 +654,7 @@ function renderSupplyMomentum(history, color, assetLabel) {
 }
 function renderPaxosMix(usdgHistory, pyusdHistory) {
   destroyChart('paxosMix');
-  const data = buildPaxosMixSeries(usdgHistory, pyusdHistory, 240);
+  const data = buildPaxosMixSeries(usdgHistory, pyusdHistory);
   document.getElementById('paxos-mix-subtitle').textContent = 'Absolute USDG and PYUSD supply lines, live from DefiLlama.';
   if (!data.length) return;
   charts['paxosMix'] = new Chart(document.getElementById('paxos-mix-chart').getContext('2d'), {
@@ -575,7 +678,7 @@ function renderPaxosMix(usdgHistory, pyusdHistory) {
 }
 function renderChainTrend(chainBalanceMaps, assetLabel) {
   destroyChart('chainTrend');
-  const { dates, chains } = buildChainTrendSeries(chainBalanceMaps, 5, 180);
+  const { dates, chains } = buildChainTrendSeries(chainBalanceMaps, 5);
   const topNames = chains.map(c => c.chain).join(', ');
   document.getElementById('chain-trend-subtitle').textContent = topNames ? `Top live chains for ${assetLabel}: ${topNames}.` : `No chain history available for ${assetLabel}.`;
   if (!dates.length || !chains.length) return;
@@ -606,6 +709,242 @@ function renderChainTrend(chainBalanceMaps, assetLabel) {
   });
 }
 
+function mergeChainSnapshots(a = {}, b = {}) {
+  const merged = {};
+  for (const [chain, data] of Object.entries(a || {})) merged[chain] = { ...data };
+  for (const [chain, data] of Object.entries(b || {})) {
+    if (merged[chain]) {
+      merged[chain].current += Number(data.current) || 0;
+      if (data.prev30 !== undefined && merged[chain].prev30 !== undefined) merged[chain].prev30 += Number(data.prev30) || 0;
+      if (data.prev7 !== undefined && merged[chain].prev7 !== undefined) merged[chain].prev7 += Number(data.prev7) || 0;
+    } else {
+      merged[chain] = { ...data };
+    }
+  }
+  return merged;
+}
+function resolveAssetSnapshot(asset, data, period = STATE.period) {
+  const sorted = data.sorted || [];
+  const label = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
+  if (asset === 'usdg') {
+    const entry = data.usdgEntry;
+    const supply = entrySupply(entry);
+    const prevPeriod = entryPrev(entry, period);
+    return {
+      asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
+      prevDay: Number(entry?.circulatingPrevDay?.peggedUSD) || supply,
+      rank: sorted.indexOf(entry) + 1,
+      history: data.usdgHistory || [],
+      chains: data.usdgChains || {},
+      ids: [USDG_ID],
+    };
+  }
+  if (asset === 'pyusd') {
+    const entry = data.pyusdEntry;
+    const supply = entrySupply(entry);
+    const prevPeriod = entryPrev(entry, period);
+    return {
+      asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
+      prevDay: Number(entry?.circulatingPrevDay?.peggedUSD) || supply,
+      rank: sorted.indexOf(entry) + 1,
+      history: data.pyusdHistory || [],
+      chains: data.pyusdChains || {},
+      ids: [PYUSD_ID],
+    };
+  }
+  const supply = Number(data.combinedSupply) || 0;
+  const prevPeriod = period === '7d' ? Number(data.combinedPrevWeek) || supply : Number(data.combinedPrevMonth) || supply;
+  return {
+    asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
+    prevDay: Number(data.combinedPrevDay) || supply,
+    rank: Number(data.combinedRank) || 0,
+    history: data.combinedHistory || [],
+    chains: mergeChainSnapshots(data.usdgChains, data.pyusdChains),
+    ids: [USDG_ID, PYUSD_ID],
+  };
+}
+function peerStats(sorted, assetIds, targetRate, period = STATE.period) {
+  const rates = sorted
+    .filter(a => entrySupply(a) > 500e6 && entryPrev(a, period) > 0)
+    .map(a => ({ symbol: String(a.symbol || ''), id: stableId(a), rate: selectedPeriodDelta(entrySupply(a), entryPrev(a, period)).rate }))
+    .sort((a, b) => b.rate - a.rate);
+  if (!rates.length) return { percentile: 0, median: 0, rank: 0, count: 0 };
+  const sortedRates = rates.map(r => r.rate).sort((a, b) => a - b);
+  const median = sortedRates[Math.floor(sortedRates.length / 2)];
+  const percentile = sortedRates.filter(r => r <= targetRate).length / sortedRates.length * 100;
+  const explicitRank = assetIds.length === 1 ? rates.findIndex(r => assetIds.includes(r.id)) : -1;
+  const rank = explicitRank >= 0 ? explicitRank + 1 : rates.filter(r => r.rate > targetRate).length + 1;
+  return { percentile, median, rank, count: rates.length };
+}
+function chainDriverRows(chains, period) {
+  const prevKey = periodChainPrevKey(period);
+  return Object.entries(chains || {})
+    .map(([chain, data]) => {
+      const current = Number(data.current) || 0;
+      const prev = Number(data[prevKey]) || 0;
+      if (!current || !prev) return null;
+      const delta = selectedPeriodDelta(current, prev);
+      return { name: chain, current, previous: prev, change: delta.change, rate: delta.rate };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+}
+function productDriverRows(data, period) {
+  const rows = [
+    { name: 'USDG', color: ASSET_COLORS.usdg, current: entrySupply(data.usdgEntry), previous: entryPrev(data.usdgEntry, period) },
+    { name: 'PYUSD', color: ASSET_COLORS.pyusd, current: entrySupply(data.pyusdEntry), previous: entryPrev(data.pyusdEntry, period) },
+  ];
+  return rows.map(row => ({ ...row, ...selectedPeriodDelta(row.current, row.previous) }));
+}
+function buildDuneSnapshot(asset, period) {
+  if (!DUNE_DATA?.data) return null;
+  const d = DUNE_DATA.data;
+  const wantUSDG = asset === 'usdg' || asset === 'combined';
+  const wantPYUSD = asset === 'pyusd' || asset === 'combined';
+  const tokenOk = token => (wantUSDG && String(token) === 'USDG') || (wantPYUSD && String(token) === 'PYUSD');
+  const summaries = Object.keys(d).filter(k => k.endsWith('_summary')).flatMap(k => Array.isArray(d[k]) ? d[k] : []).filter(r => tokenOk(r.token));
+  const suffix = period === '7d' ? '7d' : '30d';
+  const active = summaries.reduce((s, r) => s + (Number(r[`active_${suffix}`]) || 0), 0);
+  const transfers = summaries.reduce((s, r) => s + (Number(r[`transfers_${suffix}`]) || 0), 0);
+  const volume = summaries.reduce((s, r) => s + (Number(r[`volume_${suffix}`]) || 0), 0);
+  const holders = summaries.reduce((s, r) => s + (Number(r.holders) || 0), 0);
+  const whaleRows = Object.keys(d).filter(k => k.endsWith('_whales')).flatMap(k => Array.isArray(d[k]) ? d[k] : []).filter(r => tokenOk(r.token));
+  const concentration = new Map();
+  for (const row of whaleRows) {
+    const key = `${row.token}/${row.chain}`;
+    concentration.set(key, (concentration.get(key) || 0) + (Number(row.pct) || 0));
+  }
+  const maxTop10 = Math.max(0, ...concentration.values());
+  const dex = Array.isArray(d.dex_volume) ? d.dex_volume.filter(r => tokenOk(r.token)) : [];
+  const dexVolumeKey = `volume_${suffix}`;
+  const dexVolume = dex.reduce((s, r) => s + (Number(r[dexVolumeKey]) || 0), 0);
+  const dexTrades = dex.reduce((s, r) => s + (Number(r[`trades_${suffix}`] ?? (suffix === '30d' ? r.trades : 0)) || 0), 0);
+  return { active, transfers, volume, holders, maxTop10, dexVolume, dexTrades };
+}
+function buildBusinessSnapshot(ctx) {
+  const { asset, period, sorted, totalMarket } = ctx;
+  const snap = resolveAssetSnapshot(asset, DATA, period);
+  const periodLabel = periodLabelFor(period);
+  const chainRows = chainDriverRows(snap.chains, period);
+  const topChain = Object.entries(snap.chains || {}).filter(([, d]) => Number(d.current) > 0).sort((a, b) => b[1].current - a[1].current)[0];
+  const chainTotal = Object.values(snap.chains || {}).reduce((s, d) => s + (Number(d.current) || 0), 0) || snap.supply;
+  const fastest = chainRows.filter(r => r.rate > 0).sort((a, b) => b.rate - a.rate)[0];
+  const weakest = chainRows.filter(r => r.rate < 0).sort((a, b) => a.rate - b.rate)[0];
+  const peers = peerStats(sorted, snap.ids, snap.delta.rate, period);
+  const productDrivers = productDriverRows(DATA, period);
+  const dune = buildDuneSnapshot(asset, period);
+  const topChainShare = topChain ? pctOf(topChain[1].current, chainTotal) : 0;
+  const doingWell = [];
+  const needsAttention = [];
+  const watchlist = [];
+  if (snap.delta.rate > 0) doingWell.push(`${snap.label} supply is up ${pct(snap.delta.rate)} over ${periodLabel} (${fmt(snap.delta.change)} net).`);
+  else needsAttention.push(`${snap.label} supply is down ${pct(snap.delta.rate)} over ${periodLabel} (${fmt(Math.abs(snap.delta.change))} net outflow).`);
+  if (fastest) doingWell.push(`${fastest.name} is the strongest chain mover at ${pct(fastest.rate)} over ${periodLabel}.`);
+  if (peers.percentile >= 75) doingWell.push(`${snap.label} is in the ${peers.percentile.toFixed(0)}th percentile vs $500M+ stablecoins.`);
+  if (weakest && Math.abs(weakest.change) > snap.supply * 0.01) needsAttention.push(`${weakest.name} is the biggest chain drag at ${pct(weakest.rate)} (${fmt(Math.abs(weakest.change))}).`);
+  if (topChainShare >= 45) watchlist.push(`${topChain[0]} holds ${topChainShare.toFixed(1)}% of visible supply — concentration is high.`);
+  if (dune?.maxTop10 >= 85) watchlist.push(`Top-holder concentration reaches ${dune.maxTop10.toFixed(1)}% on at least one cached token/chain.`);
+  if (peers.percentile < 50) watchlist.push(`${snap.label} is under the peer median for selected-period growth.`);
+  const diverged = productDrivers.some(r => r.rate > 0) && productDrivers.some(r => r.rate < 0);
+  if (asset === 'combined' && diverged) needsAttention.push(`Portfolio story is split: ${productDrivers.map(r => `${r.name} ${pct(r.rate)}`).join(' vs ')}.`);
+  const recommended = weakest
+    ? `Investigate ${weakest.name} outflows first, then compare against ${fastest ? fastest.name + ' inflows' : 'positive-chain inflows'} to separate migration from true redemptions.`
+    : `Use the peer and chain leaders to find the integrations or venues driving the strongest selected-window growth.`;
+  return { ...snap, period, periodLabel, totalMarket, chainRows, fastest, weakest, topChain, topChainShare, peers, productDrivers, dune, doingWell, needsAttention, watchlist, recommended };
+}
+function signalCard(kind, kicker, headline, detail) {
+  return `<div class="signal-card ${kind}"><div class="kicker">${esc(kicker)}</div><div class="headline">${headline}</div><div class="detail">${detail}</div></div>`;
+}
+function renderExecutiveReadout(snapshot) {
+  const primaryGood = snapshot.doingWell[0] || `${snapshot.label} has ${fmt(snapshot.supply)} circulating supply.`;
+  const primaryNeed = snapshot.needsAttention[0] || 'No major selected-window deterioration in the current view.';
+  const mover = snapshot.fastest ? `${esc(snapshot.fastest.name)} ${pct(snapshot.fastest.rate)}` : 'No chain mover yet';
+  document.getElementById('executive-readout').innerHTML = [
+    signalCard('good', 'Doing well', esc(primaryGood), `Rank #${snapshot.rank}; market share ${(pctOf(snapshot.supply, snapshot.totalMarket)).toFixed(2)}%.`),
+    signalCard('warn', 'Needs attention', esc(primaryNeed), snapshot.weakest ? `Biggest negative chain contribution: ${esc(snapshot.weakest.name)} ${fmt(snapshot.weakest.change)}.` : 'Watch selected-window net issuance and peer-relative growth.'),
+    signalCard('info', 'Biggest mover', mover, snapshot.fastest ? `${fmt(snapshot.fastest.change)} selected-window chain contribution.` : 'No chain history available for the selected window.'),
+    signalCard('risk', 'Recommended action', esc(snapshot.recommended), `Peer percentile: ${snapshot.peers.percentile.toFixed(0)} / 100 among ${snapshot.peers.count} $500M+ stablecoins.`),
+  ].join('');
+}
+function renderPortfolioScorecard(period) {
+  const snapshots = ['usdg', 'pyusd', 'combined'].map(asset => resolveAssetSnapshot(asset, DATA, period));
+  document.getElementById('portfolio-scorecard').innerHTML = snapshots.map(snap => {
+    const peers = peerStats(DATA.sorted || [], snap.ids, snap.delta.rate, period);
+    const score = Math.max(0, Math.min(100, 50 + snap.delta.rate * 2 + (snap.rank && snap.rank <= 10 ? 10 : 0) + (peers.percentile - 50) / 3));
+    const klass = classifyScore(score);
+    const detail = `${pct(snap.delta.rate)} over ${periodLabelFor(period)} (${fmt(snap.delta.change)}); rank #${snap.rank}; peer percentile ${peers.percentile.toFixed(0)}.`;
+    return `<div class="score-row"><div class="score-row-head"><strong>${esc(snap.label)}</strong><span class="score ${klass}">${scoreLabel(score)} ${score.toFixed(0)}</span></div><div class="detail">${esc(detail)}</div></div>`;
+  }).join('');
+}
+function renderMomentumScorecard(snapshot) {
+  const supplyScore = Math.max(0, Math.min(100, 50 + snapshot.delta.rate * 3));
+  const competitiveScore = Math.max(0, Math.min(100, snapshot.peers.percentile));
+  const distributionScore = Math.max(0, Math.min(100, 100 - Math.max(0, snapshot.topChainShare - 35) * 1.6));
+  const usageScore = snapshot.dune ? Math.max(0, Math.min(100, 45 + Math.log10(Math.max(1, snapshot.dune.volume / Math.max(1, snapshot.supply)) + 1) * 25 + Math.log10(Math.max(1, snapshot.dune.active)) * 6)) : 45;
+  const liquidityScore = snapshot.dune ? Math.max(0, Math.min(100, 45 + pctOf(snapshot.dune.dexVolume, snapshot.supply) * 1.8)) : 45;
+  const riskScore = Math.max(0, Math.min(100, 100 - (snapshot.dune?.maxTop10 || 0) * 0.55 - Math.max(0, snapshot.topChainShare - 50)));
+  const rows = [
+    ['Supply momentum', supplyScore, `${pct(snapshot.delta.rate)} over ${snapshot.periodLabel}; ${fmt(snapshot.delta.change)} net.`],
+    ['Usage momentum', usageScore, snapshot.dune ? `${snapshot.dune.active.toLocaleString()} chain-summed active addresses; ${fmt(snapshot.dune.volume)} transfer volume.` : 'Dune cache unavailable; score waits for usage data.'],
+    ['Liquidity momentum', liquidityScore, snapshot.dune?.dexVolume ? `${fmt(snapshot.dune.dexVolume)} DEX volume in selected window.` : 'Selected-window DEX volume unavailable until Dune cache refreshes.'],
+    ['Distribution quality', distributionScore, snapshot.topChain ? `${snapshot.topChain[0]} concentration ${snapshot.topChainShare.toFixed(1)}%.` : 'No chain distribution data.'],
+    ['Competitive position', competitiveScore, `Peer percentile ${snapshot.peers.percentile.toFixed(0)}; growth rank ${snapshot.peers.rank}/${snapshot.peers.count}.`],
+    ['Risk flags', riskScore, snapshot.watchlist[0] || 'No major selected-window risk flag.'],
+  ];
+  document.getElementById('momentum-scorecard').innerHTML = rows.map(([name, score, detail]) => {
+    const klass = classifyScore(score);
+    return `<div class="score-row"><div class="score-row-head"><strong>${esc(name)}</strong><span class="score ${klass}">${scoreLabel(score)} ${score.toFixed(0)}</span></div><div class="detail">${esc(detail)}</div></div>`;
+  }).join('');
+}
+function renderDriverWaterfall(snapshot, color) {
+  destroyChart('drivers');
+  const chainRows = snapshot.chainRows.slice(0, 8);
+  const rows = snapshot.asset === 'combined' ? [...snapshot.productDrivers, ...chainRows.slice(0, 6)] : chainRows;
+  document.getElementById('drivers-subtitle').textContent = `Selected ${snapshot.periodLabel} contribution drivers for ${snapshot.label}; positive bars are inflows, negative bars are outflows.`;
+  if (!rows.length) {
+    document.getElementById('driver-waterfall-detail').innerHTML = '<div class="detail">Not enough selected-period chain history yet.</div>';
+    return;
+  }
+  charts['drivers'] = new Chart(document.getElementById('driver-waterfall-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [{
+        data: rows.map(r => r.change),
+        backgroundColor: rows.map(r => r.change >= 0 ? (r.color || color) + '77' : '#f7768e77'),
+        borderColor: rows.map(r => r.change >= 0 ? (r.color || color) : '#f7768e'),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${fmt(ctx.parsed.x)} (${pct(rows[ctx.dataIndex].rate)})` } } },
+      scales: {
+        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } },
+        y: { grid: { display: false }, ticks: { color: '#565f89' } }
+      }
+    }
+  });
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.change)), 1);
+  document.getElementById('driver-waterfall-detail').innerHTML = rows.slice(0, 6).map(row => {
+    const width = Math.max(3, Math.abs(row.change) / maxAbs * 100).toFixed(1);
+    const barColor = row.change >= 0 ? (row.color || color) : '#f7768e';
+    return `<div class="mini-bar"><div class="mini-bar-name">${esc(row.name)}</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${width}%;background:${barColor}"></div></div><div class="mini-bar-value">${fmt(row.change)}</div></div>`;
+  }).join('');
+}
+function renderWatchlistAlerts(snapshot) {
+  const alerts = snapshot.watchlist.length ? snapshot.watchlist : ['No major concentration, peer, or selected-window outflow alert in the current view.'];
+  document.getElementById('watchlist-alerts').innerHTML = alerts.slice(0, 4).map((alert, i) => signalCard(i ? 'warn' : 'risk', i ? 'Watchlist' : 'Largest risk', esc(alert), 'Dynamic alert from selected asset, selected period, live DefiLlama data, and cached Dune activity where available.')).join('');
+}
+function renderBusinessPanels(ctx) {
+  const snapshot = buildBusinessSnapshot(ctx);
+  renderExecutiveReadout(snapshot);
+  renderPortfolioScorecard(ctx.period);
+  renderMomentumScorecard(snapshot);
+  renderDriverWaterfall(snapshot, ASSET_COLORS[ctx.asset]);
+  renderWatchlistAlerts(snapshot);
+}
+
 async function main() {
   try {
     const [usdgDetail, pyusdDetail, allStables, usdgHistory, pyusdHistory] = await Promise.all([
@@ -624,8 +963,8 @@ async function main() {
         if (tokens.length) {
           const c = stableValue(tokens[tokens.length - 1]);
           chains[chain] = { current: c };
-          if (tokens.length >= 30) chains[chain].prev30 = stableValue(tokens[tokens.length - 30]);
-          if (tokens.length >= 7) chains[chain].prev7 = stableValue(tokens[tokens.length - 7]);
+          if (tokens.length > 30) chains[chain].prev30 = stableValue(tokens[tokens.length - 31]);
+          if (tokens.length > 7) chains[chain].prev7 = stableValue(tokens[tokens.length - 8]);
         }
       }
       return chains;
@@ -724,8 +1063,8 @@ function render() {
     combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
     } = DATA;
 
-  const prevKey = period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth';
-  const periodLabel = period === '7d' ? '7 days' : '30 days';
+  const prevKey = periodPrevKey(period);
+  const periodLabel = periodLabelFor(period);
   const color = ASSET_COLORS[asset];
   const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
   const assetIds = asset === 'usdg' ? [USDG_ID] : asset === 'pyusd' ? [PYUSD_ID] : [USDG_ID, PYUSD_ID];
@@ -794,7 +1133,8 @@ function render() {
   `;
 
   // ── Adoption brief ──
-  renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket });
+  renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket, period, periodLabel });
+  renderBusinessPanels({ asset, period, sorted, totalMarket });
 
   // ── Race to next rank ──
   const raceSection = document.getElementById('race-section');
@@ -825,11 +1165,12 @@ function render() {
           ${esc(aboveEntry.symbol)} ${fmt(aboveEntry.circulating.peggedUSD)}
         </div>`;
       let gapHtml = fmt(gap) + ' to overtake';
-      if (history && history.length >= 7) {
-        const recent = history.slice(-7);
-        const dailyRate = (recent[recent.length-1].totalCirculating.peggedUSD - recent[0].totalCirculating.peggedUSD) / 7;
+      const paceDays = periodDays(period);
+      if (history && history.length > paceDays) {
+        const recent = history.slice(-(paceDays + 1));
+        const dailyRate = (stableValue(recent[recent.length - 1]) - stableValue(recent[0])) / paceDays;
         if (dailyRate > 0) {
-          gapHtml += `<br><span style="font-size:0.8rem;color:var(--gray)">~${daysStr(Math.ceil(gap / dailyRate))} at current 7d pace</span>`;
+          gapHtml += `<br><span style="font-size:0.8rem;color:var(--gray)">~${daysStr(Math.ceil(gap / dailyRate))} at current ${esc(periodLabel)} pace</span>`;
         }
       }
       document.getElementById('race-gap').innerHTML = gapHtml;
@@ -887,7 +1228,7 @@ function render() {
 
 
   // ── Live graph extras ──
-  renderSupplyMomentum(history, color, assetLabel);
+  renderSupplyMomentum(history, color, assetLabel, period);
   renderPaxosMix(usdgHistory, pyusdHistory);
   const chainBalanceMaps = asset === 'usdg' ? [usdgChainBalances] : asset === 'pyusd' ? [pyusdChainBalances] : [usdgChainBalances, pyusdChainBalances];
   renderChainTrend(chainBalanceMaps, assetLabel);
@@ -1130,7 +1471,8 @@ async function loadDuneData() {
         status.classList.add('warn');
       }
     }
-    renderDune();
+    if (DATA?.sorted) render();
+    else renderDune();
   } catch (err) {
     const status = document.getElementById('dune-status');
     if (status) { status.textContent = 'Dune activity cache unavailable'; status.classList.add('warn'); }
@@ -1306,17 +1648,29 @@ function renderDune() {
     dexSection.style.display = '';
     const dexBars = document.getElementById('dex-bars');
     dexBars.innerHTML = '';
-    const maxVol = Number(dexData[0]?.volume_30d) || 1;
-    for (const row of dexData.slice(0, 12)) {
-      const volume30d = Number(row.volume_30d) || 0;
-      const trades = Number(row.trades) || 0;
-      const barPct = (volume30d / maxVol * 100).toFixed(1);
+    const rankedDex = dexData
+      .map(row => ({
+        ...row,
+        selectedVolume: is7d ? (Number(row.volume_7d) || 0) : (Number(row.volume_30d) || 0),
+        selectedTrades: is7d ? (Number(row.trades_7d) || 0) : (Number(row.trades_30d ?? row.trades) || 0),
+      }))
+      .filter(row => row.selectedVolume > 0 || row.selectedTrades > 0)
+      .sort((a, b) => b.selectedVolume - a.selectedVolume);
+    document.getElementById('dex-title').textContent = `DEX Trading Activity (${period})`;
+    document.getElementById('dex-subtitle').textContent = `${assetLabel} venues ranked by selected-period Dune volume; updates with the period toggle.`;
+    if (!rankedDex.length) {
+      dexBars.innerHTML = '<div class="insight-callout">No selected-period DEX activity in the current Dune cache for this asset/window.</div>';
+      return;
+    }
+    const maxVol = rankedDex[0]?.selectedVolume || 1;
+    for (const row of rankedDex.slice(0, 12)) {
+      const barPct = (row.selectedVolume / maxVol * 100).toFixed(1);
       const barColor = String(row.token) === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd;
       dexBars.innerHTML += `
         <div class="chain-bar">
           <div class="chain-name" style="width:140px">${esc(row.token)} / ${esc(row.project)}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
-          <div class="bar-meta" style="width:180px">${fmt(volume30d)}<br><span style="font-size:0.72rem;color:var(--gray)">${esc(row.token_pair)} (${trades.toLocaleString()} trades)</span></div>
+          <div class="bar-meta" style="width:180px">${fmt(row.selectedVolume)}<br><span style="font-size:0.72rem;color:var(--gray)">${esc(row.token_pair)} (${row.selectedTrades.toLocaleString()} trades)</span></div>
         </div>`;
     }
   } else {

@@ -160,7 +160,12 @@ const QUERIES = {
   dex_volume: `
     SELECT CASE WHEN token_bought_address=0xe343167631d89b6ffc58b88d6b7fb0228795491d
                   OR token_sold_address=0xe343167631d89b6ffc58b88d6b7fb0228795491d THEN 'USDG' ELSE 'PYUSD' END as token,
-      project, token_pair, SUM(amount_usd) as volume_30d, COUNT(*) as trades
+      project, token_pair,
+      SUM(CASE WHEN block_time>NOW()-INTERVAL '7' DAY THEN amount_usd ELSE 0 END) as volume_7d,
+      SUM(CASE WHEN block_time>NOW()-INTERVAL '7' DAY THEN 1 ELSE 0 END) as trades_7d,
+      SUM(amount_usd) as volume_30d,
+      COUNT(*) as trades_30d,
+      COUNT(*) as trades
     FROM dex.trades WHERE block_time>NOW()-INTERVAL '30' DAY
       AND (token_bought_address IN (0xe343167631d89b6ffc58b88d6b7fb0228795491d, 0x6c3ea9036406852006290770BEdFcAbA0e23A0e8)
         OR token_sold_address IN (0xe343167631d89b6ffc58b88d6b7fb0228795491d, 0x6c3ea9036406852006290770BEdFcAbA0e23A0e8))
