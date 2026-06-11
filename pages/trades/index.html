@@ -145,6 +145,8 @@
 
       function renderChart(){
         const data=curve(win).map(([t,v])=>({x:t,y:v}));
+        const span = data.length>1 ? data[data.length-1].x-data[0].x : 0;
+        const multiDay = span > 36*3600*1000;   // >1.5 days -> label ticks by date, else by hour
         const up = data.length>1 && data[data.length-1].y>=data[0].y;
         const color = up ? "#9ece6a" : "#f7768e";
         const ctx=$("chart").getContext("2d");
@@ -152,7 +154,7 @@
         const cfg={ type:"line", data:{datasets:[{data,borderColor:color,backgroundColor:grad,borderWidth:2,fill:true,pointRadius:0,tension:0.25}]},
           options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},
             plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>fmtUsd(c.parsed.y)}}},
-            scales:{ x:{type:"time",grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
+            scales:{ x:{type:"time",time:{unit:multiDay?"day":"hour",displayFormats:{day:"MMM d",hour:"ha"},tooltipFormat:"MMM d, h:mm a"},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
                      y:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>"$"+v.toFixed(0)}} } } };
         if(chart){ chart.data=cfg.data; chart.options=cfg.options; chart.update("none"); } else { chart=new Chart(ctx,cfg); }
       }
