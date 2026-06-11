@@ -112,6 +112,7 @@
       async function api(body){ const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }
 
       let portfolio=null, chart=null, win="week";
+      let rebalAnchor=null; const REBAL_MS=6*3600*1000;   // 6h cadence; anchor inferred from last fill
 
       function card(label,val,meta,valCls){
         return `<div class="card"><div class="label">${label}</div><div class="val ${valCls||''}">${val}</div>${meta?`<div class="meta">${meta}</div>`:""}</div>`;
@@ -135,11 +136,12 @@
           card("Positions", positions.length, (positions.filter(p=>+p.position.szi>0).length)+"L / "+(positions.filter(p=>+p.position.szi<0).length)+"S"),
           card("Leverage", lev.toFixed(2)+"×", "gross "+fmtUsd(gross,0)),
           card("Margin / DD", marg.toFixed(0)+"%", "max DD "+dd.toFixed(1)+"%", dd<-30?"neg":""),
+          card("Next Rebalance", '<span id="rebal-cd">—</span>', "every 6h"),
         ].join("");
       }
 
       function curve(w){ if(!portfolio) return []; const e=portfolio.find(x=>x[0]===w); if(!e) return [];
-        return (e[1].accountValueHistory||[]).map(([t,v])=>[t,+v]); }
+        return (e[1].accountValueHistory||[]).map(([t,v])=>[t,+v]).filter(([,v])=>v>1); }  // drop spurious $0 (pre-funding) points
 
       function renderChart(){
         const data=curve(win).map(([t,v])=>({x:t,y:v}));
@@ -197,15 +199,27 @@
             api({type:"userFills",user:USER}),
           ]);
           portfolio=pf;
+          if(fills&&fills.length) rebalAnchor=Math.max(...fills.map(f=>f.time));  // last rebalance ~ latest fill
           renderCards(state); renderChart(); renderExposure(state); renderPositions(state); renderFills(fills);
+          tickRebal();
           $("addr").textContent=USER.slice(0,6)+"…"+USER.slice(-4);
           $("sub").innerHTML=`<span class="live">● live</span> · cross-sectional momentum on Hyperliquid · updated ${new Date().toLocaleTimeString()}`;
         }catch(e){
           $("sub").innerHTML=`<span class="err">● error: ${e.message}</span> · retrying…`;
         }
       }
+      // countdown to next rebalance: project the 6h grid forward from the last fill (public-data inference)
+      function tickRebal(){
+        const el=$("rebal-cd"); if(!el) return;
+        if(!rebalAnchor){ el.textContent="—"; return; }
+        const now=Date.now(); let next=rebalAnchor+Math.ceil((now-rebalAnchor)/REBAL_MS)*REBAL_MS;
+        while(next<=now) next+=REBAL_MS;
+        let s=Math.floor((next-now)/1000);
+        const h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60, p=(x)=>String(x).padStart(2,"0");
+        el.textContent=`${p(h)}:${p(m)}:${p(ss)}`;
+      }
       document.querySelectorAll("#toggle button").forEach(b=>b.addEventListener("click",()=>{win=b.dataset.w; setActive(); if(portfolio){renderChart(); load();}}));
-      setActive(); load(); setInterval(load, 60000);
+      setActive(); load(); setInterval(load, 60000); setInterval(tickRebal, 1000);
     </script>
   </body>
 </html>
