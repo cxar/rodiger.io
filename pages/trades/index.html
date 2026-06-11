@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Trading Dashboard | rodiger</title>
+    <meta name="description" content="Live Hyperliquid systematic trading dashboard — cross-sectional momentum." />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png" />
+    <link rel="icon" type="image/x-icon" href="/static/favicon/favicon.ico" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+      .trades .container { max-width: 1080px; padding: 0 1rem; }
+      .sub { color: var(--gray); font-size: 0.85rem; margin: 0.1rem 0 1.2rem; }
+      .sub .live { color: var(--green); }
+      .sub .stale { color: var(--yellow); }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; margin: 1rem 0; }
+      .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.7rem; padding: 0.85rem 0.95rem; }
+      .card .label { color: var(--gray); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+      .card .val { font-size: 1.45rem; font-weight: 600; margin-top: 0.25rem; line-height: 1.1; }
+      .card .meta { font-size: 0.75rem; color: var(--gray); margin-top: 0.2rem; }
+      .pos { color: var(--green); } .neg { color: var(--red); }
+      .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.7rem; padding: 1rem 1.05rem; margin: 1rem 0; }
+      .panel h2 { font-size: 0.95rem; margin: 0 0 0.7rem; color: var(--h2); }
+      .toggle { float: right; }
+      .toggle button { background: transparent; color: var(--gray); border: 1px solid var(--border); border-radius: 0.4rem;
+        padding: 0.15rem 0.55rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; margin-left: 0.25rem; }
+      .toggle button.on { color: var(--bg); background: var(--h2); border-color: var(--h2); }
+      .expo { height: 1.4rem; border-radius: 0.4rem; overflow: hidden; display: flex; background: var(--bg); border: 1px solid var(--border); }
+      .expo .long { background: rgba(158,206,106,0.55); } .expo .short { background: rgba(247,118,142,0.5); }
+      .expo-labels { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--gray); margin-top: 0.35rem; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+      th { text-align: right; color: var(--gray); font-weight: 500; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+      th:first-child, td:first-child { text-align: left; }
+      td { text-align: right; padding: 0.32rem 0.5rem; border-bottom: 1px solid var(--border); }
+      tr:last-child td { border-bottom: none; }
+      .tag { font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 0.3rem; }
+      .tag.L { color: var(--green); background: rgba(158,206,106,0.13); }
+      .tag.S { color: var(--red); background: rgba(247,118,142,0.13); }
+      .tag.mk { color: var(--link); background: rgba(125,207,255,0.12); }
+      .tag.tk { color: var(--gray); background: rgba(86,95,137,0.18); }
+      .grid2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem; }
+      @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+      .err { color: var(--red); }
+      .muted { color: var(--gray); }
+      .strat { font-size: 0.8rem; color: var(--gray); line-height: 1.5; }
+      .strat b { color: var(--fg); font-weight: 600; }
+      #chart-wrap { height: 280px; }
+    </style>
+  </head>
+  <body class="trades">
+    <div class="container">
+      <nav class="top">
+        <h1>Trading Dashboard</h1>
+      </nav>
+      <p class="sub" id="sub">connecting to Hyperliquid…</p>
+
+      <div class="cards" id="cards"></div>
+
+      <div class="panel">
+        <div class="toggle" id="toggle">
+          <button data-w="day">24h</button>
+          <button data-w="week" class="on">7d</button>
+          <button data-w="month">30d</button>
+          <button data-w="allTime">All</button>
+        </div>
+        <h2>Account Value</h2>
+        <div id="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <h2>Net Exposure</h2>
+        <div class="expo" id="expo"></div>
+        <div class="expo-labels"><span id="expo-long"></span><span id="expo-net"></span><span id="expo-short"></span></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h2>Open Positions (<span id="poscount">0</span>)</h2>
+          <table><thead><tr><th>Coin</th><th>Side</th><th>Notional</th><th>Entry</th><th>uPnL</th></tr></thead>
+            <tbody id="positions"></tbody></table>
+        </div>
+        <div class="panel">
+          <h2>Recent Fills</h2>
+          <table><thead><tr><th>Time</th><th>Coin</th><th>Dir</th><th>Px</th><th></th></tr></thead>
+            <tbody id="fills"></tbody></table>
+        </div>
+      </div>
+
+      <div class="panel strat">
+        <b>Strategy.</b> Market-neutral cross-sectional <b>momentum</b> across the ~40 most-liquid Hyperliquid perps:
+        long the strongest names, short the weakest, weighted by conviction (z-score) and inverse volatility, then
+        <b>beta-neutralized</b> to the market. Vol-targeted ~70% annualized, rebalanced every 6h via maker-first
+        execution with a per-position no-trade band. Risk: −45% drawdown &amp; margin kill-switches.
+        <span class="muted">Autonomous. Not investment advice; this is a personal experiment.</span>
+      </div>
+
+      <footer><p><a href="/">rodiger.io</a> · data: Hyperliquid public API · <span id="addr" class="muted"></span></p></footer>
+    </div>
+
+    <script>
+      const API = "https://api.hyperliquid.xyz/info";
+      const USER = "0xd6dfe941991c554397ea2426656d396f98b3367b";
+      const $ = (id) => document.getElementById(id);
+      const fmtUsd = (n, d=2) => (n<0?"-":"")+"$"+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+      const fmtPct = (n) => (n>=0?"+":"")+n.toFixed(2)+"%";
+      const cls = (n) => n>=0?"pos":"neg";
+      async function api(body){ const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }
+
+      let portfolio=null, chart=null, win="week";
+
+      function card(label,val,meta,valCls){
+        return `<div class="card"><div class="label">${label}</div><div class="val ${valCls||''}">${val}</div>${meta?`<div class="meta">${meta}</div>`:""}</div>`;
+      }
+
+      function renderCards(state){
+        const ms=state.marginSummary, eq=+ms.accountValue, gross=+ms.totalNtlPos, mu=+ms.totalMarginUsed;
+        const positions=state.assetPositions||[];
+        const upnl=positions.reduce((a,p)=>a+ +p.position.unrealizedPnl,0);
+        // window P&L from portfolio curve
+        let wpnl=0, wpct=0, dd=0;
+        const hist=curve(win);
+        if(hist.length>1){ const f=hist[0][1], l=hist[hist.length-1][1]; wpnl=l-f; wpct=f?(l/f-1)*100:0;
+          let peak=hist[0][1]; for(const [,v] of hist){ peak=Math.max(peak,v); dd=Math.min(dd,(v-peak)/peak*100);} }
+        const lev=eq?gross/eq:0, marg=eq?mu/eq*100:0;
+        const wlabel={day:"24h",week:"7d",month:"30d",allTime:"all"}[win];
+        $("cards").innerHTML=[
+          card("Account Value", fmtUsd(eq)),
+          card("P&L ("+wlabel+")", fmtUsd(wpnl), fmtPct(wpct), cls(wpnl)),
+          card("Unrealized", fmtUsd(upnl), null, cls(upnl)),
+          card("Positions", positions.length, (positions.filter(p=>+p.position.szi>0).length)+"L / "+(positions.filter(p=>+p.position.szi<0).length)+"S"),
+          card("Leverage", lev.toFixed(2)+"×", "gross "+fmtUsd(gross,0)),
+          card("Margin / DD", marg.toFixed(0)+"%", "max DD "+dd.toFixed(1)+"%", dd<-30?"neg":""),
+        ].join("");
+      }
+
+      function curve(w){ if(!portfolio) return []; const e=portfolio.find(x=>x[0]===w); if(!e) return [];
+        return (e[1].accountValueHistory||[]).map(([t,v])=>[t,+v]); }
+
+      function renderChart(){
+        const data=curve(win).map(([t,v])=>({x:t,y:v}));
+        const up = data.length>1 && data[data.length-1].y>=data[0].y;
+        const color = up ? "#9ece6a" : "#f7768e";
+        const ctx=$("chart").getContext("2d");
+        const grad=ctx.createLinearGradient(0,0,0,280); grad.addColorStop(0,color+"40"); grad.addColorStop(1,color+"00");
+        const cfg={ type:"line", data:{datasets:[{data,borderColor:color,backgroundColor:grad,borderWidth:2,fill:true,pointRadius:0,tension:0.25}]},
+          options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>fmtUsd(c.parsed.y)}}},
+            scales:{ x:{type:"time",grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
+                     y:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>"$"+v.toFixed(0)}} } } };
+        if(chart){ chart.data=cfg.data; chart.options=cfg.options; chart.update("none"); } else { chart=new Chart(ctx,cfg); }
+      }
+
+      function renderExposure(state){
+        const ps=state.assetPositions||[];
+        const long=ps.filter(p=>+p.position.szi>0).reduce((a,p)=>a+ +p.position.positionValue,0);
+        const short=ps.filter(p=>+p.position.szi<0).reduce((a,p)=>a+ +p.position.positionValue,0);
+        const tot=long+short||1;
+        $("expo").innerHTML=`<div class="long" style="width:${long/tot*100}%"></div><div class="short" style="width:${short/tot*100}%"></div>`;
+        $("expo-long").textContent="long "+fmtUsd(long,0);
+        $("expo-net").innerHTML="net "+`<span class="${cls(long-short)}">`+fmtUsd(long-short,0)+"</span>";
+        $("expo-short").textContent=fmtUsd(short,0)+" short";
+      }
+
+      function renderPositions(state){
+        const ps=(state.assetPositions||[]).map(p=>p.position)
+          .sort((a,b)=> +b.positionValue - +a.positionValue);
+        $("poscount").textContent=ps.length;
+        $("positions").innerHTML=ps.map(p=>{ const long=+p.szi>0, u=+p.unrealizedPnl;
+          return `<tr><td>${p.coin}</td><td><span class="tag ${long?'L':'S'}">${long?'LONG':'SHORT'}</span></td>
+            <td>${fmtUsd(+p.positionValue,0)}</td><td class="muted">${(+p.entryPx).toPrecision(5)}</td>
+            <td class="${cls(u)}">${fmtUsd(u)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">no open positions</td></tr>`;
+      }
+
+      function renderFills(fills){
+        const rows=(fills||[]).slice().sort((a,b)=>b.time-a.time).slice(0,14);
+        $("fills").innerHTML=rows.map(f=>{ const t=new Date(f.time);
+          const time=t.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+          const maker=!f.crossed;
+          return `<tr><td class="muted">${time}</td><td>${f.coin}</td><td class="muted">${f.dir||""}</td>
+            <td class="muted">${(+f.px).toPrecision(5)}</td>
+            <td><span class="tag ${maker?'mk':'tk'}">${maker?'maker':'taker'}</span></td></tr>`; }).join("")
+          || `<tr><td colspan="5" class="muted">no fills</td></tr>`;
+      }
+
+      function setActive(){ document.querySelectorAll("#toggle button").forEach(b=>b.classList.toggle("on",b.dataset.w===win)); }
+
+      async function load(){
+        try{
+          const [state, pf, fills] = await Promise.all([
+            api({type:"clearinghouseState",user:USER}),
+            api({type:"portfolio",user:USER}),
+            api({type:"userFills",user:USER}),
+          ]);
+          portfolio=pf;
+          renderCards(state); renderChart(); renderExposure(state); renderPositions(state); renderFills(fills);
+          $("addr").textContent=USER.slice(0,6)+"…"+USER.slice(-4);
+          $("sub").innerHTML=`<span class="live">● live</span> · cross-sectional momentum on Hyperliquid · updated ${new Date().toLocaleTimeString()}`;
+        }catch(e){
+          $("sub").innerHTML=`<span class="err">● error: ${e.message}</span> · retrying…`;
+        }
+      }
+      document.querySelectorAll("#toggle button").forEach(b=>b.addEventListener("click",()=>{win=b.dataset.w; setActive(); if(portfolio){renderChart(); load();}}));
+      setActive(); load(); setInterval(load, 60000);
+    </script>
+  </body>
+</html>
