@@ -73,9 +73,27 @@
       </div>
 
       <div class="panel">
+        <h2>Drawdown</h2>
+        <div style="height:140px"><canvas id="ddchart"></canvas></div>
+        <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">% below running high-water · dashed line = −45% kill-switch (auto-flatten)</p>
+      </div>
+
+      <div class="panel">
         <h2>Net Exposure</h2>
         <div class="expo" id="expo"></div>
         <div class="expo-labels"><span id="expo-long"></span><span id="expo-net"></span><span id="expo-short"></span></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h2>P&amp;L Attribution <span class="muted" style="font-size:0.72rem">since strategy deploy</span></h2>
+          <div style="height:300px"><canvas id="attrib"></canvas></div>
+        </div>
+        <div class="panel">
+          <h2>Signal Health <span class="muted" style="font-size:0.72rem">momentum vs P&amp;L</span></h2>
+          <div style="height:300px"><canvas id="momscatter"></canvas></div>
+          <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">x = momentum z-score · y = position P&amp;L % · bubble = notional · the signal is working when greens sit right-and-up and reds left-and-up</p>
+        </div>
       </div>
 
       <div class="grid2">
@@ -196,6 +214,94 @@
           || `<tr><td colspan="5" class="muted">no fills</td></tr>`;
       }
 
+      const DEPLOY=1781098603000;   // momentum strategy deploy (2026-06-10 13:36Z)
+      let ddChart=null, attribChart=null, momChart=null, momCache=null;
+
+      function renderUnderwater(){
+        const pts=curve("allTime"); if(pts.length<2) return;
+        let peak=pts[0][1];
+        const dd=pts.map(([t,v])=>{ peak=Math.max(peak,v); return {x:t,y:(v/peak-1)*100}; });
+        const kill=[{x:dd[0].x,y:-45},{x:dd[dd.length-1].x,y:-45}];
+        const ctx=$("ddchart").getContext("2d");
+        const cfg={type:"line",data:{datasets:[
+            {data:dd,borderColor:"#f7768e",backgroundColor:"rgba(247,118,142,0.18)",borderWidth:1.5,fill:"origin",pointRadius:0,tension:0.2},
+            {data:kill,borderColor:"#e0af68",borderWidth:1,borderDash:[6,4],pointRadius:0,fill:false}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+            tooltip:{filter:(c)=>c.datasetIndex===0,callbacks:{label:(c)=>c.parsed.y.toFixed(1)+"%"}}},
+            scales:{x:{type:"time",time:{unit:"day",displayFormats:{day:"MMM d"}},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
+                    y:{min:-50,max:2,grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>v+"%"}}}}};
+        if(ddChart){ ddChart.data=cfg.data; ddChart.update("none"); } else ddChart=new Chart(ctx,cfg);
+      }
+
+      function renderAttribution(state, fills){
+        const real={}, fee={};
+        for(const f of fills||[]){ if(f.time<DEPLOY) continue;
+          real[f.coin]=(real[f.coin]||0)+(+f.closedPnl||0); fee[f.coin]=(fee[f.coin]||0)+(+f.fee||0); }
+        const unre={};
+        for(const ap of state.assetPositions||[]){ const p=ap.position; unre[p.coin]=+p.unrealizedPnl; }
+        const coins=[...new Set([...Object.keys(real),...Object.keys(unre)])]
+          .map(c=>({c, r:(real[c]||0)-(fee[c]||0), u:unre[c]||0}))
+          .map(o=>({...o, tot:o.r+o.u}))
+          .sort((a,b)=>b.tot-a.tot);
+        const show=coins.length>16?[...coins.slice(0,8),...coins.slice(-8)]:coins;
+        const ctx=$("attrib").getContext("2d");
+        const cfg={type:"bar",data:{labels:show.map(o=>o.c),datasets:[
+            {label:"realized (net of fees)",data:show.map(o=>o.r),backgroundColor:"rgba(125,207,255,0.55)",stack:"s"},
+            {label:"unrealized",data:show.map(o=>o.u),backgroundColor:show.map(o=>o.u>=0?"rgba(158,206,106,0.6)":"rgba(247,118,142,0.55)"),stack:"s"}]},
+          options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{labels:{color:"#565f89",boxWidth:10,font:{size:10}}},
+              tooltip:{callbacks:{label:(c)=>c.dataset.label+": "+fmtUsd(c.parsed.x)}}},
+            scales:{x:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>"$"+v}},
+                    y:{stacked:true,grid:{display:false},ticks:{color:"#c0caf5",font:{size:10}}}}}};
+        if(attribChart){ attribChart.data=cfg.data; attribChart.update("none"); } else attribChart=new Chart(ctx,cfg);
+      }
+
+      async function loadMomentum(state){
+        // fetch ~15 days of hourly candles per held coin ONCE per page load; compute the
+        // strategy's ensemble z-score cross-sectionally over held coins
+        if(momCache) return momCache;
+        const ps=(state.assetPositions||[]).map(p=>p.position);
+        const now=Date.now(), start=now-360*3600*1000;
+        const out=[];
+        const series=await Promise.all(ps.map(p=>
+          api({type:"candleSnapshot",req:{coin:p.coin,interval:"1h",startTime:start}}).catch(()=>null)));
+        const closes=series.map(s=>s?s.map(x=>+x.c):null);
+        const M=Math.min(...closes.filter(Boolean).map(s=>s.length));
+        if(!(M>337)) return null;
+        const LBS=[72,168,336];
+        const moms=LBS.map(LB=>closes.map(s=>s?(s[s.length-1]/s[s.length-1-LB]-1):null));
+        const z=ps.map((_,i)=>0).map((_,i)=>{
+          let sum=0;
+          for(const m of moms){ const vals=m.filter(v=>v!==null);
+            const mu=vals.reduce((a,b)=>a+b,0)/vals.length;
+            const sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mu)**2,0)/vals.length)||1;
+            sum+=Math.max(-3,Math.min(3,((m[i]??mu)-mu)/sd)); }
+          return sum/LBS.length; });
+        momCache=ps.map((p,i)=>({coin:p.coin,z:z[i]}));
+        return momCache;
+      }
+
+      async function renderMomentum(state){
+        const zs=await loadMomentum(state); if(!zs) return;
+        const zmap=Object.fromEntries(zs.map(o=>[o.coin,o.z]));
+        const pts=(state.assetPositions||[]).map(ap=>{ const p=ap.position;
+          const long=+p.szi>0, pv=+p.positionValue;
+          return {x:zmap[p.coin]??0, y:pv?(+p.unrealizedPnl)/pv*100:0, r:Math.max(4,Math.sqrt(pv)/2.2),
+                  coin:p.coin, long}; });
+        const ctx=$("momscatter").getContext("2d");
+        const cfg={type:"bubble",data:{datasets:[
+            {label:"long",data:pts.filter(p=>p.long),backgroundColor:"rgba(158,206,106,0.55)",borderColor:"#9ece6a",borderWidth:1},
+            {label:"short",data:pts.filter(p=>!p.long),backgroundColor:"rgba(247,118,142,0.5)",borderColor:"#f7768e",borderWidth:1}]},
+          options:{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{labels:{color:"#565f89",boxWidth:10,font:{size:10}}},
+              tooltip:{callbacks:{label:(c)=>`${c.raw.coin}: z ${c.raw.x.toFixed(2)}, pnl ${c.raw.y.toFixed(2)}%`}}},
+            scales:{x:{title:{display:true,text:"momentum z",color:"#565f89",font:{size:10}},
+                       grid:{color:(c)=>c.tick.value===0?"#565f89":"#292e43"},ticks:{color:"#565f89"}},
+                    y:{title:{display:true,text:"uPnL %",color:"#565f89",font:{size:10}},
+                       grid:{color:(c)=>c.tick.value===0?"#565f89":"#292e43"},ticks:{color:"#565f89",callback:(v)=>v+"%"}}}}};
+        if(momChart){ momChart.data=cfg.data; momChart.update("none"); } else momChart=new Chart(ctx,cfg);
+      }
+
       function setActive(){ document.querySelectorAll("#toggle button").forEach(b=>b.classList.toggle("on",b.dataset.w===win)); }
 
       async function load(){
@@ -208,6 +314,7 @@
           portfolio=pf;
           if(fills&&fills.length) rebalAnchor=Math.max(...fills.map(f=>f.time));  // last rebalance ~ latest fill
           renderCards(state); renderChart(); renderExposure(state); renderPositions(state); renderFills(fills);
+          renderUnderwater(); renderAttribution(state, fills); renderMomentum(state);
           tickRebal();
           $("addr").textContent=USER.slice(0,6)+"…"+USER.slice(-4);
           $("sub").innerHTML=`<span class="live">● live</span> · cross-sectional momentum on Hyperliquid · updated ${new Date().toLocaleTimeString()}`;
