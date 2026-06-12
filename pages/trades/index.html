@@ -81,8 +81,9 @@
       <div class="grid2">
         <div class="panel">
           <h2>Open Positions (<span id="poscount">0</span>)</h2>
-          <table><thead><tr><th>Coin</th><th>Side</th><th>Notional</th><th>Entry</th><th>uPnL</th></tr></thead>
+          <table><thead><tr><th>Coin</th><th>Side</th><th>Notional</th><th>Expo</th><th>Lev</th><th>Entry</th><th>uPnL</th></tr></thead>
             <tbody id="positions"></tbody></table>
+          <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">Expo = notional as % of account value · Lev = effective per-position leverage (notional ÷ margin used)</p>
         </div>
         <div class="panel">
           <h2>Recent Fills</h2>
@@ -171,13 +172,17 @@
       }
 
       function renderPositions(state){
+        const eq=+state.marginSummary.accountValue||0;
         const ps=(state.assetPositions||[]).map(p=>p.position)
           .sort((a,b)=> +b.positionValue - +a.positionValue);
         $("poscount").textContent=ps.length;
         $("positions").innerHTML=ps.map(p=>{ const long=+p.szi>0, u=+p.unrealizedPnl;
+          const pv=+p.positionValue, mu=+p.marginUsed;
+          const expo=eq?pv/eq*100:0, lev=mu>0?pv/mu:0;
           return `<tr><td>${p.coin}</td><td><span class="tag ${long?'L':'S'}">${long?'LONG':'SHORT'}</span></td>
-            <td>${fmtUsd(+p.positionValue,0)}</td><td class="muted">${(+p.entryPx).toPrecision(5)}</td>
-            <td class="${cls(u)}">${fmtUsd(u)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">no open positions</td></tr>`;
+            <td>${fmtUsd(pv,0)}</td><td class="muted">${expo.toFixed(1)}%</td><td class="muted">${lev?lev.toFixed(1)+"×":"—"}</td>
+            <td class="muted">${(+p.entryPx).toPrecision(5)}</td>
+            <td class="${cls(u)}">${fmtUsd(u)}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">no open positions</td></tr>`;
       }
 
       function renderFills(fills){
