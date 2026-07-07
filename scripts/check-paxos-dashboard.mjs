@@ -10,6 +10,8 @@ function assertIncludes(needle, message) {
 }
 
 assertIncludes('Paxos Stablecoin Dashboard', 'dashboard title should remain present');
+assertIncludes('Robinhood Chain', 'dashboard should recognize Robinhood Chain as a Paxos network with a dedicated chart/bar color');
+assertIncludes("'Robinhood Chain': '#00C805'", 'Robinhood Chain should use Robinhood brand green in network visualizations');
 assertIncludes('id="supply-momentum-chart"', 'dashboard should include a live supply momentum chart canvas');
 assertIncludes('id="chain-trend-chart"', 'dashboard should include a live chain adoption trend chart canvas');
 assertIncludes('USDG vs PYUSD Supply', 'dashboard should label absolute USDG/PYUSD supply comparison clearly');
