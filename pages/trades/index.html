@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Trading Dashboard | rodiger</title>
-    <meta name="description" content="Live Hyperliquid systematic trading dashboard — cross-sectional momentum." />
+    <title>Hyperliquid Strategy Dashboard | rodiger</title>
+    <meta name="description" content="Live public-state dashboard for the active Hyperliquid strategy." />
     <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png" />
@@ -16,13 +16,14 @@
     <style>
       .trades .container { max-width: 1080px; padding: 0 1rem; }
       .sub { color: var(--gray); font-size: 0.85rem; margin: 0.1rem 0 1.2rem; }
-      .sub .live { color: var(--green); }
-      .sub .stale { color: var(--yellow); }
+      .sub .live, .pass { color: var(--green); }
+      .sub .stale, .wait { color: var(--yellow); }
+      .sub .error, .fail { color: var(--red); }
       .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; margin: 1rem 0; }
       .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.7rem; padding: 0.85rem 0.95rem; }
       .card .label { color: var(--gray); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
-      .card .val { font-size: 1.45rem; font-weight: 600; margin-top: 0.25rem; line-height: 1.1; }
-      .card .meta { font-size: 0.75rem; color: var(--gray); margin-top: 0.2rem; }
+      .card .val { font-size: 1.35rem; font-weight: 600; margin-top: 0.25rem; line-height: 1.1; }
+      .card .meta { font-size: 0.75rem; color: var(--gray); margin-top: 0.25rem; }
       .pos { color: var(--green); } .neg { color: var(--red); }
       .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.7rem; padding: 1rem 1.05rem; margin: 1rem 0; }
       .panel h2 { font-size: 0.95rem; margin: 0 0 0.7rem; color: var(--h2); }
@@ -36,30 +37,38 @@
       table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
       th { text-align: right; color: var(--gray); font-weight: 500; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
       th:first-child, td:first-child { text-align: left; }
-      td { text-align: right; padding: 0.32rem 0.5rem; border-bottom: 1px solid var(--border); }
+      td { text-align: right; padding: 0.38rem 0.5rem; border-bottom: 1px solid var(--border); }
       tr:last-child td { border-bottom: none; }
       .tag { font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 0.3rem; }
       .tag.L { color: var(--green); background: rgba(158,206,106,0.13); }
       .tag.S { color: var(--red); background: rgba(247,118,142,0.13); }
       .tag.mk { color: var(--link); background: rgba(125,207,255,0.12); }
       .tag.tk { color: var(--gray); background: rgba(86,95,137,0.18); }
-      .grid2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem; }
+      .grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1rem; }
       @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
-      .err { color: var(--red); }
       .muted { color: var(--gray); }
-      .strat { font-size: 0.8rem; color: var(--gray); line-height: 1.5; }
+      .strat { font-size: 0.8rem; color: var(--gray); line-height: 1.55; }
       .strat b { color: var(--fg); font-weight: 600; }
+      .strat code { overflow-wrap: anywhere; }
+      .scope { border-left: 3px solid var(--yellow); padding-left: 0.75rem; }
+      .blockers { margin: 0.55rem 0 0; padding-left: 1.25rem; color: var(--gray); font-size: 0.78rem; }
+      .blockers li { margin: 0.18rem 0; }
       #chart-wrap { height: 280px; }
     </style>
   </head>
   <body class="trades">
     <div class="container">
-      <nav class="top">
-        <h1>Trading Dashboard</h1>
-      </nav>
-      <p class="sub" id="sub">connecting to Hyperliquid…</p>
+      <nav class="top"><h1>Hyperliquid Strategy Dashboard</h1></nav>
+      <p class="sub" id="sub">loading the versioned strategy status…</p>
 
       <div class="cards" id="cards"></div>
+
+      <div class="panel">
+        <h2>Current ZEC Signal Gates</h2>
+        <table><thead><tr><th>Gate</th><th>Observed</th><th>Required</th><th>Status</th></tr></thead>
+          <tbody id="signal-gates"><tr><td colspan="4" class="muted">loading…</td></tr></tbody></table>
+        <ul class="blockers" id="blockers"></ul>
+      </div>
 
       <div class="panel">
         <div class="toggle" id="toggle">
@@ -73,9 +82,9 @@
       </div>
 
       <div class="panel">
-        <h2>Drawdown</h2>
+        <h2>Account Drawdown</h2>
         <div style="height:140px"><canvas id="ddchart"></canvas></div>
-        <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">% below running high-water · dashed line = −45% kill-switch (auto-flatten)</p>
+        <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">Percent below the running high-water mark in Hyperliquid's public account history. Per-trade risk limits are shown in the strategy panel.</p>
       </div>
 
       <div class="panel">
@@ -86,254 +95,234 @@
 
       <div class="grid2">
         <div class="panel">
-          <h2>P&amp;L Attribution <span class="muted" style="font-size:0.72rem">since strategy deploy</span></h2>
-          <div style="height:300px"><canvas id="attrib"></canvas></div>
+          <h2>Open Positions (<span id="poscount">0</span>)</h2>
+          <table><thead><tr><th>Coin</th><th>Side</th><th>Notional</th><th>Expo</th><th>Entry</th><th>uPnL</th></tr></thead>
+            <tbody id="positions"></tbody></table>
         </div>
         <div class="panel">
-          <h2>Signal Health <span class="muted" style="font-size:0.72rem">momentum vs P&amp;L</span></h2>
-          <div style="height:300px"><canvas id="momscatter"></canvas></div>
-          <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">x = momentum z-score · y = position P&amp;L % · bubble = notional · the signal is working when greens sit right-and-up and reds left-and-up</p>
+          <h2>Open Orders (<span id="ordercount">0</span>)</h2>
+          <table><thead><tr><th>Coin</th><th>Side</th><th>Size</th><th>Price</th><th>Type</th></tr></thead>
+            <tbody id="orders"></tbody></table>
         </div>
       </div>
 
       <div class="grid2">
         <div class="panel">
-          <h2>Open Positions (<span id="poscount">0</span>)</h2>
-          <table><thead><tr><th>Coin</th><th>Side</th><th>Notional</th><th>Expo</th><th>Lev</th><th>Entry</th><th>uPnL</th></tr></thead>
-            <tbody id="positions"></tbody></table>
-          <p class="muted" style="font-size:0.72rem;margin:0.5rem 0 0">Expo = notional as % of account value · Lev = effective per-position leverage (notional ÷ margin used)</p>
-        </div>
-        <div class="panel">
           <h2>Recent Fills</h2>
           <table><thead><tr><th>Time</th><th>Coin</th><th>Dir</th><th>Px</th><th></th></tr></thead>
             <tbody id="fills"></tbody></table>
         </div>
+        <div class="panel">
+          <h2>Closed P&amp;L by Coin <span class="muted" style="font-size:0.72rem">recent public fills</span></h2>
+          <div style="height:300px"><canvas id="attrib"></canvas></div>
+        </div>
       </div>
 
-      <div class="panel strat">
-        <b>Strategy.</b> Market-neutral cross-sectional <b>momentum</b> across the ~40 most-liquid Hyperliquid perps:
-        long the strongest names, short the weakest, weighted by conviction (z-score) and inverse volatility, then
-        <b>beta-neutralized</b> to the market. Vol-targeted ~70% annualized, rebalanced every 6h via maker-first
-        execution with a per-position no-trade band. Risk: −45% drawdown &amp; margin kill-switches.
-        <span class="muted">Autonomous. Not investment advice; this is a personal experiment.</span>
-      </div>
+      <div class="panel strat" id="strategy-copy">Loading strategy manifest…</div>
+      <div class="panel strat scope" id="observer-scope">Loading observer scope…</div>
 
-      <footer><p><a href="/">rodiger.io</a> · data: Hyperliquid public API · <span id="addr" class="muted"></span></p></footer>
+      <footer><p><a href="/">rodiger.io</a> · exchange/account data: Hyperliquid public API · strategy contract: <a href="/api/trades">/api/trades</a> · <span id="addr" class="muted"></span></p></footer>
     </div>
 
     <script>
-      const API = "https://api.hyperliquid.xyz/info";
-      const USER = "0xd6dfe941991c554397ea2426656d396f98b3367b";
       const $ = (id) => document.getElementById(id);
-      const fmtUsd = (n, d=2) => (n<0?"-":"")+"$"+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-      const fmtPct = (n) => (n>=0?"+":"")+n.toFixed(2)+"%";
-      const cls = (n) => n>=0?"pos":"neg";
-      async function api(body){ const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const num = (value) => value===null||value===undefined||value===""?null:(Number.isFinite(Number(value))?Number(value):null);
+      const fmtUsd = (value, digits=2) => { const n=num(value); return n===null?"—":(n<0?"-":"")+"$"+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:digits,maximumFractionDigits:digits}); };
+      const fmtPct = (value, digits=2) => { const n=num(value); return n===null?"—":(n>=0?"+":"")+n.toFixed(digits)+"%"; };
+      const fmtBps = (value, digits=3) => { const n=num(value); return n===null?"—":n.toFixed(digits)+" bps"; };
+      const cls = (value) => Number(value)>=0?"pos":"neg";
+      const gate = (pass) => `<span class="${pass?"pass":"fail"}">${pass?"PASS":"WAIT"}</span>`;
 
-      let portfolio=null, chart=null, win="week";
-      let rebalAnchor=null; const REBAL_MS=6*3600*1000;   // 6h cadence; anchor inferred from last fill
+      let payload=null, portfolio=[], chart=null, ddChart=null, attribChart=null, win="week";
 
-      function card(label,val,meta,valCls){
-        return `<div class="card"><div class="label">${label}</div><div class="val ${valCls||''}">${val}</div>${meta?`<div class="meta">${meta}</div>`:""}</div>`;
+      async function statusApi(){
+        const response=await fetch("/api/trades",{cache:"no-store"});
+        const body=await response.json().catch(()=>({}));
+        if(!response.ok) throw new Error(body.message||`HTTP ${response.status}`);
+        if(body.schemaVersion!==1||!body.strategy||!body.account||!body.signal||!body.protection) throw new Error("invalid strategy status contract");
+        return body;
       }
 
-      function renderCards(state){
-        const ms=state.marginSummary, eq=+ms.accountValue, gross=+ms.totalNtlPos, mu=+ms.totalMarginUsed;
-        const positions=state.assetPositions||[];
-        const upnl=positions.reduce((a,p)=>a+ +p.position.unrealizedPnl,0);
-        // window P&L from portfolio curve
-        let wpnl=0, wpct=0, dd=0;
-        const hist=curve(win);
-        if(hist.length>1){ const f=hist[0][1], l=hist[hist.length-1][1]; wpnl=l-f; wpct=f?(l/f-1)*100:0;
-          let peak=hist[0][1]; for(const [,v] of hist){ peak=Math.max(peak,v); dd=Math.min(dd,(v-peak)/peak*100);} }
-        const lev=eq?gross/eq:0, marg=eq?mu/eq*100:0;
-        const wlabel={day:"24h",week:"7d",month:"30d",allTime:"all"}[win];
+      function card(label,value,meta,valueClass){
+        return `<div class="card"><div class="label">${label}</div><div class="val ${valueClass||""}">${value}</div>${meta?`<div class="meta">${meta}</div>`:""}</div>`;
+      }
+
+      function curve(windowName){
+        const entry=portfolio.find((row)=>row[0]===windowName);
+        return entry&&entry[1]&&Array.isArray(entry[1].accountValueHistory)
+          ? entry[1].accountValueHistory.map(([time,value])=>[+time,+value]).filter(([,value])=>value>1)
+          : [];
+      }
+
+      function renderCards(){
+        const account=payload.account, signal=payload.signal, strategy=payload.strategy, protection=payload.protection;
+        const equity=+account.accountValueUsd||0, gross=+account.totalNotionalUsd||0, margin=+account.totalMarginUsedUsd||0;
+        const hist=curve(win); let windowPnl=0, windowPct=0;
+        if(hist.length>1){ const first=hist[0][1], last=hist[hist.length-1][1]; windowPnl=last-first; windowPct=first?(last/first-1)*100:0; }
+        const upnl=(account.positions||[]).reduce((sum,p)=>sum+(+p.unrealizedPnl||0),0);
+        const label={day:"24h",week:"7d",month:"30d",allTime:"all"}[win];
+        const exposureCount=(account.positions||[]).length, orderCount=(account.openOrders||[]).length;
+        const marketPass=signal.marketRulePasses===true;
         $("cards").innerHTML=[
-          card("Account Value", fmtUsd(eq)),
-          card("P&L ("+wlabel+")", fmtUsd(wpnl), fmtPct(wpct), cls(wpnl)),
-          card("Unrealized", fmtUsd(upnl), null, cls(upnl)),
-          card("Positions", positions.length, (positions.filter(p=>+p.position.szi>0).length)+"L / "+(positions.filter(p=>+p.position.szi<0).length)+"S"),
-          card("Leverage", lev.toFixed(2)+"×", "gross "+fmtUsd(gross,0)),
-          card("Margin / DD", marg.toFixed(0)+"%", "max DD "+dd.toFixed(1)+"%", dd<-30?"neg":""),
-          card("Next Rebalance", '<span id="rebal-cd">—</span>', "every 6h"),
+          card("Account Value",fmtUsd(equity)),
+          card(`P&L (${label})`,fmtUsd(windowPnl),fmtPct(windowPct),cls(windowPnl)),
+          card("Unrealized",fmtUsd(upnl),null,cls(upnl)),
+          card("Market Rule",marketPass?"QUALIFIED":"WAIT",signal.dataComplete?"all market inputs current":"market data incomplete",marketPass?"pass":"wait"),
+          card("Risk Tier",esc(signal.riskTier||"unknown"),signal.maxAccountRiskFraction==null?"—":`${(signal.maxAccountRiskFraction*100).toFixed(0)}% account loss at stop`),
+          card("Exposure",exposureCount||orderCount?`${exposureCount} pos / ${orderCount} ord`:"FLAT",account.accountGatePasses?"account gate clear":esc((account.blockers||[]).join(", ")),account.accountGatePasses?"pos":"neg"),
+          card("Protection",protection.status==="not_required"?"NOT REQUIRED":protection.status.toUpperCase(),protection.status==="not_required"?"flat account":protection.blockers.length?esc(protection.blockers.join(", ")):`${protection.protectionOrderCount} verified triggers`,protection.status==="unprotected"?"neg":"pos"),
+          card("Leverage",equity?(gross/equity).toFixed(2)+"×":"—",`margin ${equity?(margin/equity*100).toFixed(1):"0"}%`),
+          card("Next Hour Close",'<span id="signal-cd">—</span>',`checks every ${strategy.schedule.pollSeconds}s`)
         ].join("");
+        tickSignal();
       }
 
-      function curve(w){ if(!portfolio) return []; const e=portfolio.find(x=>x[0]===w); if(!e) return [];
-        return (e[1].accountValueHistory||[]).map(([t,v])=>[t,+v]).filter(([,v])=>v>1); }  // drop spurious $0 (pre-funding) points
+      function renderSignal(){
+        const s=payload.signal, r=payload.strategy.rule;
+        const ageMinutes=s.signalAgeMs==null?null:s.signalAgeMs/60000;
+        const rows=[
+          ["Completed 6h return",fmtPct(s.r6Pct),`>${(r.minReturnExclusive*100).toFixed(0)}%`,s.r6>r.minReturnExclusive],
+          ["Post-candle funding",fmtBps(s.fundingBps),`≥${(r.minFundingRate*10000).toFixed(1)} bps`,s.fundingRate!=null&&s.fundingRate>=r.minFundingRate],
+          ["Trailing 24h volume",fmtUsd(s.dayVolumeUsd,0),`≥${fmtUsd(r.minDayVolumeUsd,0)}`,s.dayVolumeUsd>=r.minDayVolumeUsd],
+          ["Top spread",fmtBps(s.spreadBps),`≤${r.maxSpreadBps.toFixed(0)} bps`,s.spreadBps!=null&&s.spreadBps<=r.maxSpreadBps],
+          ["Signal age",ageMinutes==null?"—":ageMinutes.toFixed(1)+" min",`0–${(r.maxSignalAgeMs/60000).toFixed(0)} min`,ageMinutes!=null&&ageMinutes>=0&&s.signalAgeMs<=r.maxSignalAgeMs],
+          ["Live / signal close",s.liveVsSignal==null?"—":(s.liveVsSignal*100).toFixed(3)+"%",`${(r.minLiveVsSignal*100).toFixed(1)}–${(r.maxLiveVsSignal*100).toFixed(1)}%`,s.liveVsSignal!=null&&s.liveVsSignal>=r.minLiveVsSignal&&s.liveVsSignal<=r.maxLiveVsSignal]
+        ];
+        $("signal-gates").innerHTML=rows.map(([name,observed,required,passes])=>`<tr><td>${esc(name)}</td><td>${esc(observed)}</td><td class="muted">${esc(required)}</td><td>${gate(passes)}</td></tr>`).join("");
+        const blockers=[...(s.blockers||[]),...(payload.account.blockers||[]),...(payload.protection.status==="unprotected"?(payload.protection.blockers||[]):[])];
+        $("blockers").innerHTML=blockers.length
+          ? blockers.map((reason)=>`<li>${esc(reason)}</li>`).join("")
+          : `<li class="pass">Public market and account gates are clear. Local attempt/cooldown/process eligibility remains private to the executor.</li>`;
+      }
 
       function renderChart(){
-        const data=curve(win).map(([t,v])=>({x:t,y:v}));
-        const span = data.length>1 ? data[data.length-1].x-data[0].x : 0;
-        const multiDay = span > 36*3600*1000;   // >1.5 days -> label ticks by date, else by hour
-        const up = data.length>1 && data[data.length-1].y>=data[0].y;
-        const color = up ? "#9ece6a" : "#f7768e";
-        const ctx=$("chart").getContext("2d");
-        const grad=ctx.createLinearGradient(0,0,0,280); grad.addColorStop(0,color+"40"); grad.addColorStop(1,color+"00");
-        const cfg={ type:"line", data:{datasets:[{data,borderColor:color,backgroundColor:grad,borderWidth:2,fill:true,pointRadius:0,tension:0.25}]},
-          options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},
-            plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>fmtUsd(c.parsed.y)}}},
-            scales:{ x:{type:"time",time:{unit:multiDay?"day":"hour",displayFormats:{day:"MMM d",hour:"ha"},tooltipFormat:"MMM d, h:mm a"},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
-                     y:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>"$"+v.toFixed(0)}} } } };
-        if(chart){ chart.data=cfg.data; chart.options=cfg.options; chart.update("none"); } else { chart=new Chart(ctx,cfg); }
+        const data=curve(win).map(([x,y])=>({x,y}));
+        const span=data.length>1?data[data.length-1].x-data[0].x:0;
+        const multiDay=span>36*3600*1000;
+        const up=data.length<2||data[data.length-1].y>=data[0].y;
+        const color=up?"#9ece6a":"#f7768e";
+        const context=$("chart").getContext("2d");
+        const gradient=context.createLinearGradient(0,0,0,280); gradient.addColorStop(0,color+"40"); gradient.addColorStop(1,color+"00");
+        const config={type:"line",data:{datasets:[{data,borderColor:color,backgroundColor:gradient,borderWidth:2,fill:true,pointRadius:0,tension:0.25}]},options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>fmtUsd(c.parsed.y)}}},scales:{x:{type:"time",time:{unit:multiDay?"day":"hour",displayFormats:{day:"MMM d",hour:"ha"},tooltipFormat:"MMM d, h:mm a"},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},y:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(value)=>"$"+value.toFixed(0)}}}}};
+        if(chart){ chart.data=config.data; chart.options=config.options; chart.update("none"); } else chart=new Chart(context,config);
       }
 
-      function renderExposure(state){
-        const ps=state.assetPositions||[];
-        const long=ps.filter(p=>+p.position.szi>0).reduce((a,p)=>a+ +p.position.positionValue,0);
-        const short=ps.filter(p=>+p.position.szi<0).reduce((a,p)=>a+ +p.position.positionValue,0);
-        const tot=long+short||1;
-        $("expo").innerHTML=`<div class="long" style="width:${long/tot*100}%"></div><div class="short" style="width:${short/tot*100}%"></div>`;
+      function renderDrawdown(){
+        const points=curve("allTime");
+        const data=[]; let peak=null;
+        for(const [x,value] of points){ peak=peak===null?value:Math.max(peak,value); data.push({x,y:(value/peak-1)*100}); }
+        const config={
+          type:"line",
+          data:{datasets:[{data,borderColor:"#f7768e",backgroundColor:"rgba(247,118,142,0.18)",borderWidth:1.5,fill:"origin",pointRadius:0,tension:0.2}]},
+          options:{
+            responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>c.parsed.y.toFixed(1)+"%"}}},
+            scales:{
+              x:{type:"time",time:{unit:"day",displayFormats:{day:"MMM d"}},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
+              y:{max:1,grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(value)=>value+"%"}}
+            }
+          }
+        };
+        const context=$("ddchart").getContext("2d");
+        if(ddChart){ ddChart.data=config.data; ddChart.options=config.options; ddChart.update("none"); } else ddChart=new Chart(context,config);
+      }
+
+      function renderExposure(){
+        const positions=payload.account.positions||[];
+        const long=positions.filter((p)=>+p.szi>0).reduce((sum,p)=>sum+(+p.positionValue||0),0);
+        const short=positions.filter((p)=>+p.szi<0).reduce((sum,p)=>sum+(+p.positionValue||0),0);
+        const total=long+short;
+        $("expo").innerHTML=total?`<div class="long" style="width:${long/total*100}%"></div><div class="short" style="width:${short/total*100}%"></div>`:"";
         $("expo-long").textContent="long "+fmtUsd(long,0);
-        $("expo-net").innerHTML="net "+`<span class="${cls(long-short)}">`+fmtUsd(long-short,0)+"</span>";
+        $("expo-net").innerHTML="net "+`<span class="${cls(long-short)}">${fmtUsd(long-short,0)}</span>`;
         $("expo-short").textContent=fmtUsd(short,0)+" short";
       }
 
-      function renderPositions(state){
-        const eq=+state.marginSummary.accountValue||0;
-        const ps=(state.assetPositions||[]).map(p=>p.position)
-          .sort((a,b)=> +b.positionValue - +a.positionValue);
-        $("poscount").textContent=ps.length;
-        $("positions").innerHTML=ps.map(p=>{ const long=+p.szi>0, u=+p.unrealizedPnl;
-          const pv=+p.positionValue, mu=+p.marginUsed;
-          const expo=eq?pv/eq*100:0, lev=mu>0?pv/mu:0;
-          return `<tr><td>${p.coin}</td><td><span class="tag ${long?'L':'S'}">${long?'LONG':'SHORT'}</span></td>
-            <td>${fmtUsd(pv,0)}</td><td class="muted">${expo.toFixed(1)}%</td><td class="muted">${lev?lev.toFixed(1)+"×":"—"}</td>
-            <td class="muted">${(+p.entryPx).toPrecision(5)}</td>
-            <td class="${cls(u)}">${fmtUsd(u)}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">no open positions</td></tr>`;
+      function renderPositions(){
+        const equity=+payload.account.accountValueUsd||0;
+        const rows=(payload.account.positions||[]).slice().sort((a,b)=>(+b.positionValue||0)-(+a.positionValue||0));
+        $("poscount").textContent=rows.length;
+        $("positions").innerHTML=rows.map((p)=>{ const long=+p.szi>0, pnl=+p.unrealizedPnl||0, expo=equity?(+p.positionValue||0)/equity*100:0;
+          return `<tr><td>${esc(p.coin)}</td><td><span class="tag ${long?"L":"S"}">${long?"LONG":"SHORT"}</span></td><td>${fmtUsd(p.positionValue,0)}</td><td class="muted">${expo.toFixed(1)}%</td><td class="muted">${p.entryPx==null?"—":esc((+p.entryPx).toPrecision(6))}</td><td class="${cls(pnl)}">${fmtUsd(pnl)}</td></tr>`; }).join("")||`<tr><td colspan="6" class="muted">flat — no open positions</td></tr>`;
       }
 
-      function renderFills(fills){
-        const rows=(fills||[]).slice().sort((a,b)=>b.time-a.time).slice(0,14);
-        $("fills").innerHTML=rows.map(f=>{ const t=new Date(f.time);
-          const time=t.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-          const maker=!f.crossed;
-          return `<tr><td class="muted">${time}</td><td>${f.coin}</td><td class="muted">${f.dir||""}</td>
-            <td class="muted">${(+f.px).toPrecision(5)}</td>
-            <td><span class="tag ${maker?'mk':'tk'}">${maker?'maker':'taker'}</span></td></tr>`; }).join("")
-          || `<tr><td colspan="5" class="muted">no fills</td></tr>`;
+      function renderOrders(){
+        const rows=payload.account.openOrders||[];
+        $("ordercount").textContent=rows.length;
+        $("orders").innerHTML=rows.map((order)=>`<tr><td>${esc(order.coin)}</td><td>${esc(order.side)}</td><td>${esc(order.sz??"—")}</td><td>${esc(order.triggerPx??order.limitPx??"—")}</td><td class="muted">${esc(order.orderType|| (order.reduceOnly?"reduce-only":"limit"))}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">no open orders</td></tr>`;
       }
 
-      const DEPLOY=1781098603000;   // momentum strategy deploy (2026-06-10 13:36Z)
-      let ddChart=null, attribChart=null, momChart=null, momCache=null;
-
-      function renderUnderwater(){
-        const pts=curve("allTime"); if(pts.length<2) return;
-        let peak=pts[0][1];
-        const dd=pts.map(([t,v])=>{ peak=Math.max(peak,v); return {x:t,y:(v/peak-1)*100}; });
-        const kill=[{x:dd[0].x,y:-45},{x:dd[dd.length-1].x,y:-45}];
-        const ctx=$("ddchart").getContext("2d");
-        const cfg={type:"line",data:{datasets:[
-            {data:dd,borderColor:"#f7768e",backgroundColor:"rgba(247,118,142,0.18)",borderWidth:1.5,fill:"origin",pointRadius:0,tension:0.2},
-            {data:kill,borderColor:"#e0af68",borderWidth:1,borderDash:[6,4],pointRadius:0,fill:false}]},
-          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
-            tooltip:{filter:(c)=>c.datasetIndex===0,callbacks:{label:(c)=>c.parsed.y.toFixed(1)+"%"}}},
-            scales:{x:{type:"time",time:{unit:"day",displayFormats:{day:"MMM d"}},grid:{color:"#292e43"},ticks:{color:"#565f89",maxTicksLimit:6}},
-                    y:{min:-50,max:2,grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>v+"%"}}}}};
-        if(ddChart){ ddChart.data=cfg.data; ddChart.update("none"); } else ddChart=new Chart(ctx,cfg);
+      function renderFills(){
+        const rows=(payload.account.fills||[]).slice(0,14);
+        $("fills").innerHTML=rows.map((fill)=>{ const time=new Date(fill.time).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); const maker=!fill.crossed;
+          return `<tr><td class="muted">${esc(time)}</td><td>${esc(fill.coin)}</td><td class="muted">${esc(fill.dir)}</td><td class="muted">${fill.px==null?"—":esc((+fill.px).toPrecision(6))}</td><td><span class="tag ${maker?"mk":"tk"}">${maker?"maker":"taker"}</span></td></tr>`; }).join("")||`<tr><td colspan="5" class="muted">no recent fills</td></tr>`;
       }
 
-      function renderAttribution(state, fills){
-        const real={}, fee={};
-        for(const f of fills||[]){ if(f.time<DEPLOY) continue;
-          real[f.coin]=(real[f.coin]||0)+(+f.closedPnl||0); fee[f.coin]=(fee[f.coin]||0)+(+f.fee||0); }
-        const unre={};
-        for(const ap of state.assetPositions||[]){ const p=ap.position; unre[p.coin]=+p.unrealizedPnl; }
-        const coins=[...new Set([...Object.keys(real),...Object.keys(unre)])]
-          .map(c=>({c, r:(real[c]||0)-(fee[c]||0), u:unre[c]||0}))
-          .map(o=>({...o, tot:o.r+o.u}))
-          .sort((a,b)=>b.tot-a.tot);
-        const show=coins.length>16?[...coins.slice(0,8),...coins.slice(-8)]:coins;
-        const ctx=$("attrib").getContext("2d");
-        const cfg={type:"bar",data:{labels:show.map(o=>o.c),datasets:[
-            {label:"realized (net of fees)",data:show.map(o=>o.r),backgroundColor:"rgba(125,207,255,0.55)",stack:"s"},
-            {label:"unrealized",data:show.map(o=>o.u),backgroundColor:show.map(o=>o.u>=0?"rgba(158,206,106,0.6)":"rgba(247,118,142,0.55)"),stack:"s"}]},
-          options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{labels:{color:"#565f89",boxWidth:10,font:{size:10}}},
-              tooltip:{callbacks:{label:(c)=>c.dataset.label+": "+fmtUsd(c.parsed.x)}}},
-            scales:{x:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(v)=>"$"+v}},
-                    y:{stacked:true,grid:{display:false},ticks:{color:"#c0caf5",font:{size:10}}}}}};
-        if(attribChart){ attribChart.data=cfg.data; attribChart.update("none"); } else attribChart=new Chart(ctx,cfg);
+      function renderAttribution(){
+        const byCoin={};
+        for(const fill of payload.account.fills||[]){ byCoin[fill.coin]=(byCoin[fill.coin]||0)+(+fill.closedPnl||0)-(+fill.fee||0); }
+        const rows=Object.entries(byCoin).map(([coin,value])=>({coin,value})).sort((a,b)=>b.value-a.value);
+        const shown=rows.length>16?[...rows.slice(0,8),...rows.slice(-8)]:rows;
+        const config={
+          type:"bar",
+          data:{labels:shown.map((row)=>row.coin),datasets:[{data:shown.map((row)=>row.value),backgroundColor:shown.map((row)=>row.value>=0?"rgba(158,206,106,0.6)":"rgba(247,118,142,0.55)")}]},
+          options:{
+            indexAxis:"y",responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>fmtUsd(c.parsed.x)}}},
+            scales:{
+              x:{grid:{color:"#292e43"},ticks:{color:"#565f89",callback:(value)=>"$"+value}},
+              y:{grid:{display:false},ticks:{color:"#c0caf5",font:{size:10}}}
+            }
+          }
+        };
+        const context=$("attrib").getContext("2d");
+        if(attribChart){ attribChart.data=config.data; attribChart.options=config.options; attribChart.update("none"); } else attribChart=new Chart(context,config);
       }
 
-      async function loadMomentum(state){
-        // fetch ~15 days of hourly candles per held coin ONCE per page load; compute the
-        // strategy's ensemble z-score cross-sectionally over held coins
-        if(momCache) return momCache;
-        const ps=(state.assetPositions||[]).map(p=>p.position);
-        const now=Date.now(), start=now-360*3600*1000;
-        const out=[];
-        const series=await Promise.all(ps.map(p=>
-          api({type:"candleSnapshot",req:{coin:p.coin,interval:"1h",startTime:start}}).catch(()=>null)));
-        const closes=series.map(s=>s?s.map(x=>+x.c):null);
-        const M=Math.min(...closes.filter(Boolean).map(s=>s.length));
-        if(!(M>337)) return null;
-        const LBS=[72,168,336];
-        const moms=LBS.map(LB=>closes.map(s=>s?(s[s.length-1]/s[s.length-1-LB]-1):null));
-        const z=ps.map((_,i)=>0).map((_,i)=>{
-          let sum=0;
-          for(const m of moms){ const vals=m.filter(v=>v!==null);
-            const mu=vals.reduce((a,b)=>a+b,0)/vals.length;
-            const sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mu)**2,0)/vals.length)||1;
-            sum+=Math.max(-3,Math.min(3,((m[i]??mu)-mu)/sd)); }
-          return sum/LBS.length; });
-        momCache=ps.map((p,i)=>({coin:p.coin,z:z[i]}));
-        return momCache;
+      function renderStrategy(){
+        const s=payload.strategy, r=s.rule, e=s.execution, risk=s.risk;
+        $("strategy-copy").innerHTML=`<b>Active strategy.</b> <b>${esc(s.name)}</b> (<code>${esc(s.version)}</code>). After each completed hourly ZEC candle, short only when the six-hour return is strictly above ${(r.minReturnExclusive*100).toFixed(0)}%, the immediately following settled funding is at least ${(r.minFundingRate*10000).toFixed(1)} bps, trailing dollar volume is at least ${fmtUsd(r.minDayVolumeUsd,0)}, spread is at most ${r.maxSpreadBps} bps, signal age is at most ${r.maxSignalAgeMs/60000} minutes, and live/close is within ${(r.minLiveVsSignal*100).toFixed(1)}–${(r.maxLiveVsSignal*100).toFixed(1)}%. <b>Execution:</b> bounded IOC, at most ${e.maxEntryAttempts} attempts, ${e.entrySlippageBps} bps entry slippage cap, ${e.exitSlippageBps} bps exit slippage cap, ${e.roundTripRiskAllowanceBps} bps round-trip risk allowance, ${(e.takeProfitBps/100).toFixed(1)}% take-profit, ${(e.stopLossBps/100).toFixed(1)}% stop, ${e.maxHoldHours}h maximum hold. <b>Risk:</b> ${(risk.baseAccountRiskFraction*100).toFixed(0)}% modeled account loss at the stop, rising to ${(risk.strongAccountRiskFraction*100).toFixed(0)}% only when six-hour return is strictly above ${(risk.strongReturnExclusive*100).toFixed(0)}%; funding strength never increases size. Personal experiment, not investment advice.`;
+        $("observer-scope").innerHTML=`<b>Observer scope.</b> This page verifies the strategy manifest and public Hyperliquid account, order, fill, candle, funding, and book state. Local executor, timed-exit supervisor, attempt/cooldown files, locks, and daemon health are <b>not publicly observable</b>; exchange freshness must not be read as proof those local services are healthy. Service states: executor <code>${esc(payload.services.executor)}</code>, timed exit <code>${esc(payload.services.timedExit)}</code>, research monitor <code>${esc(payload.services.researchMonitor)}</code>.`;
       }
 
-      async function renderMomentum(state){
-        const zs=await loadMomentum(state); if(!zs) return;
-        const zmap=Object.fromEntries(zs.map(o=>[o.coin,o.z]));
-        const pts=(state.assetPositions||[]).map(ap=>{ const p=ap.position;
-          const long=+p.szi>0, pv=+p.positionValue;
-          return {x:zmap[p.coin]??0, y:pv?(+p.unrealizedPnl)/pv*100:0, r:Math.max(4,Math.sqrt(pv)/2.2),
-                  coin:p.coin, long}; });
-        const ctx=$("momscatter").getContext("2d");
-        const cfg={type:"bubble",data:{datasets:[
-            {label:"long",data:pts.filter(p=>p.long),backgroundColor:"rgba(158,206,106,0.55)",borderColor:"#9ece6a",borderWidth:1},
-            {label:"short",data:pts.filter(p=>!p.long),backgroundColor:"rgba(247,118,142,0.5)",borderColor:"#f7768e",borderWidth:1}]},
-          options:{responsive:true,maintainAspectRatio:false,
-            plugins:{legend:{labels:{color:"#565f89",boxWidth:10,font:{size:10}}},
-              tooltip:{callbacks:{label:(c)=>`${c.raw.coin}: z ${c.raw.x.toFixed(2)}, pnl ${c.raw.y.toFixed(2)}%`}}},
-            scales:{x:{title:{display:true,text:"momentum z",color:"#565f89",font:{size:10}},
-                       grid:{color:(c)=>c.tick.value===0?"#565f89":"#292e43"},ticks:{color:"#565f89"}},
-                    y:{title:{display:true,text:"uPnL %",color:"#565f89",font:{size:10}},
-                       grid:{color:(c)=>c.tick.value===0?"#565f89":"#292e43"},ticks:{color:"#565f89",callback:(v)=>v+"%"}}}}};
-        if(momChart){ momChart.data=cfg.data; momChart.update("none"); } else momChart=new Chart(ctx,cfg);
+      function renderAll(){
+        portfolio=payload.account.portfolio||[];
+        renderCards(); renderSignal(); renderChart(); renderDrawdown(); renderExposure(); renderPositions(); renderOrders(); renderFills(); renderAttribution(); renderStrategy();
+        $("addr").textContent=payload.account.address.slice(0,6)+"…"+payload.account.address.slice(-4);
+        const ageSeconds=Math.max(0,Math.round((Date.now()-Date.parse(payload.generatedAt))/1000));
+        const sourceOk=payload.sources&&payload.sources.hyperliquidPublicApi==="ok";
+        const sourceErrors=payload.sources&&payload.sources.errors?Object.keys(payload.sources.errors):[];
+        $("sub").innerHTML=`<span class="${sourceOk?"live":"stale"}">● public exchange data ${sourceOk?"live":"partial"}</span>${sourceErrors.length?` (${esc(sourceErrors.join(", "))})`:""} · ${esc(payload.strategy.name)} · ${ageSeconds}s old · local daemon health not publicly observable`;
       }
 
-      function setActive(){ document.querySelectorAll("#toggle button").forEach(b=>b.classList.toggle("on",b.dataset.w===win)); }
+      function renderUnavailable(error){
+        $("sub").innerHTML=`<span class="error">● strategy status unavailable: ${esc(error.message)}</span> · retrying; no stale strategy is being shown`;
+        $("cards").innerHTML=card("Dashboard Status","UNAVAILABLE","/api/trades failed","neg");
+        $("signal-gates").innerHTML=`<tr><td colspan="4" class="fail">Current strategy contract or public exchange state could not be verified.</td></tr>`;
+        $("blockers").innerHTML=`<li>${esc(error.message)}</li>`;
+        $("strategy-copy").innerHTML="<b>Fail closed.</b> Strategy details are hidden until the versioned status contract is available.";
+        $("observer-scope").innerHTML="<b>Observer scope.</b> Local daemon health is never inferred from this page.";
+      }
 
       async function load(){
-        try{
-          const [state, pf, fills] = await Promise.all([
-            api({type:"clearinghouseState",user:USER}),
-            api({type:"portfolio",user:USER}),
-            api({type:"userFills",user:USER}),
-          ]);
-          portfolio=pf;
-          if(fills&&fills.length) rebalAnchor=Math.max(...fills.map(f=>f.time));  // last rebalance ~ latest fill
-          renderCards(state); renderChart(); renderExposure(state); renderPositions(state); renderFills(fills);
-          renderUnderwater(); renderAttribution(state, fills); renderMomentum(state);
-          tickRebal();
-          $("addr").textContent=USER.slice(0,6)+"…"+USER.slice(-4);
-          $("sub").innerHTML=`<span class="live">● live</span> · cross-sectional momentum on Hyperliquid · updated ${new Date().toLocaleTimeString()}`;
-        }catch(e){
-          $("sub").innerHTML=`<span class="err">● error: ${e.message}</span> · retrying…`;
-        }
+        try{ payload=await statusApi(); renderAll(); }
+        catch(error){ payload=null; renderUnavailable(error); }
       }
-      // countdown to next rebalance: project the 6h grid forward from the last fill (public-data inference)
-      function tickRebal(){
-        const el=$("rebal-cd"); if(!el) return;
-        if(!rebalAnchor){ el.textContent="—"; return; }
-        const now=Date.now(); let next=rebalAnchor+Math.ceil((now-rebalAnchor)/REBAL_MS)*REBAL_MS;
-        while(next<=now) next+=REBAL_MS;
-        let s=Math.floor((next-now)/1000);
-        const h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60, p=(x)=>String(x).padStart(2,"0");
-        el.textContent=`${p(h)}:${p(m)}:${p(ss)}`;
+
+      function tickSignal(){
+        const element=$("signal-cd"); if(!element||!payload) return;
+        const target=+payload.signal.nextSignalCandleCloseAtMs;
+        if(!target){ element.textContent="—"; return; }
+        const seconds=Math.max(0,Math.floor((target-Date.now())/1000));
+        const hours=Math.floor(seconds/3600), minutes=Math.floor(seconds%3600/60), remainder=seconds%60;
+        const pad=(value)=>String(value).padStart(2,"0");
+        element.textContent=`${pad(hours)}:${pad(minutes)}:${pad(remainder)}`;
       }
-      document.querySelectorAll("#toggle button").forEach(b=>b.addEventListener("click",()=>{win=b.dataset.w; setActive(); if(portfolio){renderChart(); load();}}));
-      setActive(); load(); setInterval(load, 60000); setInterval(tickRebal, 1000);
+
+      function setActive(){ document.querySelectorAll("#toggle button").forEach((button)=>button.classList.toggle("on",button.dataset.w===win)); }
+      document.querySelectorAll("#toggle button").forEach((button)=>button.addEventListener("click",()=>{ win=button.dataset.w; setActive(); if(payload){ renderCards(); renderChart(); } }));
+      setActive(); load(); setInterval(load,30000); setInterval(tickSignal,1000);
     </script>
   </body>
 </html>

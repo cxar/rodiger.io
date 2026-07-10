@@ -1,0 +1,6 @@
+target/
+.git/
+.vercel/
+.DS_Store
+.env*
+credentials.json

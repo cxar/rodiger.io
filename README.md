@@ -6,6 +6,10 @@
 **Routes**
 - `/` → renders the Google Doc from `ROOT_DOC_ID`.
 - `/g/:id/:slug*` → static page per linked Google Doc.
+- `/trades` → active Hyperliquid strategy dashboard.
+- `/api/trades` → versioned, secret-free strategy/account/signal JSON assembled from the public Hyperliquid API.
+
+The tracked strategy manifest at `config/hyperliquid-live-strategy.json` is the dashboard's single source of truth for rule, execution, and risk constants. The API reports local executor/supervisor health as `not_publicly_observable`; it never infers daemon health from fresh exchange data.
 
 **Environment Variables**
 - `ROOT_DOC_ID` — Google Doc ID for the homepage.
