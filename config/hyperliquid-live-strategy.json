@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "zec-positive-funding-pump-fade",
-  "version": "zec-positive-funding-pump-fade-v4-tp250-r6tier20",
+  "version": "zec-positive-funding-pump-fade-v5-tp250-r6gt5only-r3cooldown",
   "name": "ZEC positive-funding pump fade",
   "mode": "live",
   "venue": "Hyperliquid",
@@ -17,6 +17,7 @@
   "rule": {
     "returnLookbackHours": 6,
     "minReturnExclusive": 0.03,
+    "liveEntryMinReturnExclusive": 0.05,
     "minFundingRate": 0.00002,
     "minDayVolumeUsd": 1000000,
     "maxSpreadBps": 5,
@@ -34,10 +35,11 @@
     "maxEntryChaseBps": 20,
     "entrySlippageBps": 15,
     "exitSlippageBps": 50,
-    "roundTripRiskAllowanceBps": 83
+    "roundTripRiskAllowanceBps": 83,
+    "ordinarySignalsSubmitOrders": false
   },
   "risk": {
-    "baseAccountRiskFraction": 0.15,
+    "baseAccountRiskFraction": 0,
     "strongReturnExclusive": 0.05,
     "strongAccountRiskFraction": 0.2,
     "executorRiskCeilingFraction": 0.2,
@@ -47,6 +49,7 @@
     "pollSeconds": 60,
     "signalCadenceHours": 1,
     "fundingSettlementGraceMs": 120000,
-    "exactSignalCooldownHours": 12
+    "exactSignalCooldownHours": 12,
+    "regimeCooldownIncludesOrdinarySignals": true
   }
 }

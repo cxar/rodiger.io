@@ -9,7 +9,7 @@ curl -fsSL https://sh.rustup.rs | sh -s -- \
   --profile minimal \
   --default-toolchain stable
 
-source "$CARGO_HOME/env"
+source "${CARGO_HOME:-$HOME/.cargo}/env"
 cargo --version
 cargo run --release --bin sitegen
 node scripts/fetch-dune.js

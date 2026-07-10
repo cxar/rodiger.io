@@ -19,12 +19,13 @@ const vercelBuild = fs.readFileSync(new URL('./build-vercel.sh', import.meta.url
 const vercelIgnore = fs.readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8');
 
 assert.equal(manifest.schemaVersion, 1);
-assert.equal(manifest.version, 'zec-positive-funding-pump-fade-v4-tp250-r6tier20');
+assert.equal(manifest.version, 'zec-positive-funding-pump-fade-v5-tp250-r6gt5only-r3cooldown');
 assert.equal(manifest.symbol, 'ZEC');
 assert.equal(manifest.side, 'short');
 assert.equal(manifest.accounting.baselineEquityUsd, 630.617157);
 assert.equal(manifest.accounting.cashFlowCutoffMs, 1780668248226);
 assert.equal(manifest.rule.minReturnExclusive, 0.03);
+assert.equal(manifest.rule.liveEntryMinReturnExclusive, 0.05);
 assert.equal(manifest.rule.minFundingRate, 0.00002);
 assert.equal(manifest.rule.maxSpreadBps, 5);
 assert.equal(manifest.execution.takeProfitBps, 250);
@@ -33,9 +34,11 @@ assert.equal(manifest.execution.maxHoldHours, 6);
 assert.equal(manifest.execution.entrySlippageBps, 15);
 assert.equal(manifest.execution.exitSlippageBps, 50);
 assert.equal(manifest.execution.roundTripRiskAllowanceBps, 83);
-assert.equal(manifest.risk.baseAccountRiskFraction, 0.15);
+assert.equal(manifest.execution.ordinarySignalsSubmitOrders, false);
+assert.equal(manifest.risk.baseAccountRiskFraction, 0);
 assert.equal(manifest.risk.strongReturnExclusive, 0.05);
 assert.equal(manifest.risk.strongAccountRiskFraction, 0.2);
+assert.equal(manifest.schedule.regimeCooldownIncludesOrdinarySignals, true);
 
 const latestStart = 50 * HOUR_MS;
 const nowMs = latestStart + HOUR_MS + 60_000;
@@ -57,18 +60,21 @@ function book(mid = 104, spreadBps = 2) {
 
 const passing = evaluateMarketSignal({ candleRows: candles(), fundingRows: funding(), book: book(), nowMs });
 assert.equal(passing.dataComplete, true);
-assert.equal(passing.marketRulePasses, true);
-assert.equal(passing.riskTier, 'base');
-assert.equal(passing.maxAccountRiskFraction, 0.15);
+assert.equal(passing.regimeRulePasses, true);
+assert.equal(passing.marketRulePasses, false);
+assert.equal(passing.riskTier, 'virtual_regime_only');
+assert.equal(passing.maxAccountRiskFraction, 0);
 
 const strong = evaluateMarketSignal({ candleRows: candles(106), fundingRows: funding(), book: book(106), nowMs });
 assert.equal(strong.marketRulePasses, true);
+assert.equal(strong.regimeRulePasses, true);
 assert.equal(strong.riskTier, 'strong_r6');
 assert.equal(strong.maxAccountRiskFraction, 0.2);
 
 const exactThreshold = evaluateMarketSignal({ candleRows: candles(103), fundingRows: funding(), book: book(103), nowMs });
 assert.equal(exactThreshold.marketRulePasses, false, 'the 3% return gate must remain strictly greater-than');
-assert.ok(exactThreshold.blockers.some((reason) => reason.includes('not above 3%')));
+assert.equal(exactThreshold.regimeRulePasses, false, 'the 3% regime gate must remain strictly greater-than');
+assert.ok(exactThreshold.regimeBlockers.some((reason) => reason.includes('not above 3%')));
 
 const missingFunding = evaluateMarketSignal({ candleRows: candles(), fundingRows: [], book: book(), nowMs });
 assert.equal(missingFunding.dataComplete, false);
@@ -128,7 +134,8 @@ assert.equal(
   contract.account.performance.lifetimeTradingReturnPct,
   ((450 - 630.617157) / 630.617157) * 100
 );
-assert.equal(contract.signal.marketRulePasses, true);
+assert.equal(contract.signal.regimeRulePasses, true);
+assert.equal(contract.signal.marketRulePasses, false);
 assert.equal(contract.signal.executionEligibility, null);
 assert.equal(contract.protection.status, 'not_required');
 assert.equal(contract.status.observerScope, 'public_exchange_only');
