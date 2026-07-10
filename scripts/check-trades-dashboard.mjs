@@ -10,6 +10,7 @@ const {
   flattenOrders,
   evaluateProtection,
   evaluateMarketSignal,
+  accountPerformance,
   buildPublicStatus
 } = require('../lib/hyperliquid-strategy.js');
 const html = fs.readFileSync(new URL('../pages/trades/index.html', import.meta.url), 'utf8');
@@ -21,6 +22,8 @@ assert.equal(manifest.schemaVersion, 1);
 assert.equal(manifest.version, 'zec-positive-funding-pump-fade-v4-tp250-r6tier20');
 assert.equal(manifest.symbol, 'ZEC');
 assert.equal(manifest.side, 'short');
+assert.equal(manifest.accounting.baselineEquityUsd, 630.617157);
+assert.equal(manifest.accounting.cashFlowCutoffMs, 1780668248226);
 assert.equal(manifest.rule.minReturnExclusive, 0.03);
 assert.equal(manifest.rule.minFundingRate, 0.00002);
 assert.equal(manifest.rule.maxSpreadBps, 5);
@@ -105,6 +108,7 @@ const publicPayloads = {
   frontendOpenOrders: [],
   portfolio: [],
   userFills: [],
+  userNonFundingLedgerUpdates: [],
   candleSnapshot: candles(),
   fundingHistory: funding(),
   l2Book: book()
@@ -117,6 +121,13 @@ const contract = await buildPublicStatus({ nowMs, fetchImpl: mockFetch });
 assert.equal(contract.schemaVersion, 1);
 assert.equal(contract.strategy.version, manifest.version);
 assert.equal(contract.account.address, manifest.accountAddress);
+assert.equal(contract.account.performance.status, 'reconciled');
+assert.equal(contract.account.performance.subsequentCashFlowCount, 0);
+assert.equal(contract.account.performance.lifetimeTradingPnlUsd, 450 - 630.617157);
+assert.equal(
+  contract.account.performance.lifetimeTradingReturnPct,
+  ((450 - 630.617157) / 630.617157) * 100
+);
 assert.equal(contract.signal.marketRulePasses, true);
 assert.equal(contract.signal.executionEligibility, null);
 assert.equal(contract.protection.status, 'not_required');
@@ -124,6 +135,18 @@ assert.equal(contract.status.observerScope, 'public_exchange_only');
 assert.equal(contract.status.localDaemonHealth, 'not_publicly_observable');
 assert.equal(contract.services.executor, 'not_publicly_observable');
 assert.ok(!JSON.stringify(contract).toLowerCase().includes('privatekey'));
+
+const cashFlowFault = accountPerformance(450, [{
+  time: manifest.accounting.cashFlowCutoffMs + 1,
+  delta: { type: 'send', usdcValue: '1' }
+}]);
+assert.equal(cashFlowFault.status, 'cash_flow_reconciliation_required');
+assert.equal(cashFlowFault.subsequentCashFlowCount, 1);
+assert.equal(cashFlowFault.lifetimeTradingPnlUsd, null);
+assert.match(cashFlowFault.blocker, /occurred after the accounting baseline/);
+const cashFlowUnavailable = accountPerformance(450, null, 'HTTP 503');
+assert.equal(cashFlowUnavailable.status, 'unavailable');
+assert.match(cashFlowUnavailable.blocker, /cash-flow source unavailable/);
 
 const missingAccountFetch = async (_url, options) => {
   const request = JSON.parse(options.body);
@@ -136,6 +159,7 @@ await assert.rejects(
 );
 
 assert.ok(html.includes('fetch("/api/trades"'), 'dashboard must consume the versioned public status endpoint');
+assert.ok(html.includes('Live Trading P&L'), 'dashboard must show cash-flow-gated lifetime trading performance');
 assert.ok(html.includes('no stale strategy is being shown'), 'dashboard failures must be visible and must not render stale strategy copy');
 for (const staleCopy of ['cross-sectional momentum', 'maker-first', 'Next Rebalance', '−45% kill-switch']) {
   assert.ok(!html.includes(staleCopy), `dashboard must not retain retired copy: ${staleCopy}`);

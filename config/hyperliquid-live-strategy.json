@@ -8,6 +8,12 @@
   "accountAddress": "0xd6dfe941991c554397ea2426656d396f98b3367b",
   "symbol": "ZEC",
   "side": "short",
+  "accounting": {
+    "baselineEquityUsd": 630.617157,
+    "baselineLabel": "first deployment epoch",
+    "cashFlowCutoffMs": 1780668248226,
+    "cashFlowCutoffAt": "2026-06-05T14:04:08.226Z"
+  },
   "rule": {
     "returnLookbackHours": 6,
     "minReturnExclusive": 0.03,

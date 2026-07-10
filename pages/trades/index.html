@@ -158,6 +158,7 @@
       function renderCards(){
         const account=payload.account, signal=payload.signal, strategy=payload.strategy, protection=payload.protection;
         const equity=+account.accountValueUsd||0, gross=+account.totalNotionalUsd||0, margin=+account.totalMarginUsedUsd||0;
+        const performance=account.performance||{}, lifetimeReady=performance.status==="reconciled";
         const hist=curve(win); let windowPnl=0, windowPct=0;
         if(hist.length>1){ const first=hist[0][1], last=hist[hist.length-1][1]; windowPnl=last-first; windowPct=first?(last/first-1)*100:0; }
         const upnl=(account.positions||[]).reduce((sum,p)=>sum+(+p.unrealizedPnl||0),0);
@@ -166,6 +167,7 @@
         const marketPass=signal.marketRulePasses===true;
         $("cards").innerHTML=[
           card("Account Value",fmtUsd(equity)),
+          card("Live Trading P&L",lifetimeReady?fmtUsd(performance.lifetimeTradingPnlUsd):"UNAVAILABLE",lifetimeReady?`${fmtPct(performance.lifetimeTradingReturnPct)} · since ${esc(performance.baselineLabel||"baseline")}`:esc(performance.blocker||"accounting reconciliation unavailable"),lifetimeReady?cls(performance.lifetimeTradingPnlUsd):"neg"),
           card(`P&L (${label})`,fmtUsd(windowPnl),fmtPct(windowPct),cls(windowPnl)),
           card("Unrealized",fmtUsd(upnl),null,cls(upnl)),
           card("Market Rule",marketPass?"QUALIFIED":"WAIT",signal.dataComplete?"all market inputs current":"market data incomplete",marketPass?"pass":"wait"),
