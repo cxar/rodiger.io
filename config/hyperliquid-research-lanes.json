@@ -1,8 +1,8 @@
 {
   "schema": "rodiger.hyperliquid.research_lanes",
   "schemaVersion": 1,
-  "publishedAt": "2026-07-14T12:39:30.312Z",
-  "publishedAtMs": 1784032770312,
+  "publishedAt": "2026-07-14T12:47:57.311Z",
+  "publishedAtMs": 1784033277311,
   "staleAfterMs": 7200000,
   "observerScope": "published_local_snapshot",
   "localDaemonHealth": "not_publicly_observable",
@@ -75,7 +75,7 @@
       "operationalStatus": "failed_closed",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784032759800,
+      "observedAtMs": 1784033269809,
       "firstDecisionBoundaryMs": 1783710171861,
       "strategyCount": 3,
       "evidence": {
@@ -103,7 +103,7 @@
       "operationalStatus": "running_flat",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784032524260,
+      "observedAtMs": 1784033124628,
       "firstDecisionBoundaryMs": 1783661100000,
       "strategyCount": 2,
       "evidence": {
@@ -128,14 +128,14 @@
       "paperOnly": true,
       "liveApproved": false,
       "promotionApproved": false,
-      "operationalStatus": "running_predecision",
+      "operationalStatus": "paper_position_open",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784032769283,
+      "observedAtMs": 1784033275147,
       "firstDecisionBoundaryMs": 1784033100000,
       "strategyCount": 2,
       "evidence": {
-        "decisions": 0,
+        "decisions": 1,
         "terminals": 0,
         "failedClosed": false,
         "coverageGapOpen": false,
@@ -144,7 +144,7 @@
       "source": {
         "manifestIdentityValid": true,
         "manifestSha256": "21aad482c0a59ad12bcac10aa851193332c5d567304b29d5d132406748a8a874",
-        "stateMaterialSha256": "e3c5f1f2b996eef850db48e24fd2722ee92f9e464c6970c6d2b4a5731d287d72"
+        "stateMaterialSha256": "1c2213a565455a6ad102b4847147bb6412a7cc7ec8066454d5496f00db4e6132"
       }
     },
     {
@@ -159,7 +159,7 @@
       "operationalStatus": "paper_position_open",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784032745354,
+      "observedAtMs": 1784033255312,
       "firstDecisionBoundaryMs": 1784015400000,
       "strategyCount": 1,
       "evidence": {
