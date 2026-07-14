@@ -1,8 +1,8 @@
 {
   "schema": "rodiger.hyperliquid.research_lanes",
   "schemaVersion": 1,
-  "publishedAt": "2026-07-14T13:02:28.621Z",
-  "publishedAtMs": 1784034148621,
+  "publishedAt": "2026-07-14T13:39:30.237Z",
+  "publishedAtMs": 1784036370237,
   "staleAfterMs": 7200000,
   "observerScope": "published_local_snapshot",
   "localDaemonHealth": "not_publicly_observable",
@@ -75,7 +75,7 @@
       "operationalStatus": "failed_closed",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784034137607,
+      "observedAtMs": 1784036357695,
       "firstDecisionBoundaryMs": 1783710171861,
       "strategyCount": 3,
       "evidence": {
@@ -103,7 +103,7 @@
       "operationalStatus": "running_flat",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784034024578,
+      "observedAtMs": 1784036124581,
       "firstDecisionBoundaryMs": 1783661100000,
       "strategyCount": 2,
       "evidence": {
@@ -131,7 +131,7 @@
       "operationalStatus": "paper_position_open",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784034139482,
+      "observedAtMs": 1784036369176,
       "firstDecisionBoundaryMs": 1784033100000,
       "strategyCount": 2,
       "evidence": {
@@ -159,12 +159,12 @@
       "operationalStatus": "paper_position_open",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784034125293,
+      "observedAtMs": 1784036345339,
       "firstDecisionBoundaryMs": 1784015400000,
       "strategyCount": 1,
       "evidence": {
         "decisions": 1,
-        "terminals": 1,
+        "terminals": 2,
         "failedClosed": false,
         "coverageGapOpen": false,
         "evidenceHealthy": true
@@ -172,7 +172,7 @@
       "source": {
         "manifestIdentityValid": true,
         "manifestSha256": "797260e52d3e3969b207732f666eadfc01bb38f1fc6e85f9128a91f765dc96b7",
-        "stateMaterialSha256": "5f82a800449105df6b377f3553ec0e433d3a1af98a728e81015610f44919e42a"
+        "stateMaterialSha256": "b0a1ea240d1a973dc75b70499b0d719c5e02f95c7c585dbeee44ea514a2a3b59"
       }
     },
     {
