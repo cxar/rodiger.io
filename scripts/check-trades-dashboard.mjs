@@ -69,8 +69,22 @@ const expandedResearchLaneIdsWithProspectiveV2 = [
   'deribit-near-dated-directional-option-flow-lead-v2',
   'deribit-near-dated-directional-option-flow-lead'
 ];
+const expandedResearchLaneIdsWithMacroAndRejectedV2 = [
+  'adaptive-ensemble-one-position-forward',
+  'funding-squeeze-forward-source',
+  'smart-money-directional-forward',
+  'impact-skew-l2-forward',
+  'macro-prediction-distribution-forward',
+  'deribit-near-dated-directional-option-flow-lead-v2',
+  'deribit-near-dated-directional-option-flow-lead'
+];
 assert.ok(
-  [legacyResearchLaneIds, expandedResearchLaneIds, expandedResearchLaneIdsWithProspectiveV2]
+  [
+    legacyResearchLaneIds,
+    expandedResearchLaneIds,
+    expandedResearchLaneIdsWithProspectiveV2,
+    expandedResearchLaneIdsWithMacroAndRejectedV2
+  ]
     .some((expected) => JSON.stringify(expected) === JSON.stringify(researchLaneIds)),
   'research inventory must be the transitional legacy set or exact expanded set'
 );
@@ -82,10 +96,27 @@ for (const lane of researchManifest.lanes) {
   assert.equal(lane.crossEpochPoolingAllowed, false);
 }
 const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === 'adaptive-ensemble-one-position-forward');
+const macroResearchLane = researchManifest.lanes.find((lane) => lane.id === 'macro-prediction-distribution-forward');
+const deribitV2ResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead-v2');
 const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
 assert.equal(adaptiveResearchLane.operationalStatus, 'running_predecision');
 assert.equal(adaptiveResearchLane.strategyCount, 43);
 assert.equal(adaptiveResearchLane.quarantined, false);
+if (macroResearchLane) {
+  assert.equal(macroResearchLane.collectorVersion, 'macro-prediction-distribution-forward-v1');
+  assert.equal(macroResearchLane.paperOnly, true);
+  assert.equal(macroResearchLane.liveApproved, false);
+  assert.equal(macroResearchLane.quarantined, false);
+  assert.equal(macroResearchLane.strategyCount, 2);
+  assert.equal(macroResearchLane.evidence.failedClosed, false);
+  assert.equal(macroResearchLane.evidence.evidenceHealthy, true);
+}
+if (researchLaneIds.includes('macro-prediction-distribution-forward')) {
+  assert.equal(deribitV2ResearchLane.operationalStatus, 'rejected_prelaunch_integrity_review');
+  assert.equal(deribitV2ResearchLane.quarantined, true);
+  assert.equal(deribitV2ResearchLane.evidence.failedClosed, true);
+  assert.equal(deribitV2ResearchLane.evidence.evidenceHealthy, false);
+}
 assert.equal(invalidDeribitResearchLane.operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
 assert.equal(invalidDeribitResearchLane.quarantined, true);
 assert.equal(invalidDeribitResearchLane.evidence.failedClosed, true);
