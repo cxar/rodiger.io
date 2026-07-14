@@ -56,6 +56,7 @@ const expectedResearchLaneIds = [
   'smart-money-directional-forward',
   'impact-skew-l2-forward',
   'macro-prediction-distribution-forward',
+  'skhx-skhy-settlement-basis-forward',
   'deribit-near-dated-directional-option-flow-lead-v2',
   'deribit-near-dated-directional-option-flow-lead'
 ];
@@ -69,6 +70,7 @@ for (const lane of researchManifest.lanes) {
 }
 const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === 'adaptive-ensemble-one-position-forward');
 const macroResearchLane = researchManifest.lanes.find((lane) => lane.id === 'macro-prediction-distribution-forward');
+const skhxSkhyResearchLane = researchManifest.lanes.find((lane) => lane.id === 'skhx-skhy-settlement-basis-forward');
 const deribitV2ResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead-v2');
 const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
 assert.equal(adaptiveResearchLane.collectorVersion, 'adaptive-ensemble-one-position-forward-v2');
@@ -79,6 +81,16 @@ assert.equal(macroResearchLane.paperOnly, true);
 assert.equal(macroResearchLane.liveApproved, false);
 assert.equal(macroResearchLane.quarantined, false);
 assert.equal(macroResearchLane.strategyCount, 2);
+assert.equal(skhxSkhyResearchLane.collectorVersion, 'skhx-skhy-settlement-basis-forward-v1');
+assert.equal(skhxSkhyResearchLane.operationalStatus, 'paper_position_open');
+assert.equal(skhxSkhyResearchLane.paperOnly, true);
+assert.equal(skhxSkhyResearchLane.liveApproved, false);
+assert.equal(skhxSkhyResearchLane.promotionApproved, false);
+assert.equal(skhxSkhyResearchLane.quarantined, false);
+assert.equal(skhxSkhyResearchLane.strategyCount, 1);
+assert.equal(skhxSkhyResearchLane.evidence.decisions, 1);
+assert.equal(skhxSkhyResearchLane.evidence.failedClosed, false);
+assert.equal(skhxSkhyResearchLane.evidence.evidenceHealthy, true);
 assert.equal(deribitV2ResearchLane.operationalStatus, 'rejected_prelaunch_integrity_review');
 assert.equal(deribitV2ResearchLane.quarantined, true);
 assert.equal(deribitV2ResearchLane.evidence.failedClosed, true);
