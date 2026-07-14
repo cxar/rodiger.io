@@ -61,8 +61,16 @@ const expandedResearchLaneIds = [
   'impact-skew-l2-forward',
   'deribit-near-dated-directional-option-flow-lead'
 ];
+const expandedResearchLaneIdsWithProspectiveV2 = [
+  'adaptive-ensemble-one-position-forward',
+  'funding-squeeze-forward-source',
+  'smart-money-directional-forward',
+  'impact-skew-l2-forward',
+  'deribit-near-dated-directional-option-flow-lead-v2',
+  'deribit-near-dated-directional-option-flow-lead'
+];
 assert.ok(
-  [legacyResearchLaneIds, expandedResearchLaneIds]
+  [legacyResearchLaneIds, expandedResearchLaneIds, expandedResearchLaneIdsWithProspectiveV2]
     .some((expected) => JSON.stringify(expected) === JSON.stringify(researchLaneIds)),
   'research inventory must be the transitional legacy set or exact expanded set'
 );
