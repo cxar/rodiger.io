@@ -4,6 +4,11 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const manifest = require('../config/hyperliquid-live-strategy.json');
+const researchManifest = require('../config/hyperliquid-research-lanes.json');
+const {
+  validateSnapshot: validateResearchSnapshot,
+  buildResearchLanesStatus
+} = require('../lib/hyperliquid-research-lanes.js');
 const {
   HOUR_MS,
   topOfBook,
@@ -40,8 +45,46 @@ assert.equal(manifest.risk.strongReturnExclusive, 0.05);
 assert.equal(manifest.risk.strongAccountRiskFraction, 0.2);
 assert.equal(manifest.schedule.regimeCooldownIncludesOrdinarySignals, true);
 
+validateResearchSnapshot(researchManifest);
+assert.equal(researchManifest.schemaVersion, 1);
+assert.equal(researchManifest.observerScope, 'published_local_snapshot');
+assert.equal(researchManifest.localDaemonHealth, 'not_publicly_observable');
+assert.deepEqual(
+  researchManifest.lanes.map((lane) => lane.id),
+  [
+    'adaptive-ensemble-one-position-forward',
+    'deribit-near-dated-directional-option-flow-lead'
+  ]
+);
+for (const lane of researchManifest.lanes) {
+  assert.equal(lane.mode, 'paper');
+  assert.equal(lane.paperOnly, true);
+  assert.equal(lane.liveApproved, false);
+  assert.equal(lane.promotionApproved, false);
+  assert.equal(lane.crossEpochPoolingAllowed, false);
+}
+assert.equal(researchManifest.lanes[0].operationalStatus, 'running_predecision');
+assert.equal(researchManifest.lanes[0].strategyCount, 43);
+assert.equal(researchManifest.lanes[0].quarantined, false);
+assert.equal(researchManifest.lanes[1].operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
+assert.equal(researchManifest.lanes[1].quarantined, true);
+assert.equal(researchManifest.lanes[1].evidence.failedClosed, true);
+assert.equal(researchManifest.lanes[1].evidence.evidenceHealthy, false);
+assert.equal(researchManifest.lanes[1].source.manifestIdentityValid, false);
+assert.equal(researchManifest.lanes[1].source.manifestSha256, null);
+assert.equal(researchManifest.lanes[1].source.stateMaterialSha256, null);
+
 const latestStart = 50 * HOUR_MS;
 const nowMs = latestStart + HOUR_MS + 60_000;
+function researchSnapshot(atMs = nowMs) {
+  const snapshot = structuredClone(researchManifest);
+  snapshot.publishedAtMs = atMs;
+  snapshot.publishedAt = new Date(atMs).toISOString();
+  for (const lane of snapshot.lanes) {
+    if (lane.observedAtMs !== null) lane.observedAtMs = atMs;
+  }
+  return snapshot;
+}
 function candles(lastClose = 104, shiftMs = 0) {
   const firstStart = latestStart - 24 * HOUR_MS + shiftMs;
   return Array.from({ length: 25 }, (_, index) => {
@@ -123,8 +166,13 @@ const mockFetch = async (_url, options) => {
   const request = JSON.parse(options.body);
   return { ok: true, status: 200, json: async () => publicPayloads[request.type] };
 };
-const contract = await buildPublicStatus({ nowMs, fetchImpl: mockFetch });
+const contract = await buildPublicStatus({
+  nowMs,
+  fetchImpl: mockFetch,
+  researchSnapshot: researchSnapshot()
+});
 assert.equal(contract.schemaVersion, 1);
+assert.deepEqual(contract.strategy, manifest, 'research lanes must not mutate the frozen live strategy object');
 assert.equal(contract.strategy.version, manifest.version);
 assert.equal(contract.account.address, manifest.accountAddress);
 assert.equal(contract.account.performance.status, 'reconciled');
@@ -141,7 +189,43 @@ assert.equal(contract.protection.status, 'not_required');
 assert.equal(contract.status.observerScope, 'public_exchange_only');
 assert.equal(contract.status.localDaemonHealth, 'not_publicly_observable');
 assert.equal(contract.services.executor, 'not_publicly_observable');
+assert.equal(contract.researchLanes.availability, 'current');
+assert.equal(contract.researchLanes.localDaemonHealth, 'not_publicly_observable');
+assert.equal(contract.researchLanes.lanes.length, 2);
+assert.equal(contract.researchLanes.lanes[0].operationalStatus, 'running_predecision');
+assert.equal(contract.researchLanes.lanes[0].liveApproved, false);
+assert.equal(contract.researchLanes.lanes[1].operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
+assert.equal(contract.researchLanes.lanes[1].quarantined, true);
 assert.ok(!JSON.stringify(contract).toLowerCase().includes('privatekey'));
+assert.ok(!JSON.stringify(contract.researchLanes).includes('/Users/'), 'research contract must not expose local paths');
+
+const staleResearch = buildResearchLanesStatus(
+  researchSnapshot(nowMs),
+  nowMs + researchManifest.staleAfterMs + 1
+);
+assert.equal(staleResearch.availability, 'stale');
+assert.equal(staleResearch.lanes[0].operationalStatus, 'snapshot_stale');
+assert.equal(staleResearch.lanes[0].evidence.decisions, null);
+
+const mislabelledLiveResearch = researchSnapshot();
+mislabelledLiveResearch.lanes[0].liveApproved = true;
+const unavailableResearch = buildResearchLanesStatus(mislabelledLiveResearch, nowMs);
+assert.equal(unavailableResearch.availability, 'unavailable');
+assert.deepEqual(unavailableResearch.lanes, []);
+assert.match(unavailableResearch.blocker, /liveApproved must be false/);
+const contractWithMislabelledResearch = await buildPublicStatus({
+  nowMs,
+  fetchImpl: mockFetch,
+  researchSnapshot: mislabelledLiveResearch
+});
+assert.deepEqual(contractWithMislabelledResearch.strategy, manifest);
+assert.equal(contractWithMislabelledResearch.account.accountValueUsd, 450);
+assert.equal(contractWithMislabelledResearch.researchLanes.availability, 'unavailable');
+assert.deepEqual(contractWithMislabelledResearch.researchLanes.lanes, []);
+
+const futureResearch = buildResearchLanesStatus(researchSnapshot(nowMs + 5_001), nowMs);
+assert.equal(futureResearch.availability, 'unavailable');
+assert.deepEqual(futureResearch.lanes, []);
 
 const cashFlowFault = accountPerformance(450, [{
   time: manifest.accounting.cashFlowCutoffMs + 1,
@@ -167,6 +251,11 @@ await assert.rejects(
 
 assert.ok(html.includes('fetch("/api/trades"'), 'dashboard must consume the versioned public status endpoint');
 assert.ok(html.includes('Live Trading P&L'), 'dashboard must show cash-flow-gated lifetime trading performance');
+assert.ok(html.includes('Research / Paper Lanes'), 'dashboard must show research in a separate panel');
+assert.ok(html.includes('PAPER ONLY'), 'research lanes must be visibly paper-only');
+assert.ok(html.includes('QUARANTINED'), 'invalid research epochs must be visibly quarantined');
+assert.ok(html.includes('0% live risk'), 'research lanes must explicitly show zero live risk');
+assert.ok(html.includes('local daemon health remains not publicly observable'), 'research snapshot must not claim public daemon health');
 assert.ok(html.includes('no stale strategy is being shown'), 'dashboard failures must be visible and must not render stale strategy copy');
 for (const staleCopy of ['cross-sectional momentum', 'maker-first', 'Next Rebalance', '−45% kill-switch']) {
   assert.ok(!html.includes(staleCopy), `dashboard must not retain retired copy: ${staleCopy}`);

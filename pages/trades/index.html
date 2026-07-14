@@ -44,6 +44,7 @@
       .tag.S { color: var(--red); background: rgba(247,118,142,0.13); }
       .tag.mk { color: var(--link); background: rgba(125,207,255,0.12); }
       .tag.tk { color: var(--gray); background: rgba(86,95,137,0.18); }
+      .tag.paper { color: var(--link); background: rgba(125,207,255,0.12); }
       .grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1rem; }
       @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
       .muted { color: var(--gray); }
@@ -62,6 +63,13 @@
       <p class="sub" id="sub">loading the versioned strategy status…</p>
 
       <div class="cards" id="cards"></div>
+
+      <div class="panel">
+        <h2>Research / Paper Lanes</h2>
+        <p class="muted" id="research-scope" style="font-size:0.75rem;margin:0 0 0.7rem">loading the published research snapshot…</p>
+        <table><thead><tr><th>Lane</th><th>Status</th><th>Evidence</th><th>First decision</th><th>Scope</th></tr></thead>
+          <tbody id="research-lanes"><tr><td colspan="5" class="muted">loading…</td></tr></tbody></table>
+      </div>
 
       <div class="panel">
         <h2>Current ZEC Signal Gates</h2>
@@ -140,7 +148,7 @@
         const response=await fetch("/api/trades",{cache:"no-store"});
         const body=await response.json().catch(()=>({}));
         if(!response.ok) throw new Error(body.message||`HTTP ${response.status}`);
-        if(body.schemaVersion!==1||!body.strategy||!body.account||!body.signal||!body.protection) throw new Error("invalid strategy status contract");
+        if(body.schemaVersion!==1||!body.strategy||!body.account||!body.signal||!body.protection||!body.researchLanes) throw new Error("invalid strategy status contract");
         return body;
       }
 
@@ -197,6 +205,28 @@
         $("blockers").innerHTML=blockers.length
           ? blockers.map((reason)=>`<li>${esc(reason)}</li>`).join("")
           : `<li class="pass">Public market and account gates are clear. Local attempt/cooldown/process eligibility remains private to the executor.</li>`;
+      }
+
+      function renderResearchLanes(){
+        const research=payload.researchLanes||{};
+        const current=research.availability==="current";
+        const lanes=Array.isArray(research.lanes)?research.lanes:[];
+        const ageSeconds=research.ageMs==null?null:Math.max(0,Math.round(research.ageMs/1000));
+        const scope=current
+          ? `Versioned local snapshot published ${ageSeconds}s ago. It reports paper-research state only; local daemon health remains not publicly observable.`
+          : `${String(research.availability||"unavailable").toUpperCase()}: ${research.blocker||"research status unavailable"}. No stale operational claim is shown.`;
+        $("research-scope").textContent=scope;
+        $("research-scope").className=current?"muted":"fail";
+        $("research-lanes").innerHTML=lanes.map((lane)=>{
+          const first=lane.firstDecisionBoundaryMs==null?"—":new Date(lane.firstDecisionBoundaryMs).toLocaleString();
+          const evidence=lane.evidence&&lane.evidence.decisions!=null
+            ? `${lane.evidence.decisions} decisions / ${lane.evidence.terminals} terminals`
+            : "hidden until fresh";
+          const status=current?lane.operationalStatus:String(research.availability||"unavailable");
+          const statusClass=current&&!lane.quarantined?"wait":"fail";
+          const scopeTag=lane.quarantined?`<span class="fail">QUARANTINED</span>`:`<span class="tag paper">PAPER ONLY</span>`;
+          return `<tr><td><b>${esc(lane.name)}</b><br><span class="muted">${esc(lane.collectorVersion)}</span></td><td class="${statusClass}">${esc(status)}</td><td class="muted">${esc(evidence)}</td><td class="muted">${esc(first)}</td><td>${scopeTag}<br><span class="muted">0% live risk · no cross-epoch pooling</span></td></tr>`;
+        }).join("")||`<tr><td colspan="5" class="fail">Research lanes unavailable. The live ZEC contract above remains separate.</td></tr>`;
       }
 
       function renderChart(){
@@ -286,12 +316,12 @@
       function renderStrategy(){
         const s=payload.strategy, r=s.rule, e=s.execution, risk=s.risk;
         $("strategy-copy").innerHTML=`<b>Active strategy.</b> <b>${esc(s.name)}</b> (<code>${esc(s.version)}</code>). A completed-hour event enters the base regime when the six-hour return is strictly above ${(r.minReturnExclusive*100).toFixed(0)}% and the immediately following settled funding is at least ${(r.minFundingRate*10000).toFixed(1)} bps. Every selected base event—including ordinary ${(r.minReturnExclusive*100).toFixed(0)}–${(r.liveEntryMinReturnExclusive*100).toFixed(0)}% events—consumes the ${s.schedule.exactSignalCooldownHours}h virtual cooldown, but ordinary events submit <b>no order</b>. A short is eligible only when the selected event is strictly above ${(r.liveEntryMinReturnExclusive*100).toFixed(0)}%, trailing dollar volume is at least ${fmtUsd(r.minDayVolumeUsd,0)}, spread is at most ${r.maxSpreadBps} bps, signal age is at most ${r.maxSignalAgeMs/60000} minutes, and live/close is within ${(r.minLiveVsSignal*100).toFixed(1)}–${(r.maxLiveVsSignal*100).toFixed(1)}%. <b>Execution:</b> bounded IOC, at most ${e.maxEntryAttempts} attempts, ${e.entrySlippageBps} bps entry slippage cap, ${e.exitSlippageBps} bps exit slippage cap, ${e.roundTripRiskAllowanceBps} bps round-trip risk allowance, ${(e.takeProfitBps/100).toFixed(1)}% take-profit, ${(e.stopLossBps/100).toFixed(1)}% stop, ${e.maxHoldHours}h maximum hold. <b>Risk:</b> ordinary events are disabled at ${(risk.baseAccountRiskFraction*100).toFixed(0)}%; an eligible strict-${(risk.strongReturnExclusive*100).toFixed(0)}% strong event uses ${(risk.strongAccountRiskFraction*100).toFixed(0)}% modeled account loss at the stop. Funding strength never increases size. Personal experiment, not investment advice.`;
-        $("observer-scope").innerHTML=`<b>Observer scope.</b> This page verifies the strategy manifest and public Hyperliquid account, order, fill, candle, funding, and book state. Local executor, timed-exit supervisor, attempt/cooldown files, locks, and daemon health are <b>not publicly observable</b>; exchange freshness must not be read as proof those local services are healthy. Service states: executor <code>${esc(payload.services.executor)}</code>, timed exit <code>${esc(payload.services.timedExit)}</code>, research monitor <code>${esc(payload.services.researchMonitor)}</code>.`;
+        $("observer-scope").innerHTML=`<b>Observer scope.</b> This page verifies the live strategy manifest and public Hyperliquid account, order, fill, candle, funding, and book state. Research lanes are shown separately from a bounded published snapshot and remain paper-only. Local executor, timed-exit supervisor, research collectors, attempt/cooldown files, locks, and daemon health are <b>not publicly observable</b>; exchange or snapshot freshness must not be read as proof those local services are healthy. Service states: executor <code>${esc(payload.services.executor)}</code>, timed exit <code>${esc(payload.services.timedExit)}</code>, research monitor <code>${esc(payload.services.researchMonitor)}</code>.`;
       }
 
       function renderAll(){
         portfolio=payload.account.portfolio||[];
-        renderCards(); renderSignal(); renderChart(); renderDrawdown(); renderExposure(); renderPositions(); renderOrders(); renderFills(); renderAttribution(); renderStrategy();
+        renderCards(); renderResearchLanes(); renderSignal(); renderChart(); renderDrawdown(); renderExposure(); renderPositions(); renderOrders(); renderFills(); renderAttribution(); renderStrategy();
         $("addr").textContent=payload.account.address.slice(0,6)+"…"+payload.account.address.slice(-4);
         const ageSeconds=Math.max(0,Math.round((Date.now()-Date.parse(payload.generatedAt))/1000));
         const sourceOk=payload.sources&&payload.sources.hyperliquidPublicApi==="ok";
@@ -302,6 +332,9 @@
       function renderUnavailable(error){
         $("sub").innerHTML=`<span class="error">● strategy status unavailable: ${esc(error.message)}</span> · retrying; no stale strategy is being shown`;
         $("cards").innerHTML=card("Dashboard Status","UNAVAILABLE","/api/trades failed","neg");
+        $("research-scope").textContent="Research status unavailable; no stale operational claim is shown.";
+        $("research-scope").className="fail";
+        $("research-lanes").innerHTML=`<tr><td colspan="5" class="fail">Research lanes unavailable.</td></tr>`;
         $("signal-gates").innerHTML=`<tr><td colspan="4" class="fail">Current strategy contract or public exchange state could not be verified.</td></tr>`;
         $("blockers").innerHTML=`<li>${esc(error.message)}</li>`;
         $("strategy-copy").innerHTML="<b>Fail closed.</b> Strategy details are hidden until the versioned status contract is available.";

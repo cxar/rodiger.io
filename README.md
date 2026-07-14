@@ -11,6 +11,8 @@
 
 The tracked strategy manifest at `config/hyperliquid-live-strategy.json` is the dashboard's single source of truth for rule, execution, and risk constants. The API reports local executor/supervisor health as `not_publicly_observable`; it never infers daemon health from fresh exchange data.
 
+Paper research lanes are a separate additive contract sourced from the compact tracked snapshot at `config/hyperliquid-research-lanes.json`. They never modify the live strategy object, live P&L, account exposure, or order state. Stale or invalid research snapshots hide operational claims while leaving the live ZEC status semantically unchanged.
+
 **Environment Variables**
 - `ROOT_DOC_ID` — Google Doc ID for the homepage.
 - One of the following for Google credentials (Service Account JSON):

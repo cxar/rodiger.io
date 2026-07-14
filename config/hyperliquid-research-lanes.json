@@ -1,0 +1,67 @@
+{
+  "schema": "rodiger.hyperliquid.research_lanes",
+  "schemaVersion": 1,
+  "publishedAt": "2026-07-14T04:08:08.546Z",
+  "publishedAtMs": 1784002088546,
+  "staleAfterMs": 1200000,
+  "observerScope": "published_local_snapshot",
+  "localDaemonHealth": "not_publicly_observable",
+  "lanes": [
+    {
+      "id": "adaptive-ensemble-one-position-forward",
+      "name": "Adaptive 43-strategy one-position ensemble",
+      "collectorVersion": "adaptive-ensemble-one-position-forward-v2",
+      "epochId": "adaptive-ensemble-one-position-forward-v2-20260714T032216Z",
+      "mode": "paper",
+      "paperOnly": true,
+      "liveApproved": false,
+      "promotionApproved": false,
+      "operationalStatus": "running_predecision",
+      "quarantined": false,
+      "crossEpochPoolingAllowed": false,
+      "observedAtMs": 1784002061466,
+      "firstDecisionBoundaryMs": 1784044980000,
+      "strategyCount": 43,
+      "evidence": {
+        "decisions": 0,
+        "terminals": 0,
+        "failedClosed": false,
+        "coverageGapOpen": false,
+        "evidenceHealthy": true
+      },
+      "source": {
+        "manifestIdentityValid": true,
+        "manifestSha256": "6293cd147d97e4720b29abd6ba9f6d2520ada9a58e34be85791c5afcbdc3d766",
+        "stateMaterialSha256": "18f9b59378470b15afc75d0b98aa09f1d1fc8b2855e86127b1478430428cbc7e"
+      }
+    },
+    {
+      "id": "deribit-near-dated-directional-option-flow-lead",
+      "name": "Deribit near-dated directional option-flow lead",
+      "collectorVersion": "deribit-near-dated-directional-option-flow-lead-v1",
+      "epochId": "deribit-near-dated-directional-option-flow-lead-v1-20260714T060000Z",
+      "mode": "paper",
+      "paperOnly": true,
+      "liveApproved": false,
+      "promotionApproved": false,
+      "operationalStatus": "invalid_prelaunch_cutoff_identity_mismatch",
+      "quarantined": true,
+      "crossEpochPoolingAllowed": false,
+      "observedAtMs": null,
+      "firstDecisionBoundaryMs": 1786597200000,
+      "strategyCount": 1,
+      "evidence": {
+        "decisions": 0,
+        "terminals": 0,
+        "failedClosed": true,
+        "coverageGapOpen": null,
+        "evidenceHealthy": false
+      },
+      "source": {
+        "manifestIdentityValid": false,
+        "manifestSha256": null,
+        "stateMaterialSha256": null
+      }
+    }
+  ]
+}
