@@ -1,8 +1,8 @@
 {
   "schema": "rodiger.hyperliquid.research_lanes",
   "schemaVersion": 1,
-  "publishedAt": "2026-07-14T09:04:31.672Z",
-  "publishedAtMs": 1784019871672,
+  "publishedAt": "2026-07-14T10:04:30.458Z",
+  "publishedAtMs": 1784023470458,
   "staleAfterMs": 7200000,
   "observerScope": "published_local_snapshot",
   "localDaemonHealth": "not_publicly_observable",
@@ -19,7 +19,7 @@
       "operationalStatus": "failed_closed",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019862787,
+      "observedAtMs": 1784023465464,
       "firstDecisionBoundaryMs": 1784044980000,
       "strategyCount": 43,
       "evidence": {
@@ -47,11 +47,11 @@
       "operationalStatus": "running_flat",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019600185,
+      "observedAtMs": 1784023200194,
       "firstDecisionBoundaryMs": 1783980000000,
       "strategyCount": 1,
       "evidence": {
-        "decisions": 12,
+        "decisions": 13,
         "terminals": 0,
         "failedClosed": false,
         "coverageGapOpen": false,
@@ -60,7 +60,7 @@
       "source": {
         "manifestIdentityValid": true,
         "manifestSha256": "7607e9ae595b8181785397677d97c2f5ddfe74667830d32822443b02deb3bb54",
-        "stateMaterialSha256": "ecbb75fd22442f37c63bb7b9143f4372714d134b26a53445544d3bf8541da092"
+        "stateMaterialSha256": "6e629066971f04259b2bb447e7225b86b8f7ebe36647b92976165baaeb3c14a0"
       }
     },
     {
@@ -75,7 +75,7 @@
       "operationalStatus": "running_flat",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019859142,
+      "observedAtMs": 1784023459336,
       "firstDecisionBoundaryMs": 1783710171861,
       "strategyCount": 3,
       "evidence": {
@@ -103,7 +103,7 @@
       "operationalStatus": "running_flat",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019623517,
+      "observedAtMs": 1784023224246,
       "firstDecisionBoundaryMs": 1783661100000,
       "strategyCount": 2,
       "evidence": {
@@ -131,7 +131,7 @@
       "operationalStatus": "running_predecision",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019868366,
+      "observedAtMs": 1784023470340,
       "firstDecisionBoundaryMs": 1784033100000,
       "strategyCount": 2,
       "evidence": {
@@ -159,7 +159,7 @@
       "operationalStatus": "paper_position_open",
       "quarantined": false,
       "crossEpochPoolingAllowed": false,
-      "observedAtMs": 1784019845505,
+      "observedAtMs": 1784023445505,
       "firstDecisionBoundaryMs": 1784015400000,
       "strategyCount": 1,
       "evidence": {
