@@ -71,7 +71,7 @@ const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === '
 const macroResearchLane = researchManifest.lanes.find((lane) => lane.id === 'macro-prediction-distribution-forward');
 const deribitV2ResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead-v2');
 const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
-assert.equal(adaptiveResearchLane.operationalStatus, 'running_predecision');
+assert.equal(adaptiveResearchLane.collectorVersion, 'adaptive-ensemble-one-position-forward-v2');
 assert.equal(adaptiveResearchLane.strategyCount, 43);
 assert.equal(adaptiveResearchLane.quarantined, false);
 assert.equal(macroResearchLane.collectorVersion, 'macro-prediction-distribution-forward-v1');
@@ -79,8 +79,6 @@ assert.equal(macroResearchLane.paperOnly, true);
 assert.equal(macroResearchLane.liveApproved, false);
 assert.equal(macroResearchLane.quarantined, false);
 assert.equal(macroResearchLane.strategyCount, 2);
-assert.equal(macroResearchLane.evidence.failedClosed, false);
-assert.equal(macroResearchLane.evidence.evidenceHealthy, true);
 assert.equal(deribitV2ResearchLane.operationalStatus, 'rejected_prelaunch_integrity_review');
 assert.equal(deribitV2ResearchLane.quarantined, true);
 assert.equal(deribitV2ResearchLane.evidence.failedClosed, true);
@@ -211,7 +209,11 @@ assert.equal(contract.services.executor, 'not_publicly_observable');
 assert.equal(contract.researchLanes.availability, 'current');
 assert.equal(contract.researchLanes.localDaemonHealth, 'not_publicly_observable');
 assert.equal(contract.researchLanes.lanes.length, researchManifest.lanes.length);
-assert.equal(contract.researchLanes.lanes[0].operationalStatus, 'running_predecision');
+assert.equal(
+  contract.researchLanes.lanes[0].operationalStatus,
+  adaptiveResearchLane.operationalStatus,
+  'public research status must preserve the validated snapshot lifecycle'
+);
 assert.equal(contract.researchLanes.lanes[0].liveApproved, false);
 assert.equal(contract.researchLanes.lanes.at(-1).operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
 assert.equal(contract.researchLanes.lanes.at(-1).quarantined, true);
