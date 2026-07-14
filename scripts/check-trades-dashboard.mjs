@@ -49,12 +49,22 @@ validateResearchSnapshot(researchManifest);
 assert.equal(researchManifest.schemaVersion, 1);
 assert.equal(researchManifest.observerScope, 'published_local_snapshot');
 assert.equal(researchManifest.localDaemonHealth, 'not_publicly_observable');
-assert.deepEqual(
-  researchManifest.lanes.map((lane) => lane.id),
-  [
-    'adaptive-ensemble-one-position-forward',
-    'deribit-near-dated-directional-option-flow-lead'
-  ]
+const researchLaneIds = researchManifest.lanes.map((lane) => lane.id);
+const legacyResearchLaneIds = [
+  'adaptive-ensemble-one-position-forward',
+  'deribit-near-dated-directional-option-flow-lead'
+];
+const expandedResearchLaneIds = [
+  'adaptive-ensemble-one-position-forward',
+  'funding-squeeze-forward-source',
+  'smart-money-directional-forward',
+  'impact-skew-l2-forward',
+  'deribit-near-dated-directional-option-flow-lead'
+];
+assert.ok(
+  [legacyResearchLaneIds, expandedResearchLaneIds]
+    .some((expected) => JSON.stringify(expected) === JSON.stringify(researchLaneIds)),
+  'research inventory must be the transitional legacy set or exact expanded set'
 );
 for (const lane of researchManifest.lanes) {
   assert.equal(lane.mode, 'paper');
@@ -63,16 +73,18 @@ for (const lane of researchManifest.lanes) {
   assert.equal(lane.promotionApproved, false);
   assert.equal(lane.crossEpochPoolingAllowed, false);
 }
-assert.equal(researchManifest.lanes[0].operationalStatus, 'running_predecision');
-assert.equal(researchManifest.lanes[0].strategyCount, 43);
-assert.equal(researchManifest.lanes[0].quarantined, false);
-assert.equal(researchManifest.lanes[1].operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
-assert.equal(researchManifest.lanes[1].quarantined, true);
-assert.equal(researchManifest.lanes[1].evidence.failedClosed, true);
-assert.equal(researchManifest.lanes[1].evidence.evidenceHealthy, false);
-assert.equal(researchManifest.lanes[1].source.manifestIdentityValid, false);
-assert.equal(researchManifest.lanes[1].source.manifestSha256, null);
-assert.equal(researchManifest.lanes[1].source.stateMaterialSha256, null);
+const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === 'adaptive-ensemble-one-position-forward');
+const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
+assert.equal(adaptiveResearchLane.operationalStatus, 'running_predecision');
+assert.equal(adaptiveResearchLane.strategyCount, 43);
+assert.equal(adaptiveResearchLane.quarantined, false);
+assert.equal(invalidDeribitResearchLane.operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
+assert.equal(invalidDeribitResearchLane.quarantined, true);
+assert.equal(invalidDeribitResearchLane.evidence.failedClosed, true);
+assert.equal(invalidDeribitResearchLane.evidence.evidenceHealthy, false);
+assert.equal(invalidDeribitResearchLane.source.manifestIdentityValid, false);
+assert.equal(invalidDeribitResearchLane.source.manifestSha256, null);
+assert.equal(invalidDeribitResearchLane.source.stateMaterialSha256, null);
 
 const latestStart = 50 * HOUR_MS;
 const nowMs = latestStart + HOUR_MS + 60_000;
@@ -191,11 +203,11 @@ assert.equal(contract.status.localDaemonHealth, 'not_publicly_observable');
 assert.equal(contract.services.executor, 'not_publicly_observable');
 assert.equal(contract.researchLanes.availability, 'current');
 assert.equal(contract.researchLanes.localDaemonHealth, 'not_publicly_observable');
-assert.equal(contract.researchLanes.lanes.length, 2);
+assert.equal(contract.researchLanes.lanes.length, researchManifest.lanes.length);
 assert.equal(contract.researchLanes.lanes[0].operationalStatus, 'running_predecision');
 assert.equal(contract.researchLanes.lanes[0].liveApproved, false);
-assert.equal(contract.researchLanes.lanes[1].operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
-assert.equal(contract.researchLanes.lanes[1].quarantined, true);
+assert.equal(contract.researchLanes.lanes.at(-1).operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
+assert.equal(contract.researchLanes.lanes.at(-1).quarantined, true);
 assert.ok(!JSON.stringify(contract).toLowerCase().includes('privatekey'));
 assert.ok(!JSON.stringify(contract.researchLanes).includes('/Users/'), 'research contract must not expose local paths');
 
