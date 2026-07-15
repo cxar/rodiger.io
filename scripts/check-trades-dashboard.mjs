@@ -50,47 +50,47 @@ assert.equal(researchManifest.schemaVersion, 1);
 assert.equal(researchManifest.observerScope, 'published_local_snapshot');
 assert.equal(researchManifest.localDaemonHealth, 'not_publicly_observable');
 const researchLaneIds = researchManifest.lanes.map((lane) => lane.id);
-const expectedResearchLaneIds = [
-  'adaptive-ensemble-one-position-forward',
-  'funding-squeeze-forward-source',
-  'smart-money-directional-forward',
-  'impact-skew-l2-forward',
-  'macro-prediction-distribution-forward',
-  'skhx-skhy-settlement-basis-forward',
-  'deribit-near-dated-directional-option-flow-lead-v2',
-  'deribit-near-dated-directional-option-flow-lead'
+const expectedResearchLanes = [
+  ['adaptive-ensemble-one-position-forward', 'adaptive-ensemble-one-position-forward-v2'],
+  ['funding-squeeze-forward-source', 'funding-squeeze-forward-source-v4'],
+  ['smart-money-directional-forward', 'smart-money-directional-forward-v10'],
+  ['impact-skew-l2-forward', 'impact-skew-target-l2-causal-entry-v2.3'],
+  ['macro-prediction-distribution-forward', 'macro-prediction-distribution-forward-v19'],
+  ['skhx-skhy-settlement-basis-forward', 'skhx-skhy-settlement-basis-forward-v1'],
+  ['deribit-near-dated-directional-option-flow-lead-v2', 'deribit-near-dated-directional-option-flow-lead-v2'],
+  ['deribit-near-dated-directional-option-flow-lead', 'deribit-near-dated-directional-option-flow-lead-v1'],
+  ['new-listing-positive-funding-blowoff-fade-forward', 'new-listing-positive-funding-blowoff-fade-forward-v1']
 ];
-assert.deepEqual(researchLaneIds, expectedResearchLaneIds, 'research inventory must match the exact frozen set');
+assert.deepEqual(
+  researchManifest.lanes.map((lane) => [lane.id, lane.collectorVersion]),
+  expectedResearchLanes,
+  'research inventory must match the exact reviewed current set'
+);
+assert.equal(new Set(researchLaneIds).size, expectedResearchLanes.length, 'research lane ids must be unique');
+assert.equal(researchManifest.lanes.some((lane) => lane.collectorVersion === 'smart-money-directional-forward-v5'), false);
+assert.equal(researchManifest.lanes.some((lane) => lane.collectorVersion === 'macro-prediction-distribution-forward-v1'), false);
 for (const lane of researchManifest.lanes) {
   assert.equal(lane.mode, 'paper');
   assert.equal(lane.paperOnly, true);
   assert.equal(lane.liveApproved, false);
   assert.equal(lane.promotionApproved, false);
   assert.equal(lane.crossEpochPoolingAllowed, false);
+  assert.equal(typeof lane.source.manifestIdentityValid, 'boolean');
+  assert.ok(lane.source.manifestSha256 === null || /^[0-9a-f]{64}$/.test(lane.source.manifestSha256));
+  assert.ok(lane.source.stateMaterialSha256 === null || /^[0-9a-f]{64}$/.test(lane.source.stateMaterialSha256));
+  assert.deepEqual(Object.keys(lane.source).sort(), ['manifestIdentityValid', 'manifestSha256', 'stateMaterialSha256']);
 }
+const smartMoneyResearchLane = researchManifest.lanes.find((lane) => lane.id === 'smart-money-directional-forward');
 const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === 'adaptive-ensemble-one-position-forward');
 const macroResearchLane = researchManifest.lanes.find((lane) => lane.id === 'macro-prediction-distribution-forward');
 const skhxSkhyResearchLane = researchManifest.lanes.find((lane) => lane.id === 'skhx-skhy-settlement-basis-forward');
 const deribitV2ResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead-v2');
 const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
-assert.equal(adaptiveResearchLane.collectorVersion, 'adaptive-ensemble-one-position-forward-v2');
-assert.equal(adaptiveResearchLane.strategyCount, 43);
-assert.equal(adaptiveResearchLane.quarantined, false);
-assert.equal(macroResearchLane.collectorVersion, 'macro-prediction-distribution-forward-v1');
-assert.equal(macroResearchLane.paperOnly, true);
-assert.equal(macroResearchLane.liveApproved, false);
-assert.equal(macroResearchLane.quarantined, false);
-assert.equal(macroResearchLane.strategyCount, 2);
-assert.equal(skhxSkhyResearchLane.collectorVersion, 'skhx-skhy-settlement-basis-forward-v1');
-assert.equal(skhxSkhyResearchLane.operationalStatus, 'paper_position_open');
-assert.equal(skhxSkhyResearchLane.paperOnly, true);
-assert.equal(skhxSkhyResearchLane.liveApproved, false);
-assert.equal(skhxSkhyResearchLane.promotionApproved, false);
-assert.equal(skhxSkhyResearchLane.quarantined, false);
-assert.equal(skhxSkhyResearchLane.strategyCount, 1);
-assert.equal(skhxSkhyResearchLane.evidence.decisions, 1);
-assert.equal(skhxSkhyResearchLane.evidence.failedClosed, false);
-assert.equal(skhxSkhyResearchLane.evidence.evidenceHealthy, true);
+const newListingResearchLane = researchManifest.lanes.find((lane) => lane.id === 'new-listing-positive-funding-blowoff-fade-forward');
+assert.equal(smartMoneyResearchLane.collectorVersion, 'smart-money-directional-forward-v10');
+assert.equal(macroResearchLane.collectorVersion, 'macro-prediction-distribution-forward-v19');
+assert.equal(skhxSkhyResearchLane.operationalStatus, 'failed_closed');
+assert.equal(skhxSkhyResearchLane.evidence.coverageGapOpen, true);
 assert.equal(deribitV2ResearchLane.operationalStatus, 'rejected_prelaunch_integrity_review');
 assert.equal(deribitV2ResearchLane.quarantined, true);
 assert.equal(deribitV2ResearchLane.evidence.failedClosed, true);
@@ -102,7 +102,7 @@ assert.equal(invalidDeribitResearchLane.evidence.evidenceHealthy, false);
 assert.equal(invalidDeribitResearchLane.source.manifestIdentityValid, false);
 assert.equal(invalidDeribitResearchLane.source.manifestSha256, null);
 assert.equal(invalidDeribitResearchLane.source.stateMaterialSha256, null);
-
+assert.equal(newListingResearchLane.collectorVersion, 'new-listing-positive-funding-blowoff-fade-forward-v1');
 const latestStart = 50 * HOUR_MS;
 const nowMs = latestStart + HOUR_MS + 60_000;
 function researchSnapshot(atMs = nowMs) {
@@ -227,8 +227,9 @@ assert.equal(
   'public research status must preserve the validated snapshot lifecycle'
 );
 assert.equal(contract.researchLanes.lanes[0].liveApproved, false);
-assert.equal(contract.researchLanes.lanes.at(-1).operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
-assert.equal(contract.researchLanes.lanes.at(-1).quarantined, true);
+const publicInvalidDeribitLane = contract.researchLanes.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
+assert.equal(publicInvalidDeribitLane.operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
+assert.equal(publicInvalidDeribitLane.quarantined, true);
 assert.ok(!JSON.stringify(contract).toLowerCase().includes('privatekey'));
 assert.ok(!JSON.stringify(contract.researchLanes).includes('/Users/'), 'research contract must not expose local paths');
 
