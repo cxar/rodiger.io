@@ -59,7 +59,9 @@ const expectedResearchLanes = [
   ['skhx-skhy-settlement-basis-forward', 'skhx-skhy-settlement-basis-forward-v1'],
   ['deribit-near-dated-directional-option-flow-lead-v2', 'deribit-near-dated-directional-option-flow-lead-v2'],
   ['deribit-near-dated-directional-option-flow-lead', 'deribit-near-dated-directional-option-flow-lead-v1'],
-  ['new-listing-positive-funding-blowoff-fade-forward', 'new-listing-positive-funding-blowoff-fade-forward-v1']
+  ['new-listing-positive-funding-blowoff-fade-forward', 'new-listing-positive-funding-blowoff-fade-forward-v1'],
+  ['tsmc-earnings-relative-value-forward', 'tsmc-earnings-relative-value-forward-v10'],
+  ['principled-research-lab-aggregate', 'principled-research-lab-aggregate-v1']
 ];
 assert.deepEqual(
   researchManifest.lanes.map((lane) => [lane.id, lane.collectorVersion]),
@@ -78,7 +80,15 @@ for (const lane of researchManifest.lanes) {
   assert.equal(typeof lane.source.manifestIdentityValid, 'boolean');
   assert.ok(lane.source.manifestSha256 === null || /^[0-9a-f]{64}$/.test(lane.source.manifestSha256));
   assert.ok(lane.source.stateMaterialSha256 === null || /^[0-9a-f]{64}$/.test(lane.source.stateMaterialSha256));
-  assert.deepEqual(Object.keys(lane.source).sort(), ['manifestIdentityValid', 'manifestSha256', 'stateMaterialSha256']);
+  const expectedSourceKeys = lane.id === 'principled-research-lab-aggregate'
+    ? ['ledgerRawSha256', 'manifestIdentityValid', 'manifestSha256', 'reportRawSha256', 'schemaSha256', 'stateMaterialSha256']
+    : ['manifestIdentityValid', 'manifestSha256', 'stateMaterialSha256'];
+  assert.deepEqual(Object.keys(lane.source).sort(), expectedSourceKeys);
+  if (lane.id === 'principled-research-lab-aggregate') {
+    assert.match(lane.source.schemaSha256, /^[0-9a-f]{64}$/);
+    assert.match(lane.source.reportRawSha256, /^[0-9a-f]{64}$/);
+    assert.match(lane.source.ledgerRawSha256, /^[0-9a-f]{64}$/);
+  }
 }
 const smartMoneyResearchLane = researchManifest.lanes.find((lane) => lane.id === 'smart-money-directional-forward');
 const adaptiveResearchLane = researchManifest.lanes.find((lane) => lane.id === 'adaptive-ensemble-one-position-forward');
@@ -87,6 +97,8 @@ const skhxSkhyResearchLane = researchManifest.lanes.find((lane) => lane.id === '
 const deribitV2ResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead-v2');
 const invalidDeribitResearchLane = researchManifest.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
 const newListingResearchLane = researchManifest.lanes.find((lane) => lane.id === 'new-listing-positive-funding-blowoff-fade-forward');
+const tsmcResearchLane = researchManifest.lanes.find((lane) => lane.id === 'tsmc-earnings-relative-value-forward');
+const principledResearchLabLane = researchManifest.lanes.find((lane) => lane.id === 'principled-research-lab-aggregate');
 assert.equal(smartMoneyResearchLane.collectorVersion, 'smart-money-directional-forward-v10');
 assert.equal(macroResearchLane.collectorVersion, 'macro-prediction-distribution-forward-v19');
 assert.equal(skhxSkhyResearchLane.operationalStatus, 'failed_closed');
@@ -103,6 +115,31 @@ assert.equal(invalidDeribitResearchLane.source.manifestIdentityValid, false);
 assert.equal(invalidDeribitResearchLane.source.manifestSha256, null);
 assert.equal(invalidDeribitResearchLane.source.stateMaterialSha256, null);
 assert.equal(newListingResearchLane.collectorVersion, 'new-listing-positive-funding-blowoff-fade-forward-v1');
+assert.equal(tsmcResearchLane.collectorVersion, 'tsmc-earnings-relative-value-forward-v10');
+assert.equal(tsmcResearchLane.operationalStatus, 'failed_closed');
+assert.equal(tsmcResearchLane.evidence.failedClosed, true);
+assert.equal(tsmcResearchLane.evidence.coverageGapOpen, true);
+assert.equal(tsmcResearchLane.evidence.evidenceHealthy, false);
+assert.equal(tsmcResearchLane.evidence.failureReason, 'parent_chain_identity_restart_loop');
+assert.equal(tsmcResearchLane.paperOnly, true);
+assert.equal(tsmcResearchLane.liveApproved, false);
+assert.equal(tsmcResearchLane.promotionApproved, false);
+assert.equal(tsmcResearchLane.source.manifestSha256, '5adb6d7b9a7587f91e523f9ed4ad0527cd669878dfe1a59e2bbce84a5d19df9f');
+assert.equal(principledResearchLabLane.collectorVersion, 'principled-research-lab-aggregate-v1');
+assert.equal(['paper_position_open', 'running_flat'].includes(principledResearchLabLane.operationalStatus), true);
+assert.equal(principledResearchLabLane.paperOnly, true);
+assert.equal(principledResearchLabLane.liveApproved, false);
+assert.equal(principledResearchLabLane.promotionApproved, false);
+assert.equal(principledResearchLabLane.evidence.evidenceHealthy, true);
+assert.equal(principledResearchLabLane.evidence.failedClosed, false);
+assert.equal(principledResearchLabLane.evidence.liveApproved, false);
+assert.equal(Number.isInteger(principledResearchLabLane.evidence.paperPositionCount), true);
+assert.equal(Number.isFinite(principledResearchLabLane.evidence.paperEquityUsd), true);
+assert.equal(Number.isInteger(principledResearchLabLane.evidence.forwardObservationCount), true);
+assert.equal(Number.isFinite(principledResearchLabLane.evidence.forwardDurationHours), true);
+assert.equal(Number.isInteger(principledResearchLabLane.evidence.readyCount), true);
+assert.equal(Number.isInteger(principledResearchLabLane.evidence.eligibleCount), true);
+assert.equal(principledResearchLabLane.source.schemaSha256, '58bcf0598d4af7f4f62b94b9eee478a4d4fba4d0744e263f1ae2836c6d890de2');
 const latestStart = 50 * HOUR_MS;
 const nowMs = latestStart + HOUR_MS + 60_000;
 function researchSnapshot(atMs = nowMs) {
@@ -230,6 +267,17 @@ assert.equal(contract.researchLanes.lanes[0].liveApproved, false);
 const publicInvalidDeribitLane = contract.researchLanes.lanes.find((lane) => lane.id === 'deribit-near-dated-directional-option-flow-lead');
 assert.equal(publicInvalidDeribitLane.operationalStatus, 'invalid_prelaunch_cutoff_identity_mismatch');
 assert.equal(publicInvalidDeribitLane.quarantined, true);
+const publicTsmcLane = contract.researchLanes.lanes.find((lane) => lane.id === 'tsmc-earnings-relative-value-forward');
+assert.equal(publicTsmcLane.operationalStatus, 'failed_closed');
+assert.equal(publicTsmcLane.evidence.failureReason, 'parent_chain_identity_restart_loop');
+assert.equal(publicTsmcLane.paperOnly, true);
+assert.equal(publicTsmcLane.liveApproved, false);
+const publicPrincipledResearchLabLane = contract.researchLanes.lanes.find((lane) => lane.id === 'principled-research-lab-aggregate');
+assert.equal(publicPrincipledResearchLabLane.paperOnly, true);
+assert.equal(publicPrincipledResearchLabLane.liveApproved, false);
+assert.equal(publicPrincipledResearchLabLane.evidence.liveApproved, false);
+assert.equal(publicPrincipledResearchLabLane.evidence.paperPositionCount, principledResearchLabLane.evidence.paperPositionCount);
+assert.equal(publicPrincipledResearchLabLane.evidence.forwardObservationCount, principledResearchLabLane.evidence.forwardObservationCount);
 assert.ok(!JSON.stringify(contract).toLowerCase().includes('privatekey'));
 assert.ok(!JSON.stringify(contract.researchLanes).includes('/Users/'), 'research contract must not expose local paths');
 
