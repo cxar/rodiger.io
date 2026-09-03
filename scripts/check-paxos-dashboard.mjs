@@ -61,6 +61,8 @@ assert.ok(!html.includes('buildChainTrendSeries(chainBalanceMaps, 5, 180)'), 'ch
 assert.ok(duneFetcher.includes('volume_7d'), 'Dune fetcher should emit 7d DEX volume for dynamic period toggles');
 assert.ok(duneFetcher.includes('trades_7d'), 'Dune fetcher should emit 7d DEX trades for dynamic period toggles');
 assert.ok(duneFetcher.includes('trades_30d'), 'Dune fetcher should emit explicit 30d DEX trades for dynamic period toggles');
+assert.ok(duneFetcher.includes("performance: 'small'"), 'Dune fetcher should use the currently supported small execution tier');
+assert.ok(!duneFetcher.includes("performance: 'medium'"), 'Dune fetcher must not use the unavailable medium execution tier');
 
 const scriptMatch = html.match(/<script>\n([\s\S]*)\n\s*<\/script>/);
 assert.ok(scriptMatch, 'expected one inline dashboard script');

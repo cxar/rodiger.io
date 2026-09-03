@@ -5,7 +5,7 @@
 // Optimized for Dune free-tier quota:
 // - evm_summary + evm_whales merged into one query (one full-history scan instead of two)
 // - Daily windows cut from 90d → 30d
-// - performance: 'low' to use fewer credits
+// - performance: 'small' to use the supported low-credit execution tier
 // - Priority ordering: critical queries run first, degrade gracefully on quota
 
 const fs = require('fs');
@@ -177,7 +177,7 @@ async function executeDuneQuery(sql) {
   const res = await fetch('https://api.dune.com/api/v1/sql/execute', {
     method: 'POST',
     headers: { 'X-Dune-Api-Key': DUNE_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sql, performance: 'medium' }),
+    body: JSON.stringify({ sql, performance: 'small' }),
   });
   const data = await res.json();
   if (!data.execution_id) throw new Error(JSON.stringify(data.error || data));
