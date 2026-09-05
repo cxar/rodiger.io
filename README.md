@@ -15,6 +15,8 @@ Paper research lanes are a separate additive contract sourced from the compact t
 
 The latest dated account/participation audit and read-only funding-pilot progress are separate in `config/hyperliquid-audit.json`. Run `node scripts/refresh-trades-audit.mjs --write` to assemble the allowlisted fields from the sibling research checkout. Assembly time is not evidence time: preserve the original account and signal cutoffs, and re-audit when newer fills arrive. Do not refresh the legacy July snapshot's timestamp or restart rejected publishers to make it look current. No audit or paper observation is added to live P&L.
 
+The export also pins the September 5 aggressive-expansion and six-signal mark/depth reports. Their findings are labeled retrospective/hypothetical, exclude unobserved executions from earned profit, and do not alter the live strategy. The public checker compares exact evidence hashes and findings with the local export so a fresh HTTP timestamp cannot conceal an unpublished research update.
+
 The trades page refreshes every 30 seconds, expires exchange responses after 90 seconds, times out requests (including JSON bodies) after 12 seconds, prevents overlapping refreshes, and refreshes on reconnect/tab resume. Failed or expired requests clear positions, orders, exposure and charts. `node scripts/check-trades-freshness.mjs` tests these paths without a browser. `node scripts/check-trades-live.mjs` checks the deployed page/API, strategy identity, source health, new fills versus audit coverage, and pilot publication lag without any wallet access.
 
 **Environment Variables**

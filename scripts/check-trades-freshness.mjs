@@ -19,6 +19,17 @@ assert.ok(!JSON.stringify(audit).includes('/Users/'));
 assert.equal(buildAuditStatus({ ...audit, allCapturedTradingNetUsd: null }, now).availability, 'unavailable');
 assert.equal(buildAuditStatus({ ...audit, v5: { ...audit.v5, selectedStrongSignals: 99 } }, now).availability, 'unavailable');
 assert.equal(buildAuditStatus({ ...audit, unwantedPrivateField: 'do not publish' }, now).unwantedPrivateField, undefined);
+const aggressive = audit.findings.find(f => f.name === 'Aggressive 30-market test');
+assert.ok(aggressive, 'aggressive test must be visible in the current audit');
+assert.match(aggressive.detail, /-45\.27%.*-79\.12%/);
+assert.match(aggressive.detail, /excluding funding/);
+assert.match(aggressive.detail, /hypothetical returns, not actual losses/);
+assert.match(aggressive.detail, /Live risk is unchanged/);
+assert.equal(audit.sources.find(s => s.name === 'hl-aggressive-expansion-audit-20260905.json')?.sha256,
+  '8dd055df502838bdc6914a097ab41cbd5deea63f6e30f2636458f5d13e2e1ff6');
+assert.equal(audit.sources.find(s => s.name === 'hl-zec-v5-mark-depth-audit-20260905-v2.json')?.sha256,
+  'be715b94b4608ceb2bde2b5bfa6e03757b8c8704ace727f665473f408a660be2');
+assert.match(audit.findings.find(f => f.name === 'Missed ZEC entries').detail, /missed trades receive no profit credit/);
 
 const html = fs.readFileSync(new URL('../pages/trades/index.html', import.meta.url), 'utf8');
 const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];

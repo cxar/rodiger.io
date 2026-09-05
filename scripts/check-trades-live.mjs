@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const strategy = require('../config/hyperliquid-live-strategy.json');
+const audit = require('../config/hyperliquid-audit.json');
 const origin = 'https://www.rodiger.io';
 const issues = [];
 try {
@@ -18,6 +19,9 @@ try {
   assert.deepEqual(value.strategy, strategy, 'deployed strategy configuration differs');
   assert.equal(value.sources.hyperliquidPublicApi, 'ok', 'one or more public sources failed');
   assert.equal(value.audit?.profitabilityProven, false, 'audit is missing or incorrectly claims profitability');
+  assert.deepEqual(value.audit.sources, audit.sources, 'latest research evidence has not reached production');
+  assert.deepEqual(value.audit.findings, audit.findings, 'latest research findings have not reached production');
+  assert.equal(value.audit.assembledAt, audit.assembledAt, 'local audit export differs from production');
   if (value.audit.availability !== 'published') issues.push('audit publication needs attention');
   const latestFill = Math.max(0, ...value.account.fills.map(fill => fill.time));
   if (latestFill > Date.parse(value.audit.accountEvidenceThrough)) issues.push('new fills require an updated account audit');

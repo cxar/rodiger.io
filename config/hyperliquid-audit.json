@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-05T19:15:00.954Z",
+  "assembledAt": "2026-09-05T19:56:28.419Z",
   "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
   "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
   "profitabilityProven": false,
@@ -29,9 +29,19 @@
   "findingsAsOf": "2026-09-05",
   "findings": [
     {
+      "name": "Aggressive 30-market test",
+      "status": "More risk magnified modeled losses",
+      "detail": "The 30-entry retrospective price simulation returned -45.27% at 20% modeled stop risk and -79.12% at 40%, using 83 bp costs and excluding funding. These are hypothetical returns, not actual losses or a clean out-of-sample test. Live risk is unchanged."
+    },
+    {
       "name": "ZEC execution",
       "status": "Wallet approval restored",
       "detail": "The locally generated API wallet was approved September 5. The IOC rounding repair remains offline and is not deployed."
+    },
+    {
+      "name": "Missed ZEC entries",
+      "status": "Depth evidence improved; profit unproven",
+      "detail": "All seven nearby August 29 book samples covered the original size at the offline corrected limit, but its six-hour minute-mark sample showed no target crossing. September 4 daily marks remain missing. Displayed depth and sampled marks do not prove actual fills or native exits; missed trades receive no profit credit."
     },
     {
       "name": "Swing / order-book ideas",
@@ -62,6 +72,14 @@
     {
       "name": "hl-zec-v5-participation-audit-20260905.json",
       "sha256": "f6548c11cfefd418f02722f2831c80ad67b61c0d867d395b4d5ee8317e2a7e53"
+    },
+    {
+      "name": "hl-aggressive-expansion-audit-20260905.json",
+      "sha256": "8dd055df502838bdc6914a097ab41cbd5deea63f6e30f2636458f5d13e2e1ff6"
+    },
+    {
+      "name": "hl-zec-v5-mark-depth-audit-20260905-v2.json",
+      "sha256": "be715b94b4608ceb2bde2b5bfa6e03757b8c8704ace727f665473f408a660be2"
     },
     {
       "name": "final.json",
