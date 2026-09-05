@@ -26,6 +26,8 @@ try {
   const latestFill = Math.max(0, ...value.account.fills.map(fill => fill.time));
   if (latestFill > Date.parse(value.audit.accountEvidenceThrough)) issues.push('new fills require an updated account audit');
   const pilot = value.audit.fundingPilot;
+  assert.equal(pilot.diagnosticExactCashHours, audit.fundingPilot.diagnosticExactCashHours, 'pilot exact-cash count differs');
+  assert.equal(pilot.ambiguousQuantizationHours, audit.fundingPilot.ambiguousQuantizationHours, 'pilot rounding-uncertainty count differs');
   const expectedHours = Math.max(0, Math.min(pilot.plannedHours,
     Math.floor((Date.now() - pilot.firstBoundaryMs - 355_000) / 3_600_000) + 1));
   if (expectedHours > pilot.storedValidHours + pilot.finalizedOtherHours) issues.push('funding pilot snapshot is behind due boundaries');
@@ -34,6 +36,7 @@ try {
     equityUsd: value.account.accountValueUsd, baselinePnlUsd: value.account.performance.lifetimeTradingPnlUsd,
     latestFillAt: latestFill ? new Date(latestFill).toISOString() : null,
     auditAssembledAt: value.audit.assembledAt, storedPilotHours: pilot.storedValidHours,
+    exactCashPilotHours: pilot.diagnosticExactCashHours, roundingUncertainPilotHours: pilot.ambiguousQuantizationHours,
     positions: value.account.positions.length, orders: value.account.openOrders.length, issues }, null, 2));
   if (issues.length) process.exitCode = 1;
 } catch (error) { console.error(error.message); process.exitCode = 1; }

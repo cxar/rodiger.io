@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-05T20:47:18.281Z",
+  "assembledAt": "2026-09-05T21:05:01.484Z",
   "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
   "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
   "profitabilityProven": false,
@@ -18,16 +18,23 @@
     "firstBoundaryMs": 1788627600000,
     "lastBoundaryMs": 1788883200000,
     "plannedHours": 72,
-    "storedValidHours": 4,
+    "storedValidHours": 5,
+    "diagnosticExactCashHours": 4,
+    "ambiguousQuantizationHours": 1,
     "finalizedOtherHours": 0,
     "dueHours": 4,
-    "lastStoredBoundaryMs": 1788638400000,
+    "lastStoredBoundaryMs": 1788642000000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
   },
   "findingsAsOf": "2026-09-05",
   "findings": [
+    {
+      "name": "Native protective-order limits",
+      "status": "Configured 0.5% is not an enforced exit cap",
+      "detail": "All six recorded v5 protective plans used market TP/SL orders. In both filled take-profit orders, the executable limit widened from about 0.5% to 10% beyond the trigger, consistent with venue market-trigger semantics. Actual fills were favorable in those two examples; this is not a claim of realized 10% slippage. Retained stop orders have no fills, and older order history is incomplete. Stop costs remain unmeasured. Live protection and risk are unchanged; switching to stop-limit orders can leave a position unfilled during a gap."
+    },
     {
       "name": "Aggressive 30-market test",
       "status": "More risk magnified modeled losses",
@@ -109,6 +116,10 @@
       "sha256": "fcb0837b377bf372f7c4fd9f0ab33d3c5665cebb635a2b02d8d98e1cc1901172"
     },
     {
+      "name": "hl-native-bracket-semantics-audit-20260905.json",
+      "sha256": "8ac21837fccc87990bdafd00d9c232067eb19571157f56853daa8eda1aea94fc"
+    },
+    {
       "name": "final.json",
       "sha256": "6a9a29dd2d1c86f4bc71dc51313f103833342c64a48733e909312b7d2795ffec"
     },
@@ -123,6 +134,10 @@
     {
       "name": "final.json",
       "sha256": "a3e6f1e7524f647df2ed3ded0446313e0426fb4c137f0d8ab3633fbb46c48aa2"
+    },
+    {
+      "name": "final.json",
+      "sha256": "8ef8a63d0a2e449e3a5f6fdf8ba19c5eb4be0df222d37d34422eeb459a2b6e8a"
     }
   ]
 }

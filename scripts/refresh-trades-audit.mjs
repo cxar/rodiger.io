@@ -27,6 +27,8 @@ const replication = read('reviews/hl-funding-filter-historical-replication-20260
   '10b7b04262c796e5fea27f8a58af87fac548de1a5f0a5b9077abccab53cd2ef8');
 const executionCost = read('reviews/hl-zec-v5-execution-cost-audit-20260905.json',
   'fcb0837b377bf372f7c4fd9f0ab33d3c5665cebb635a2b02d8d98e1cc1901172');
+const bracketSemantics = read('reviews/hl-native-bracket-semantics-audit-20260905.json',
+  '8ac21837fccc87990bdafd00d9c232067eb19571157f56853daa8eda1aea94fc');
 if (account.profitabilityProven !== false || participation.counterfactualFillsCredited !== false
     || account.v5.freshNetUsd !== String(participation.actualLiveEconomics.netRealizedUsd)
     || account.v5.tradeCount !== participation.actualLiveEconomics.tradeCount) {
@@ -83,10 +85,20 @@ if (executionCost.submissionCapability !== false || executionCost.liveRiskChange
     || !Number.isFinite(Number(executionCost.entryNotionalWeightedRoundTripFeeBps))) {
   throw new Error('measured execution-cost scope changed');
 }
+if (bracketSemantics.submissionCapability !== false || bracketSemantics.liveRiskChanged !== false
+    || bracketSemantics.liveProtectionChanged !== false || bracketSemantics.profitabilityProven !== false
+    || bracketSemantics.stopExecutionCostEstimated !== false || bracketSemantics.recommendedReplacementCostBps !== null
+    || bracketSemantics.actualNetUsd !== account.v5.freshNetUsd
+    || bracketSemantics.observedMarketTriggerLimitExpansions !== 2 || bracketSemantics.boundedExitClaimsRejected !== 6
+    || bracketSemantics.retainedNativeStopFilledCount !== 0
+    || bracketSemantics.coverage.fullLifetimeNativeStopHistoryProven !== false) {
+  throw new Error('native bracket-semantics evidence changed');
+}
 const firstBoundary = Date.UTC(2026, 8, 5, 17);
 const now = Date.now();
 const pilot = { firstBoundaryMs: firstBoundary, lastBoundaryMs: firstBoundary + 71 * 3_600_000,
-  plannedHours: 72, storedValidHours: 0, finalizedOtherHours: 0, dueHours: 0, lastStoredBoundaryMs: null,
+  plannedHours: 72, storedValidHours: 0, diagnosticExactCashHours: 0, ambiguousQuantizationHours: 0,
+  finalizedOtherHours: 0, dueHours: 0, lastStoredBoundaryMs: null,
   actualTradingProfitUsd: null, scope: 'Stored accounting-source observations only; no position or earned profit.' };
 for (let index = 0; index < pilot.plannedHours; index++) {
   const boundary = firstBoundary + index * 3_600_000;
@@ -99,7 +111,11 @@ for (let index = 0; index < pilot.plannedHours; index++) {
     throw new Error('pilot result identity is invalid');
   }
   if (row.status === 'valid_source_interval' && row.rawSourceBindingsVerified === true
-      && row.officialHttpsObserved === true && row.derivation?.cashExactAtQuantum === true) {
+      && row.officialHttpsObserved === true) {
+    if (row.derivation?.cashExactAtQuantum === true) pilot.diagnosticExactCashHours++;
+    else if (row.derivation?.cashExactAtQuantum === false && row.derivation.cashPnlUsd === null
+        && row.derivation.reason === 'ambiguous_virtual_cash_quantization') pilot.ambiguousQuantizationHours++;
+    else throw new Error('valid pilot interval has an unrecognized cash derivation');
     pilot.storedValidHours++;
   } else pilot.finalizedOtherHours++;
   pilot.lastStoredBoundaryMs = boundary;
@@ -121,6 +137,7 @@ const output = {
   fundingPilot: pilot,
   findingsAsOf: '2026-09-05',
   findings: [
+    { name: 'Native protective-order limits', status: 'Configured 0.5% is not an enforced exit cap', detail: 'All six recorded v5 protective plans used market TP/SL orders. In both filled take-profit orders, the executable limit widened from about 0.5% to 10% beyond the trigger, consistent with venue market-trigger semantics. Actual fills were favorable in those two examples; this is not a claim of realized 10% slippage. Retained stop orders have no fills, and older order history is incomplete. Stop costs remain unmeasured. Live protection and risk are unchanged; switching to stop-limit orders can leave a position unfilled during a gap.' },
     { name: 'Aggressive 30-market test', status: 'More risk magnified modeled losses', detail: `The 30-entry retrospective price simulation returned ${risk20.hypotheticalReturnPct.toFixed(2)}% at 20% modeled stop risk and ${risk40.hypotheticalReturnPct.toFixed(2)}% at 40%, using 83 bp costs and excluding funding. These are hypothetical returns, not actual losses or a clean out-of-sample test. Live risk is unchanged.` },
     { name: 'Regime and funding filters', status: 'No robust improvement established', detail: `Three fixed single filters were tested on all 78 original candidates. Funding at least twice its prior-day median produced ${crowding83.hypotheticalReturnPct.toFixed(2)}% across 23 hypothetical entries at 20% modeled risk and 83 bp costs, but ${crowding.calendarSegmentsAt83Bps.after.hypotheticalReturnPct.toFixed(2)}% in the later period and ${crowding166.hypotheticalReturnPct.toFixed(2)}% with doubled costs. Funding cash is excluded; this is retrospective, not clean holdout evidence. No live promotion.` },
     { name: 'Earlier-history funding replication', status: 'Large drawdowns; no basis to scale risk', detail: `The unchanged funding filter produced 65 hypothetical entries from January 16 to July 10: ${earlier29.hypotheticalReturnPct.toFixed(2)}% at 29 bp modeled costs, with ${earlier29.closedEquityMaxDrawdownPct.toFixed(2)}% maximum closed-equity drawdown; ${earlier83.hypotheticalReturnPct.toFixed(2)}% at 83 bp costs. All 30 markets remain included; the earlier interval is unscored because XMR funding history is incomplete. Funding cash is excluded. This is retrospective, not a clean holdout; 20% modeled risk is not a guaranteed loss cap. No live promotion.` },
