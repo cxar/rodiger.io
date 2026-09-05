@@ -30,6 +30,13 @@ assert.equal(audit.sources.find(s => s.name === 'hl-aggressive-expansion-audit-2
 assert.equal(audit.sources.find(s => s.name === 'hl-zec-v5-mark-depth-audit-20260905-v2.json')?.sha256,
   'be715b94b4608ceb2bde2b5bfa6e03757b8c8704ace727f665473f408a660be2');
 assert.match(audit.findings.find(f => f.name === 'Missed ZEC entries').detail, /missed trades receive no profit credit/);
+const filters = audit.findings.find(f => f.name === 'Regime and funding filters');
+assert.match(filters.detail, /2\.19%.*-7\.57%.*-34\.02%/);
+assert.match(filters.detail, /Funding cash is excluded/);
+assert.match(filters.detail, /not clean holdout evidence/);
+assert.match(filters.detail, /No live promotion/);
+assert.equal(audit.sources.find(s => s.name === 'hl-pump-failure-mechanism-audit-20260905.json')?.sha256,
+  '34b09066d1afe70ea64ac33e4a80abfd98cd3af126c3e7f35a6c9a19e732c126');
 
 const html = fs.readFileSync(new URL('../pages/trades/index.html', import.meta.url), 'utf8');
 const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];

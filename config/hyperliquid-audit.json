@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-05T19:56:28.419Z",
+  "assembledAt": "2026-09-05T20:14:19.349Z",
   "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
   "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
   "profitabilityProven": false,
@@ -18,10 +18,10 @@
     "firstBoundaryMs": 1788627600000,
     "lastBoundaryMs": 1788883200000,
     "plannedHours": 72,
-    "storedValidHours": 3,
+    "storedValidHours": 4,
     "finalizedOtherHours": 0,
-    "dueHours": 3,
-    "lastStoredBoundaryMs": 1788634800000,
+    "dueHours": 4,
+    "lastStoredBoundaryMs": 1788638400000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
@@ -32,6 +32,11 @@
       "name": "Aggressive 30-market test",
       "status": "More risk magnified modeled losses",
       "detail": "The 30-entry retrospective price simulation returned -45.27% at 20% modeled stop risk and -79.12% at 40%, using 83 bp costs and excluding funding. These are hypothetical returns, not actual losses or a clean out-of-sample test. Live risk is unchanged."
+    },
+    {
+      "name": "Regime and funding filters",
+      "status": "No robust improvement established",
+      "detail": "Three fixed single filters were tested on all 78 original candidates. Funding at least twice its prior-day median produced 2.19% across 23 hypothetical entries at 20% modeled risk and 83 bp costs, but -7.57% in the later period and -34.02% with doubled costs. Funding cash is excluded; this is retrospective, not clean holdout evidence. No live promotion."
     },
     {
       "name": "ZEC execution",
@@ -82,6 +87,10 @@
       "sha256": "be715b94b4608ceb2bde2b5bfa6e03757b8c8704ace727f665473f408a660be2"
     },
     {
+      "name": "hl-pump-failure-mechanism-audit-20260905.json",
+      "sha256": "34b09066d1afe70ea64ac33e4a80abfd98cd3af126c3e7f35a6c9a19e732c126"
+    },
+    {
       "name": "final.json",
       "sha256": "6a9a29dd2d1c86f4bc71dc51313f103833342c64a48733e909312b7d2795ffec"
     },
@@ -92,6 +101,10 @@
     {
       "name": "final.json",
       "sha256": "f4b011b8dd87dbe583001854377e451e2c33a0ab3dd7b2efeb65a74473cf98ba"
+    },
+    {
+      "name": "final.json",
+      "sha256": "a3e6f1e7524f647df2ed3ded0446313e0426fb4c137f0d8ab3633fbb46c48aa2"
     }
   ]
 }

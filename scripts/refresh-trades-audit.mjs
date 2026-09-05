@@ -21,6 +21,8 @@ const expansion = read('reviews/hl-aggressive-expansion-audit-20260905.json',
   '8dd055df502838bdc6914a097ab41cbd5deea63f6e30f2636458f5d13e2e1ff6');
 const markDepth = read('reviews/hl-zec-v5-mark-depth-audit-20260905-v2.json',
   'be715b94b4608ceb2bde2b5bfa6e03757b8c8704ace727f665473f408a660be2');
+const mechanism = read('reviews/hl-pump-failure-mechanism-audit-20260905.json',
+  '34b09066d1afe70ea64ac33e4a80abfd98cd3af126c3e7f35a6c9a19e732c126');
 if (account.profitabilityProven !== false || participation.counterfactualFillsCredited !== false
     || account.v5.freshNetUsd !== String(participation.actualLiveEconomics.netRealizedUsd)
     || account.v5.tradeCount !== participation.actualLiveEconomics.tradeCount) {
@@ -40,6 +42,17 @@ if (expansion.submissionCapability !== false || expansion.liveActivation !== fal
     || markDepth.events.some(e => e.observations.hypotheticalStrategyPnlUsd !== null)
     || markDepth.events.at(-1).observations.status !== 'missing_samples') {
   throw new Error('research scope or safety labels disagree');
+}
+const crowding = mechanism.rules.funding_doubled;
+const crowding83 = crowding.scenarios.find(s => s.modeledCostBps === 83);
+const crowding166 = crowding.scenarios.find(s => s.modeledCostBps === 166);
+if (mechanism.submissionCapability !== false || mechanism.liveActivation !== false
+    || mechanism.profitabilityProven !== false || mechanism.untouchedOutOfSample !== false
+    || mechanism.thresholdsOptimized !== false || mechanism.combinationsTested !== 0
+    || mechanism.candidateCount !== 78 || !crowding83 || !crowding166
+    || crowding83.modeledStopRiskFraction !== 0.2 || crowding.allocatedCount !== 23
+    || Object.values(mechanism.rules).some(r => r.actualProfitUsd !== null || r.netFundingCashIncluded !== false)) {
+  throw new Error('mechanism diagnostic scope changed');
 }
 const firstBoundary = Date.UTC(2026, 8, 5, 17);
 const now = Date.now();
@@ -80,6 +93,7 @@ const output = {
   findingsAsOf: '2026-09-05',
   findings: [
     { name: 'Aggressive 30-market test', status: 'More risk magnified modeled losses', detail: `The 30-entry retrospective price simulation returned ${risk20.hypotheticalReturnPct.toFixed(2)}% at 20% modeled stop risk and ${risk40.hypotheticalReturnPct.toFixed(2)}% at 40%, using 83 bp costs and excluding funding. These are hypothetical returns, not actual losses or a clean out-of-sample test. Live risk is unchanged.` },
+    { name: 'Regime and funding filters', status: 'No robust improvement established', detail: `Three fixed single filters were tested on all 78 original candidates. Funding at least twice its prior-day median produced ${crowding83.hypotheticalReturnPct.toFixed(2)}% across 23 hypothetical entries at 20% modeled risk and 83 bp costs, but ${crowding.calendarSegmentsAt83Bps.after.hypotheticalReturnPct.toFixed(2)}% in the later period and ${crowding166.hypotheticalReturnPct.toFixed(2)}% with doubled costs. Funding cash is excluded; this is retrospective, not clean holdout evidence. No live promotion.` },
     { name: 'ZEC execution', status: 'Wallet approval restored', detail: 'The locally generated API wallet was approved September 5. The IOC rounding repair remains offline and is not deployed.' },
     { name: 'Missed ZEC entries', status: 'Depth evidence improved; profit unproven', detail: 'All seven nearby August 29 book samples covered the original size at the offline corrected limit, but its six-hour minute-mark sample showed no target crossing. September 4 daily marks remain missing. Displayed depth and sampled marks do not prove actual fills or native exits; missed trades receive no profit credit.' },
     { name: 'Swing / order-book ideas', status: 'Not approved for live trading', detail: 'The frozen swing holdout and impact-skew tests were negative after costs. No risk increase or live promotion.' },
