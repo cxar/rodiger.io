@@ -64,12 +64,20 @@
 
       <div class="cards" id="cards"></div>
 
-      <div class="panel">
-        <h2>Research / Paper Lanes</h2>
+      <div class="panel" id="audit-panel">
+        <h2>Latest Verified Audit</h2>
+        <p class="strat" id="audit-scope">Loading dated audit evidence…</p>
+        <div class="cards" id="audit-cards"></div>
+        <div class="strat" id="audit-findings"></div>
+      </div>
+
+      <details class="panel">
+        <summary>Research / Paper Lanes — historical inventory</summary>
+        <p class="strat">Historical inventory. The dated audit above supersedes old operating claims; paper results are never added to live profit.</p>
         <p class="muted" id="research-scope" style="font-size:0.75rem;margin:0 0 0.7rem">loading the published research snapshot…</p>
         <table><thead><tr><th>Lane</th><th>Status</th><th>Evidence</th><th>First decision</th><th>Scope</th></tr></thead>
           <tbody id="research-lanes"><tr><td colspan="5" class="muted">loading…</td></tr></tbody></table>
-      </div>
+      </details>
 
       <div class="panel">
         <h2>Current ZEC Signal Gates</h2>
@@ -142,14 +150,40 @@
       const cls = (value) => Number(value)>=0?"pos":"neg";
       const gate = (pass) => `<span class="${pass?"pass":"fail"}">${pass?"PASS":"WAIT"}</span>`;
 
-      let payload=null, portfolio=[], chart=null, ddChart=null, attribChart=null, win="week";
+      let payload=null, portfolio=[], chart=null, ddChart=null, attribChart=null, win="week", loading=false;
+      const MAX_STATUS_AGE_MS=90000;
 
       async function statusApi(){
-        const response=await fetch("/api/trades",{cache:"no-store"});
-        const body=await response.json().catch(()=>({}));
-        if(!response.ok) throw new Error(body.message||`HTTP ${response.status}`);
-        if(body.schemaVersion!==1||!body.strategy||!body.account||!body.signal||!body.protection||!body.researchLanes) throw new Error("invalid strategy status contract");
-        return body;
+        const controller=new AbortController();
+        let timer;
+        const deadline=new Promise((_,reject)=>{ timer=setTimeout(()=>{ controller.abort(); reject(new Error("refresh timed out")); },12000); });
+        try{
+          return await Promise.race([deadline,(async()=>{
+            const response=await fetch("/api/trades",{cache:"no-store",signal:controller.signal});
+            const body=await response.json();
+            if(!response.ok) throw new Error(body.message||`HTTP ${response.status}`);
+            if(body.schemaVersion!==1||!body.strategy||!body.account||!body.signal||!body.protection||!body.researchLanes) throw new Error("invalid strategy status contract");
+            const age=Date.now()-Date.parse(body.generatedAt);
+            if(!Number.isFinite(age)||age < -5000||age>MAX_STATUS_AGE_MS) throw new Error("exchange snapshot is stale or has an invalid timestamp");
+            return body;
+          })()]);
+        } finally { clearTimeout(timer); }
+      }
+
+      function renderAudit(){
+        const a=payload.audit;
+        if(!a||a.availability==="unavailable"){
+          $("audit-scope").textContent="Dated audit unavailable. Do not infer strategy profitability from the account balance.";
+          $("audit-cards").innerHTML=""; $("audit-findings").innerHTML=""; return;
+        }
+        $("audit-scope").textContent=`Account evidence through ${a.accountEvidenceThrough}; signal coverage through ${a.signalEvidenceThrough}. Snapshot assembled ${a.assembledAt}.${a.availability==="update_due"?" UPDATE DUE.":""} Profitability is not established.`;
+        $("audit-cards").innerHTML=[
+          card("Audited account trading net",fmtUsd(a.allCapturedTradingNetUsd),"All captured fills, fees and funding",cls(a.allCapturedTradingNetUsd)),
+          card("Audited ZEC v5 net",fmtUsd(a.v5.netRealizedUsd),`${a.v5.completedTrades} completed trades · selected sample`,cls(a.v5.netRealizedUsd)),
+          card("Strong signals filled",`${a.v5.completedTrades} / ${a.v5.selectedStrongSignals}`,`${a.v5.unfilledStrongSignals} unfilled · no hypothetical P&L credited`),
+          card("Funding source pilot",`${a.fundingPilot.storedValidHours} / ${a.fundingPilot.plannedHours}`,`${a.fundingPilot.overdueMissingHours} overdue missing · accounting observations, not profit`)
+        ].join("");
+        $("audit-findings").innerHTML=`<p>${esc(a.v5.note)}</p>`+a.findings.map(f=>`<p><b>${esc(f.name)} — ${esc(f.status)}.</b> ${esc(f.detail)}</p>`).join("");
       }
 
       function card(label,value,meta,valueClass){
@@ -176,7 +210,7 @@
         $("cards").innerHTML=[
           card("Account Value",fmtUsd(equity)),
           card("Live Trading P&L",lifetimeReady?fmtUsd(performance.lifetimeTradingPnlUsd):"UNAVAILABLE",lifetimeReady?`${fmtPct(performance.lifetimeTradingReturnPct)} · since ${esc(performance.baselineLabel||"baseline")}`:esc(performance.blocker||"accounting reconciliation unavailable"),lifetimeReady?cls(performance.lifetimeTradingPnlUsd):"neg"),
-          card(`P&L (${label})`,fmtUsd(windowPnl),fmtPct(windowPct),cls(windowPnl)),
+          card(`Equity change (${label})`,hist.length>1?fmtUsd(windowPnl):"UNAVAILABLE",hist.length>1?`${fmtPct(windowPct)} · may include transfers`:"Public history unavailable",hist.length>1?cls(windowPnl):"neg"),
           card("Unrealized",fmtUsd(upnl),null,cls(upnl)),
           card("Market Rule",marketPass?"QUALIFIED":"WAIT",signal.dataComplete?"all market inputs current":"market data incomplete",marketPass?"pass":"wait"),
           card("Risk Tier",esc(signal.riskTier||"unknown"),signal.maxAccountRiskFraction==null?"—":`${(signal.maxAccountRiskFraction*100).toFixed(0)}% account loss at stop`),
@@ -321,12 +355,20 @@
 
       function renderAll(){
         portfolio=payload.account.portfolio||[];
-        renderCards(); renderResearchLanes(); renderSignal(); renderChart(); renderDrawdown(); renderExposure(); renderPositions(); renderOrders(); renderFills(); renderAttribution(); renderStrategy();
+        renderCards(); renderAudit(); renderResearchLanes(); renderSignal(); renderChart(); renderDrawdown(); renderExposure(); renderPositions(); renderOrders(); renderFills(); renderAttribution(); renderStrategy();
         $("addr").textContent=payload.account.address.slice(0,6)+"…"+payload.account.address.slice(-4);
+        renderFreshness();
+      }
+
+      function renderFreshness(){
+        if(!payload) return;
+        if(Date.now()-Date.parse(payload.generatedAt)>MAX_STATUS_AGE_MS){
+          payload=null; renderUnavailable(new Error("exchange snapshot expired; waiting for a fresh response")); return;
+        }
         const ageSeconds=Math.max(0,Math.round((Date.now()-Date.parse(payload.generatedAt))/1000));
         const sourceOk=payload.sources&&payload.sources.hyperliquidPublicApi==="ok";
         const sourceErrors=payload.sources&&payload.sources.errors?Object.keys(payload.sources.errors):[];
-        $("sub").innerHTML=`<span class="${sourceOk?"live":"stale"}">● public exchange data ${sourceOk?"live":"partial"}</span>${sourceErrors.length?` (${esc(sourceErrors.join(", "))})`:""} · ${esc(payload.strategy.name)} · ${ageSeconds}s old · local daemon health not publicly observable`;
+        $("sub").innerHTML=`<span class="${sourceOk?"live":"stale"}">● public exchange data ${sourceOk?"live":"partial"}</span>${sourceErrors.length?` (${esc(sourceErrors.join(", "))})`:""} · ${esc(payload.strategy.name)} · ${ageSeconds}s old · refreshes every 30s · local daemon health not publicly observable`;
       }
 
       function renderUnavailable(error){
@@ -339,11 +381,23 @@
         $("blockers").innerHTML=`<li>${esc(error.message)}</li>`;
         $("strategy-copy").innerHTML="<b>Fail closed.</b> Strategy details are hidden until the versioned status contract is available.";
         $("observer-scope").innerHTML="<b>Observer scope.</b> Local daemon health is never inferred from this page.";
+        portfolio=[];
+        $("positions").innerHTML=`<tr><td colspan="6">Current positions unavailable.</td></tr>`;
+        $("orders").innerHTML=`<tr><td colspan="5">Current orders unavailable.</td></tr>`;
+        $("fills").innerHTML=`<tr><td colspan="5">Recent fills unavailable.</td></tr>`;
+        $("poscount").textContent="?"; $("ordercount").textContent="?";
+        $("expo").innerHTML="";
+        for(const id of ["expo-long","expo-net","expo-short"]) $(id).textContent="unavailable";
+        for(const c of [chart,ddChart,attribChart]) if(c) c.destroy();
+        chart=null; ddChart=null; attribChart=null;
       }
 
       async function load(){
+        if(loading) return;
+        loading=true;
         try{ payload=await statusApi(); renderAll(); }
         catch(error){ payload=null; renderUnavailable(error); }
+        finally{ loading=false; }
       }
 
       function tickSignal(){
@@ -358,7 +412,9 @@
 
       function setActive(){ document.querySelectorAll("#toggle button").forEach((button)=>button.classList.toggle("on",button.dataset.w===win)); }
       document.querySelectorAll("#toggle button").forEach((button)=>button.addEventListener("click",()=>{ win=button.dataset.w; setActive(); if(payload){ renderCards(); renderChart(); } }));
-      setActive(); load(); setInterval(load,30000); setInterval(tickSignal,1000);
+      setActive(); load(); setInterval(load,30000); setInterval(()=>{renderFreshness(); tickSignal();},1000);
+      document.addEventListener("visibilitychange",()=>{if(!document.hidden){renderFreshness(); load();}});
+      window.addEventListener("online",load);
     </script>
   </body>
 </html>

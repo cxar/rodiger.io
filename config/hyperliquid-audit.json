@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "assembledAt": "2026-09-05T19:15:00.954Z",
+  "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
+  "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
+  "profitabilityProven": false,
+  "auditRefreshAfterMs": 86400000,
+  "allCapturedTradingNetUsd": "-143.923955",
+  "v5": {
+    "netRealizedUsd": "41.336435",
+    "completedTrades": 3,
+    "selectedStrongSignals": 6,
+    "unfilledStrongSignals": 3,
+    "missedSignalPnlUsd": null,
+    "note": "Three filled trades are a small selected sample, not proof of a profitable full-signal strategy."
+  },
+  "fundingPilot": {
+    "firstBoundaryMs": 1788627600000,
+    "lastBoundaryMs": 1788883200000,
+    "plannedHours": 72,
+    "storedValidHours": 3,
+    "finalizedOtherHours": 0,
+    "dueHours": 3,
+    "lastStoredBoundaryMs": 1788634800000,
+    "actualTradingProfitUsd": null,
+    "scope": "Stored accounting-source observations only; no position or earned profit.",
+    "overdueMissingHours": 0
+  },
+  "findingsAsOf": "2026-09-05",
+  "findings": [
+    {
+      "name": "ZEC execution",
+      "status": "Wallet approval restored",
+      "detail": "The locally generated API wallet was approved September 5. The IOC rounding repair remains offline and is not deployed."
+    },
+    {
+      "name": "Swing / order-book ideas",
+      "status": "Not approved for live trading",
+      "detail": "The frozen swing holdout and impact-skew tests were negative after costs. No risk increase or live promotion."
+    },
+    {
+      "name": "Cross-DEX SNDK",
+      "status": "No executable edge established",
+      "detail": "All 18 captured matched-size quote calculations were negative after modeled round-trip fees. No trade activated."
+    },
+    {
+      "name": "New-listing readiness",
+      "status": "Read-only observation",
+      "detail": "A future-only 72-hour observer was installed September 5. It does not place orders or establish profitability."
+    },
+    {
+      "name": "Legacy research publishers",
+      "status": "Retired after failures",
+      "detail": "Six failed research/publishing retry loops were stopped September 5. Their historical evidence is preserved below; they are not represented as healthy live systems."
+    }
+  ],
+  "sources": [
+    {
+      "name": "hl-account-audit-20260905.json",
+      "sha256": "b6b3efe9472c6c9012577163f93124b033f8dc3dabe7ff41ad57cd70a4fac7cf"
+    },
+    {
+      "name": "hl-zec-v5-participation-audit-20260905.json",
+      "sha256": "f6548c11cfefd418f02722f2831c80ad67b61c0d867d395b4d5ee8317e2a7e53"
+    },
+    {
+      "name": "final.json",
+      "sha256": "6a9a29dd2d1c86f4bc71dc51313f103833342c64a48733e909312b7d2795ffec"
+    },
+    {
+      "name": "final.json",
+      "sha256": "ad12d3c45e2691349bb945dcb870db84b0da84e1d6bd10a446a1e78c44b65c53"
+    },
+    {
+      "name": "final.json",
+      "sha256": "f4b011b8dd87dbe583001854377e451e2c33a0ab3dd7b2efeb65a74473cf98ba"
+    }
+  ]
+}

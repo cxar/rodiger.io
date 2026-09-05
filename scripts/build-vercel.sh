@@ -3,6 +3,7 @@ set -euo pipefail
 
 node scripts/check-paxos-dashboard.mjs
 node scripts/check-trades-dashboard.mjs
+node scripts/check-trades-freshness.mjs
 
 curl -fsSL https://sh.rustup.rs | sh -s -- \
   -y \
