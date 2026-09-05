@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-05T20:14:19.349Z",
+  "assembledAt": "2026-09-05T20:47:18.281Z",
   "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
   "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
   "profitabilityProven": false,
@@ -37,6 +37,16 @@
       "name": "Regime and funding filters",
       "status": "No robust improvement established",
       "detail": "Three fixed single filters were tested on all 78 original candidates. Funding at least twice its prior-day median produced 2.19% across 23 hypothetical entries at 20% modeled risk and 83 bp costs, but -7.57% in the later period and -34.02% with doubled costs. Funding cash is excluded; this is retrospective, not clean holdout evidence. No live promotion."
+    },
+    {
+      "name": "Earlier-history funding replication",
+      "status": "Large drawdowns; no basis to scale risk",
+      "detail": "The unchanged funding filter produced 65 hypothetical entries from January 16 to July 10: 22.15% at 29 bp modeled costs, with 64.79% maximum closed-equity drawdown; -45.14% at 83 bp costs. All 30 markets remain included; the earlier interval is unscored because XMR funding history is incomplete. Funding cash is excluded. This is retrospective, not a clean holdout; 20% modeled risk is not a guaranteed loss cap. No live promotion."
+    },
+    {
+      "name": "Measured ZEC trading fees",
+      "status": "Fees verified; total execution cost unknown",
+      "detail": "The three completed trades contain 12 native fills and $2.710233 in fees: 8.94 bp round trip, weighted by entry notional. There were zero native stop-loss exits. Fees do not establish all-in execution costs or future stop slippage, so neither the 29 nor 83 bp modeled allowance has been replaced. Actual net P&L remains +$41.34; backtest gains are not credited as earned profit. Live risk is unchanged."
     },
     {
       "name": "ZEC execution",
@@ -89,6 +99,14 @@
     {
       "name": "hl-pump-failure-mechanism-audit-20260905.json",
       "sha256": "34b09066d1afe70ea64ac33e4a80abfd98cd3af126c3e7f35a6c9a19e732c126"
+    },
+    {
+      "name": "hl-funding-filter-historical-replication-20260905.json",
+      "sha256": "10b7b04262c796e5fea27f8a58af87fac548de1a5f0a5b9077abccab53cd2ef8"
+    },
+    {
+      "name": "hl-zec-v5-execution-cost-audit-20260905.json",
+      "sha256": "fcb0837b377bf372f7c4fd9f0ab33d3c5665cebb635a2b02d8d98e1cc1901172"
     },
     {
       "name": "final.json",

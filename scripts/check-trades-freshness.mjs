@@ -37,6 +37,26 @@ assert.match(filters.detail, /not clean holdout evidence/);
 assert.match(filters.detail, /No live promotion/);
 assert.equal(audit.sources.find(s => s.name === 'hl-pump-failure-mechanism-audit-20260905.json')?.sha256,
   '34b09066d1afe70ea64ac33e4a80abfd98cd3af126c3e7f35a6c9a19e732c126');
+const replication = audit.findings.find(f => f.name === 'Earlier-history funding replication');
+assert.ok(replication, 'longer replication must remain visible beside the recent filter result');
+assert.match(replication.detail, /65 hypothetical entries from January 16 to July 10/);
+assert.match(replication.detail, /22\.15%.*64\.79%.*-45\.14%/);
+assert.match(replication.detail, /earlier interval is unscored because XMR funding history is incomplete/);
+assert.match(replication.detail, /Funding cash is excluded/);
+assert.match(replication.detail, /not a clean holdout/);
+assert.match(replication.detail, /not a guaranteed loss cap/);
+assert.match(replication.detail, /No live promotion/);
+assert.equal(audit.sources.find(s => s.name === 'hl-funding-filter-historical-replication-20260905.json')?.sha256,
+  '10b7b04262c796e5fea27f8a58af87fac548de1a5f0a5b9077abccab53cd2ef8');
+const fees = audit.findings.find(f => f.name === 'Measured ZEC trading fees');
+assert.match(fees.detail, /12 native fills and \$2\.710233 in fees: 8\.94 bp round trip/);
+assert.match(fees.detail, /zero native stop-loss exits/);
+assert.match(fees.detail, /neither the 29 nor 83 bp modeled allowance has been replaced/);
+assert.match(fees.detail, /Actual net P&L remains \+\$41\.34/);
+assert.match(fees.detail, /backtest gains are not credited as earned profit/);
+assert.match(fees.detail, /Live risk is unchanged/);
+assert.equal(audit.sources.find(s => s.name === 'hl-zec-v5-execution-cost-audit-20260905.json')?.sha256,
+  'fcb0837b377bf372f7c4fd9f0ab33d3c5665cebb635a2b02d8d98e1cc1901172');
 
 const html = fs.readFileSync(new URL('../pages/trades/index.html', import.meta.url), 'utf8');
 const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];
