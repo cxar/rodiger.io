@@ -13,6 +13,16 @@ assert.equal(buildAuditStatus(audit, now - 5_001).availability, 'unavailable');
 assert.equal(buildAuditStatus({ ...audit, profitabilityProven: true }, now).availability, 'unavailable');
 assert.equal(buildAuditStatus({ ...audit, fundingPilot: { actualTradingProfitUsd: 1 } }, now).availability, 'unavailable');
 assert.equal(buildAuditStatus(audit, now + 1_000).accountEvidenceThrough, audit.accountEvidenceThrough);
+// A newly assembled pilot snapshot must not renew the underlying audit evidence.
+for (const key of ['accountEvidenceThrough', 'signalEvidenceThrough']) {
+  const expired = { ...audit, assembledAt: new Date(now).toISOString(),
+    [key]: new Date(now - 86_400_001).toISOString() };
+  assert.equal(buildAuditStatus(expired, now).availability, 'update_due');
+  assert.equal(buildAuditStatus(expired, now)[key], expired[key]);
+  assert.equal(buildAuditStatus(expired, now)[key === 'accountEvidenceThrough'
+    ? 'accountEvidenceUpdateDue' : 'signalEvidenceUpdateDue'], true);
+  assert.equal(buildAuditStatus({ ...audit, [key]: new Date(now - 86_400_000).toISOString() }, now).availability, 'published');
+}
 assert.equal(audit.v5.completedTrades + audit.v5.unfilledStrongSignals, audit.v5.selectedStrongSignals);
 assert.equal(audit.v5.missedSignalPnlUsd, null);
 assert.ok(!JSON.stringify(audit).includes('/Users/'));

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-06T14:58:02.895Z",
-  "accountEvidenceThrough": "2026-09-05T15:20:30.208Z",
-  "signalEvidenceThrough": "2026-09-05T15:00:00.000Z",
+  "assembledAt": "2026-09-06T16:06:12.324Z",
+  "accountEvidenceThrough": "2026-09-06T16:02:10.648Z",
+  "signalEvidenceThrough": "2026-09-06T16:00:00.000Z",
   "profitabilityProven": false,
   "auditRefreshAfterMs": 86400000,
   "allCapturedTradingNetUsd": "-143.923955",
@@ -18,18 +18,23 @@
     "firstBoundaryMs": 1788627600000,
     "lastBoundaryMs": 1788883200000,
     "plannedHours": 72,
-    "storedValidHours": 22,
-    "diagnosticExactCashHours": 20,
+    "storedValidHours": 24,
+    "diagnosticExactCashHours": 22,
     "ambiguousQuantizationHours": 2,
     "finalizedOtherHours": 0,
-    "dueHours": 22,
-    "lastStoredBoundaryMs": 1788703200000,
+    "dueHours": 24,
+    "lastStoredBoundaryMs": 1788710400000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
   },
   "findingsAsOf": "2026-09-05",
   "findings": [
+    {
+      "name": "Account and participation recheck",
+      "status": "Dated unsigned replay; profitability unproven",
+      "detail": "Account records were recaptured through 2026-09-06T16:02:10.648Z and the unchanged selector replayed through 2026-09-06T16:00:00.000Z. There are 6 selected strong signals and 3 completed trades. 29 historical signal hours lack direct runtime observations; recovered market history does not recover a missed entry. Older cost and research findings retain their September 5 evidence dates. No trading rules, risk, or live execution changed."
+    },
     {
       "name": "Native protective-order limits",
       "status": "Configured 0.5% is not an enforced exit cap",
@@ -94,6 +99,14 @@
     {
       "name": "hl-zec-v5-participation-audit-20260905.json",
       "sha256": "f6548c11cfefd418f02722f2831c80ad67b61c0d867d395b4d5ee8317e2a7e53"
+    },
+    {
+      "name": "hl-account-audit-20260906.json",
+      "sha256": "0d229f9338ced416f5075bd43d1dace7a017ddfb02eeb6844c0c9b1682fdd2d5"
+    },
+    {
+      "name": "hl-zec-v5-participation-audit-20260906.json",
+      "sha256": "67bec0cbd9f784b5a07dfaa7bc01a11143cb6f96e346fe75285d7439acf9d833"
     },
     {
       "name": "hl-aggressive-expansion-audit-20260905.json",
@@ -206,6 +219,14 @@
     {
       "name": "final.json",
       "sha256": "e93759f91f6d5173abef8cfe1f8388f472a5e7f9e0df80eca7d34b3c02a2d103"
+    },
+    {
+      "name": "final.json",
+      "sha256": "e3b93c2eb46153b71a23c4eb074f59d99b603d41740cb7e6f5fabd7fd5e472da"
+    },
+    {
+      "name": "final.json",
+      "sha256": "f859fadb50d312f2ed5ea3912cbc3e589fbe8b0f3664f0d6e8cee806402a30dc"
     }
   ]
 }

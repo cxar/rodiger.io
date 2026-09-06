@@ -22,7 +22,11 @@ try {
   assert.deepEqual(value.audit.sources, audit.sources, 'latest research evidence has not reached production');
   assert.deepEqual(value.audit.findings, audit.findings, 'latest research findings have not reached production');
   assert.equal(value.audit.assembledAt, audit.assembledAt, 'local audit export differs from production');
+  assert.equal(value.audit.accountEvidenceThrough, audit.accountEvidenceThrough, 'account evidence cutoff differs');
+  assert.equal(value.audit.signalEvidenceThrough, audit.signalEvidenceThrough, 'signal evidence cutoff differs');
   if (value.audit.availability !== 'published') issues.push('audit publication needs attention');
+  if (Date.now() - Date.parse(value.audit.accountEvidenceThrough) > 86_400_000) issues.push('account audit evidence is older than 24 hours');
+  if (Date.now() - Date.parse(value.audit.signalEvidenceThrough) > 86_400_000) issues.push('participation audit evidence is older than 24 hours');
   const latestFill = Math.max(0, ...value.account.fills.map(fill => fill.time));
   if (latestFill > Date.parse(value.audit.accountEvidenceThrough)) issues.push('new fills require an updated account audit');
   const pilot = value.audit.fundingPilot;
@@ -35,7 +39,8 @@ try {
   console.log(JSON.stringify({ checkedAt: new Date().toISOString(), responseAgeMs: ageMs,
     equityUsd: value.account.accountValueUsd, baselinePnlUsd: value.account.performance.lifetimeTradingPnlUsd,
     latestFillAt: latestFill ? new Date(latestFill).toISOString() : null,
-    auditAssembledAt: value.audit.assembledAt, storedPilotHours: pilot.storedValidHours,
+    auditAssembledAt: value.audit.assembledAt, accountEvidenceThrough: value.audit.accountEvidenceThrough,
+    signalEvidenceThrough: value.audit.signalEvidenceThrough, storedPilotHours: pilot.storedValidHours,
     exactCashPilotHours: pilot.diagnosticExactCashHours, roundingUncertainPilotHours: pilot.ambiguousQuantizationHours,
     positions: value.account.positions.length, orders: value.account.openOrders.length, issues }, null, 2));
   if (issues.length) process.exitCode = 1;

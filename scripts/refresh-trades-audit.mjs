@@ -7,16 +7,29 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const research = path.resolve(root, '../internet-money-machine');
 const sources = [];
-function read(relative, expectedSha256 = null) {
-  const bytes = fs.readFileSync(path.join(research, relative));
+function read(relative, expectedSha256 = null, sourceRoot = research) {
+  const bytes = fs.readFileSync(path.join(sourceRoot, relative));
   if (bytes.length > 4_000_000) throw new Error('audit source exceeds size limit');
   const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
   if (expectedSha256 && sha256 !== expectedSha256) throw new Error('fixed research source changed');
   sources.push({ name: path.basename(relative), sha256 });
   return JSON.parse(bytes);
 }
-const account = read('reviews/hl-account-audit-20260905.json');
-const participation = read('reviews/hl-zec-v5-participation-audit-20260905.json');
+const datedAccount = read('reviews/hl-account-audit-20260905.json',
+  'b6b3efe9472c6c9012577163f93124b033f8dc3dabe7ff41ad57cd70a4fac7cf');
+read('reviews/hl-zec-v5-participation-audit-20260905.json',
+  'f6548c11cfefd418f02722f2831c80ad67b61c0d867d395b4d5ee8317e2a7e53');
+const references = JSON.parse(fs.readFileSync(path.join(root, 'config/hyperliquid-evidence-sources.json'), 'utf8'));
+function currentEvidence(key) {
+  const ref = references[key];
+  if (references.schemaVersion !== 1 || !ref || !/^[0-9a-f]{64}$/.test(ref.sha256)
+      || !/^\.vercel\/trades-audits\/[0-9-]+\/hl-(account-audit|zec-v5-participation-audit)-[0-9]{8}\.json$/.test(ref.path)) {
+    throw new Error('invalid dated evidence reference');
+  }
+  return read(ref.path, ref.sha256, root);
+}
+const account = currentEvidence('account');
+const participation = currentEvidence('participation');
 const expansion = read('reviews/hl-aggressive-expansion-audit-20260905.json',
   '8dd055df502838bdc6914a097ab41cbd5deea63f6e30f2636458f5d13e2e1ff6');
 const markDepth = read('reviews/hl-zec-v5-mark-depth-audit-20260905-v2.json',
@@ -30,6 +43,10 @@ const executionCost = read('reviews/hl-zec-v5-execution-cost-audit-20260905.json
 const bracketSemantics = read('reviews/hl-native-bracket-semantics-audit-20260905.json',
   '8ac21837fccc87990bdafd00d9c232067eb19571157f56853daa8eda1aea94fc');
 if (account.profitabilityProven !== false || participation.counterfactualFillsCredited !== false
+    || account.submissionCapability !== false || participation.submissionCapability !== false
+    || account.account !== datedAccount.account || account.cutoffMs < datedAccount.cutoffMs
+    || participation.accountFillCaptureCutoffMs !== account.cutoffMs
+    || participation.auditThroughSignalStartMs + 3_600_000 > account.cutoffMs
     || account.v5.freshNetUsd !== String(participation.actualLiveEconomics.netRealizedUsd)
     || account.v5.tradeCount !== participation.actualLiveEconomics.tradeCount) {
   throw new Error('audit sources disagree');
@@ -81,7 +98,7 @@ if (executionCost.submissionCapability !== false || executionCost.liveRiskChange
     || executionCost.recommendedReplacementCostBps !== null || executionCost.nativeStopExitCount !== 0
     || executionCost.nativeFillCount !== 12 || executionCost.tradeCount !== account.v5.tradeCount
     || executionCost.actualNetUsd !== account.v5.freshNetUsd
-    || executionCost.accountEvidenceCutoffMs !== account.cutoffMs
+    || executionCost.accountEvidenceCutoffMs !== datedAccount.cutoffMs
     || !Number.isFinite(Number(executionCost.entryNotionalWeightedRoundTripFeeBps))) {
   throw new Error('measured execution-cost scope changed');
 }
@@ -137,6 +154,7 @@ const output = {
   fundingPilot: pilot,
   findingsAsOf: '2026-09-05',
   findings: [
+    { name: 'Account and participation recheck', status: 'Dated unsigned replay; profitability unproven', detail: `Account records were recaptured through ${new Date(account.cutoffMs).toISOString()} and the unchanged selector replayed through ${new Date(participation.auditThroughSignalStartMs + 3_600_000).toISOString()}. There are ${participation.strongSelectedEvents} selected strong signals and ${account.v5.tradeCount} completed trades. ${participation.missingDirectObservationHourCount} historical signal hours lack direct runtime observations; recovered market history does not recover a missed entry. Older cost and research findings retain their September 5 evidence dates. No trading rules, risk, or live execution changed.` },
     { name: 'Native protective-order limits', status: 'Configured 0.5% is not an enforced exit cap', detail: 'All six recorded v5 protective plans used market TP/SL orders. In both filled take-profit orders, the executable limit widened from about 0.5% to 10% beyond the trigger, consistent with venue market-trigger semantics. Actual fills were favorable in those two examples; this is not a claim of realized 10% slippage. Retained stop orders have no fills, and older order history is incomplete. Stop costs remain unmeasured. Live protection and risk are unchanged; switching to stop-limit orders can leave a position unfilled during a gap.' },
     { name: 'Aggressive 30-market test', status: 'More risk magnified modeled losses', detail: `The 30-entry retrospective price simulation returned ${risk20.hypotheticalReturnPct.toFixed(2)}% at 20% modeled stop risk and ${risk40.hypotheticalReturnPct.toFixed(2)}% at 40%, using 83 bp costs and excluding funding. These are hypothetical returns, not actual losses or a clean out-of-sample test. Live risk is unchanged.` },
     { name: 'Regime and funding filters', status: 'No robust improvement established', detail: `Three fixed single filters were tested on all 78 original candidates. Funding at least twice its prior-day median produced ${crowding83.hypotheticalReturnPct.toFixed(2)}% across 23 hypothetical entries at 20% modeled risk and 83 bp costs, but ${crowding.calendarSegmentsAt83Bps.after.hypotheticalReturnPct.toFixed(2)}% in the later period and ${crowding166.hypotheticalReturnPct.toFixed(2)}% with doubled costs. Funding cash is excluded; this is retrospective, not clean holdout evidence. No live promotion.` },

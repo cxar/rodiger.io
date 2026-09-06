@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "account": {
+    "path": ".vercel/trades-audits/20260906-1604/hl-account-audit-20260906.json",
+    "sha256": "0d229f9338ced416f5075bd43d1dace7a017ddfb02eeb6844c0c9b1682fdd2d5"
+  },
+  "participation": {
+    "path": ".vercel/trades-audits/20260906-1604/hl-zec-v5-participation-audit-20260906.json",
+    "sha256": "67bec0cbd9f784b5a07dfaa7bc01a11143cb6f96e346fe75285d7439acf9d833"
+  }
+}

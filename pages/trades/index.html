@@ -176,7 +176,7 @@
           $("audit-scope").textContent="Dated audit unavailable. Do not infer strategy profitability from the account balance.";
           $("audit-cards").innerHTML=""; $("audit-findings").innerHTML=""; return;
         }
-        $("audit-scope").textContent=`Account evidence through ${a.accountEvidenceThrough}; signal coverage through ${a.signalEvidenceThrough}. Snapshot assembled ${a.assembledAt}.${a.availability==="update_due"?" UPDATE DUE.":""} Profitability is not established.`;
+        $("audit-scope").textContent=`Account evidence through ${a.accountEvidenceThrough}; signal coverage through ${a.signalEvidenceThrough}. Snapshot assembled ${a.assembledAt}.${a.availability==="update_due"?" UPDATE DUE: snapshot or underlying audit evidence is over 24 hours old.":""} Profitability is not established.`;
         $("audit-cards").innerHTML=[
           card("Audited account trading net",fmtUsd(a.allCapturedTradingNetUsd),"All captured fills, fees and funding",cls(a.allCapturedTradingNetUsd)),
           card("Audited ZEC v5 net",fmtUsd(a.v5.netRealizedUsd),`${a.v5.completedTrades} completed trades · selected sample`,cls(a.v5.netRealizedUsd)),
