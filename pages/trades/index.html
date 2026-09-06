@@ -181,7 +181,7 @@
           card("Audited account trading net",fmtUsd(a.allCapturedTradingNetUsd),"All captured fills, fees and funding",cls(a.allCapturedTradingNetUsd)),
           card("Audited ZEC v5 net",fmtUsd(a.v5.netRealizedUsd),`${a.v5.completedTrades} completed trades · selected sample`,cls(a.v5.netRealizedUsd)),
           card("Strong signals filled",`${a.v5.completedTrades} / ${a.v5.selectedStrongSignals}`,`${a.v5.unfilledStrongSignals} unfilled · no hypothetical P&L credited`),
-          card("Funding source pilot",`${a.fundingPilot.storedValidHours} / ${a.fundingPilot.plannedHours}`,`${a.fundingPilot.diagnosticExactCashHours} exact cash · ${a.fundingPilot.ambiguousQuantizationHours} rounding-uncertain · ${a.fundingPilot.overdueMissingHours} overdue missing · observations, not profit`)
+          card("Funding source pilot",`${a.fundingPilot.storedValidHours} / ${a.fundingPilot.plannedHours}`,`${a.fundingPilot.diagnosticExactCashHours} exact cash · ${a.fundingPilot.ambiguousQuantizationHours} rounding-uncertain · ${a.fundingPilot.finalizedOtherHours} unresolved · ${a.fundingPilot.overdueMissingHours} overdue missing · observations, not profit`)
         ].join("");
         $("audit-findings").innerHTML=`<p>${esc(a.v5.note)}</p>`+a.findings.map(f=>`<p><b>${esc(f.name)} — ${esc(f.status)}.</b> ${esc(f.detail)}</p>`).join("");
       }

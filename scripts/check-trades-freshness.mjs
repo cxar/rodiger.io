@@ -102,6 +102,17 @@ const sandbox = {
 const context = vm.createContext(sandbox);
 // Evaluate production functions without scheduling a browser or sending requests.
 vm.runInContext(code.replace('setActive(); load(); setInterval(load,30000);', 'setActive(); setInterval(load,30000);'), context);
+// Finalized failures must remain visible even when no source hours are overdue.
+context.failedPilotAudit = buildAuditStatus({ ...audit, fundingPilot: {
+  ...pilot, storedValidHours: 29, diagnosticExactCashHours: 27,
+  ambiguousQuantizationHours: 2, finalizedOtherHours: 2, dueHours: 31,
+  overdueMissingHours: 0
+} }, now);
+assert.equal(context.failedPilotAudit.availability, 'published');
+vm.runInContext('payload={audit:failedPilotAudit}; renderAudit()', context);
+assert.match(elements.get('audit-cards').innerHTML, /29 \/ 72/);
+assert.match(elements.get('audit-cards').innerHTML, /27 exact cash · 2 rounding-uncertain · 2 unresolved · 0 overdue missing/);
+assert.match(elements.get('audit-cards').innerHTML, /observations, not profit/);
 const valid = () => ({ schemaVersion: 1, generatedAt: new Date(clock).toISOString(), strategy: {}, account: {}, signal: {}, protection: {}, researchLanes: {} });
 const respond = body => { responseFactory = async () => ({ ok: true, json: async () => body }); };
 respond(valid());
