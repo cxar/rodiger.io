@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-07T16:56:29.904Z",
+  "assembledAt": "2026-09-07T17:58:20.170Z",
   "accountEvidenceThrough": "2026-09-07T15:55:43.293Z",
   "signalEvidenceThrough": "2026-09-07T15:00:00.000Z",
   "profitabilityProven": false,
@@ -21,9 +21,9 @@
     "storedValidHours": 29,
     "diagnosticExactCashHours": 27,
     "ambiguousQuantizationHours": 2,
-    "finalizedOtherHours": 19,
-    "dueHours": 48,
-    "lastStoredBoundaryMs": 1788796800000,
+    "finalizedOtherHours": 20,
+    "dueHours": 49,
+    "lastStoredBoundaryMs": 1788800400000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
@@ -323,6 +323,10 @@
     {
       "name": "final.json",
       "sha256": "85e4bf340bdad8f69421373542df0c27f7c688eca912e84765b813cb7de543a9"
+    },
+    {
+      "name": "final.json",
+      "sha256": "3d8c008a4a1c25149a5d3cf7ba6df4ea4a23c08ef522963fc86b8c0ea5169bb6"
     }
   ]
 }
