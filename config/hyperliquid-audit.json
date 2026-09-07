@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-07T02:08:57.893Z",
+  "assembledAt": "2026-09-07T11:52:47.884Z",
   "accountEvidenceThrough": "2026-09-06T16:02:10.648Z",
   "signalEvidenceThrough": "2026-09-06T16:00:00.000Z",
   "profitabilityProven": false,
@@ -21,9 +21,9 @@
     "storedValidHours": 29,
     "diagnosticExactCashHours": 27,
     "ambiguousQuantizationHours": 2,
-    "finalizedOtherHours": 5,
-    "dueHours": 34,
-    "lastStoredBoundaryMs": 1788746400000,
+    "finalizedOtherHours": 14,
+    "dueHours": 43,
+    "lastStoredBoundaryMs": 1788778800000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
@@ -267,6 +267,42 @@
     {
       "name": "final.json",
       "sha256": "7de7a930be357502a85e1b4fb97c689032a48a5b3857d636c00a42f3e2e9011b"
+    },
+    {
+      "name": "final.json",
+      "sha256": "4645a339839484f1f0777802ecb01dd446808474aa6ad8c55b6e517009773f65"
+    },
+    {
+      "name": "final.json",
+      "sha256": "ea45a56dbebcaf7ca4b097d53c6b8d9d564ec661a510bc28bd4ac1e816d13d7c"
+    },
+    {
+      "name": "final.json",
+      "sha256": "856114dc1452a9180e9cb889128f0343379fa9f702b98ac636868d4155a42b64"
+    },
+    {
+      "name": "final.json",
+      "sha256": "7e5ff3fd8b8fd23d7deebec2cb39d15e8b6f7fe4885a4b6ab469576ac740d283"
+    },
+    {
+      "name": "final.json",
+      "sha256": "f784fb2e6b3e233121e0d79f6019be41384d0e1a1564c1fe85ef06b11c8a0420"
+    },
+    {
+      "name": "final.json",
+      "sha256": "102282e09f52b1acebef295d8cb29c74623b383e97b4ee7621dad762d87ed71f"
+    },
+    {
+      "name": "final.json",
+      "sha256": "9d0512a2ea7452fc4cfe0c46ef1902181a8c82801e8dcb4fedd76e76a372524b"
+    },
+    {
+      "name": "final.json",
+      "sha256": "a88a82aaca9bc44be8f56255c8304ca4ab53a30965741e9a849da813775c847f"
+    },
+    {
+      "name": "final.json",
+      "sha256": "bf9ab9d29923a635672bc33b5d83aa6819da74337f7c48f47c9b05fec47fe099"
     }
   ]
 }
