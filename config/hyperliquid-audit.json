@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "assembledAt": "2026-09-07T14:55:05.183Z",
-  "accountEvidenceThrough": "2026-09-06T16:02:10.648Z",
-  "signalEvidenceThrough": "2026-09-06T16:00:00.000Z",
+  "assembledAt": "2026-09-07T15:57:43.484Z",
+  "accountEvidenceThrough": "2026-09-07T15:55:43.293Z",
+  "signalEvidenceThrough": "2026-09-07T15:00:00.000Z",
   "profitabilityProven": false,
   "auditRefreshAfterMs": 86400000,
   "allCapturedTradingNetUsd": "-143.923955",
@@ -21,9 +21,9 @@
     "storedValidHours": 29,
     "diagnosticExactCashHours": 27,
     "ambiguousQuantizationHours": 2,
-    "finalizedOtherHours": 17,
-    "dueHours": 46,
-    "lastStoredBoundaryMs": 1788789600000,
+    "finalizedOtherHours": 18,
+    "dueHours": 47,
+    "lastStoredBoundaryMs": 1788793200000,
     "actualTradingProfitUsd": null,
     "scope": "Stored accounting-source observations only; no position or earned profit.",
     "overdueMissingHours": 0
@@ -33,7 +33,7 @@
     {
       "name": "Account and participation recheck",
       "status": "Dated unsigned replay; profitability unproven",
-      "detail": "Account records were recaptured through 2026-09-06T16:02:10.648Z and the unchanged selector replayed through 2026-09-06T16:00:00.000Z. There are 6 selected strong signals and 3 completed trades. 29 historical signal hours lack direct runtime observations; recovered market history does not recover a missed entry. Older cost and research findings retain their September 5 evidence dates. No trading rules, risk, or live execution changed."
+      "detail": "Account records were recaptured through 2026-09-07T15:55:43.293Z and the unchanged selector replayed through 2026-09-07T15:00:00.000Z. There are 6 selected strong signals and 3 completed trades. 29 historical signal hours lack direct runtime observations; recovered market history does not recover a missed entry. Older cost and research findings retain their September 5 evidence dates. No trading rules, risk, or live execution changed."
     },
     {
       "name": "Native protective-order limits",
@@ -101,12 +101,12 @@
       "sha256": "f6548c11cfefd418f02722f2831c80ad67b61c0d867d395b4d5ee8317e2a7e53"
     },
     {
-      "name": "hl-account-audit-20260906.json",
-      "sha256": "0d229f9338ced416f5075bd43d1dace7a017ddfb02eeb6844c0c9b1682fdd2d5"
+      "name": "hl-account-audit-20260907.json",
+      "sha256": "6a1fda537af56abd2e99c01d97780a1b6862dc5a9606f5c2688ed03f80801d4a"
     },
     {
-      "name": "hl-zec-v5-participation-audit-20260906.json",
-      "sha256": "67bec0cbd9f784b5a07dfaa7bc01a11143cb6f96e346fe75285d7439acf9d833"
+      "name": "hl-zec-v5-participation-audit-20260907.json",
+      "sha256": "390fa54ad3c4faa2de991fedf96bd4a0a1f8b7c886ad69842b90c7258562b458"
     },
     {
       "name": "hl-aggressive-expansion-audit-20260905.json",
@@ -315,6 +315,10 @@
     {
       "name": "final.json",
       "sha256": "951358871629f0cc0f6648901739232fcf2fa6cb0440164af9176bd173d039ac"
+    },
+    {
+      "name": "final.json",
+      "sha256": "b101ed8b674d7350f6f7338cfc1b5a8e9f4afb202a94ece98a8c81e169146303"
     }
   ]
 }
