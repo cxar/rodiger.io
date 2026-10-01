@@ -8,6 +8,10 @@
 - `/g/:id/:slug*` → static page per linked Google Doc.
 - `/trades` → active Hyperliquid strategy dashboard.
 - `/api/trades` → versioned, secret-free strategy/account/signal JSON assembled from the public Hyperliquid API.
+- `/paxos` → Paxos Health dashboard (static page in `pages/paxos/`; `paxos.rodiger.io/` redirects here).
+- `/api/paxos` → Paxos Health JSON (schemaVersion 1, GET or HEAD): assets, chains, addresses and peers discovered from public data on each build, plus statistically unusual findings. CDN-cached for up to 30 minutes from generation; query strings are ignored and a warm instance rebuilds at most every 15 minutes. Architecture, sources, methodology and limitations: `docs/paxos-dashboard.md`.
+
+The Paxos dashboard has no build-time data step: the former Dune snapshot and the `/api/llama` proxy were removed (DefiLlama sends CORS headers itself, and the Dune plan has no API access). `node scripts/check-paxos-dashboard.mjs` runs its offline checks against a recorded upstream fixture (payload semantics, the API handler, the deploy config, and the page rendered under a DOM shim); the Vercel build runs it first. Its wall-clock budget only warns (`PAXOS_PERF_STRICT=1` makes it fail). `paxos.rodiger.io` is routed by a host-conditioned redirect in `vercel.json` (a rewrite would lose to the root `index.html`); the domain has to be added to the Vercel project and to DNS by the owner. `vercel.json` also sets a CSP and other security headers on `/paxos` and `/api/paxos`; update the CSP when the page loads a new script or resource. `node scripts/dev-paxos.mjs` previews the dashboard locally on 127.0.0.1 with live data and the same redirects and headers.
 
 The tracked strategy manifest at `config/hyperliquid-live-strategy.json` is the dashboard's single source of truth for rule, execution, and risk constants. The API reports local executor/supervisor health as `not_publicly_observable`; it never infers daemon health from fresh exchange data.
 
@@ -26,6 +30,7 @@ The trades page refreshes every 30 seconds, expires exchange responses after 90 
   - `GOOGLE_CREDENTIALS_JSON` — raw JSON
   - `GOOGLE_CREDENTIALS` — raw JSON
 - Ensure the target Docs are shared with the Service Account email.
+- `COINGECKO_DEMO_API_KEY` (recommended for production) — CoinGecko demo API key for `/api/paxos`. Without it CoinGecko is called keyless (2 s spacing) and from Vercel's shared IPs it is mostly rate-limited, so its figures (turnover, gold premium, gold references) are often missing on cold instances; with it the spacing is 0.65 s. A cold build makes about 13 CoinGecko calls and a warm instance rebuilds at most 4 times an hour, well within the demo plan's monthly quota at normal traffic. Sent only to api.coingecko.com.
 
 **Prepare Credentials**
 - Base64 example: `base64 -w0 service-account.json` (macOS: `base64 service-account.json | tr -d '\n'`)
@@ -40,7 +45,7 @@ The trades page refreshes every 30 seconds, expires exchange responses after 90 
 - Preview locally: `npx serve dist` or `python -m http.server` inside `dist/`.
 
 **Deploy**
-- Vercel uses `buildCommand: cargo run --release --bin sitegen` and serves `dist/`.
+- Vercel runs `bash scripts/build-vercel.sh` (offline dashboard checks, then `cargo run --release --bin sitegen`) and serves `dist/`.
 - Set envs in Vercel Dashboard or via CLI:
   - `vercel env add ROOT_DOC_ID`
   - `vercel env add GOOGLE_CREDENTIALS_B64` (or JSON variant)
@@ -54,7 +59,7 @@ The trades page refreshes every 30 seconds, expires exchange responses after 90 
     - `VERCEL_DEPLOY_HOOK_URL` with that URL.
     - `CRON_SECRET` to any random string; Vercel will send it as `Authorization: Bearer <value>`.
   - The repo includes `/api/redeploy.js` (Serverless Function) which checks `Authorization` and POSTs to your deploy hook.
-  - `vercel.json` includes a cron entry that calls `/api/redeploy` every hour (`0 * * * *`). Adjust the schedule as needed.
+  - `vercel.json` includes a cron entry that calls `/api/redeploy` daily at 06:00 UTC (`0 6 * * *`). Adjust the schedule as needed.
   - Each cron call triggers a new deploy, re-running the Rust generator to pull the latest Google Docs.
 
 **Link Rewriting**

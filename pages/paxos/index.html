@@ -4,1693 +4,378 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>USDG Dashboard | rodiger</title>
+    <title>Paxos Health | rodiger</title>
+    <meta name="description" content="Paxos-issued stablecoins and tokenized gold: supply, chains, peg, DeFi footprint, issuer economics and statistically unusual changes, discovered from public data on every load." />
     <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png" />
     <link rel="icon" type="image/x-icon" href="/static/favicon/favicon.ico" />
     <link rel="stylesheet" href="/static/css/style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha256-SERKgtTty1vsDxll+qzd4Y2cF9swY9BCq62i9wXJ9Uo=" crossorigin="anonymous"></script>
+    <script defer src="/paxos/app.js"></script>
     <style>
-      .paxos-dashboard .container {
-        max-width: 1080px;
-        padding: 0 1rem;
+      /* Tokens. Categorical slots c0..c7 are Tokyo Night hues re-stepped into the dark
+         band and validated (validate_palette.js --mode dark --surface #24283b): 8 adjacent
+         CVD dE >= 14.1, normal-vision >= 17.3, all >= 3:1; first 4 slots also pass all-pairs.
+         Text never wears these; status colours appear only with an icon and a label.
+         Diverging pair (sign of a change, never an entity): blue <-> red at equal lightness, stepped
+         away from the categorical slots (OKLab dE x100 >= 14 to every c*, so "increase" is not read
+         as the c0 asset) and >= 6:1 on --surface; gray midpoint --div-mid. No-data heatmap cells are
+         hatched, so they never look like the midpoint. --neutral (3.5:1) is the only context gray. */
+      :root {
+        --page: #1a1b26;
+        --surface: #24283b;
+        --surface-2: #1f2335;
+        --raised: #2a2f45;
+        --ink: #c0caf5;
+        --ink-2: #a9b1d6;
+        --ink-muted: #8f99c4; /* 5.2:1 on --surface, 6.1:1 on --page */
+        --hair: #2f3549;
+        --axis: #414868;
+        --border: #292e43;
+        --focus: #7dcfff;
+        --c0: #5a80d2;
+        --c1: #06ab9a;
+        --c2: #b85e1f;
+        --c3: #b54d98;
+        --c4: #9c6900;
+        --c5: #8d6cc4;
+        --c6: #64902a;
+        --c7: #3096cb;
+        --neutral: #737aa2; /* de-emphasis marks (peers, legacy), 3.5:1; a second context line is dashed, not darker */
+        --div-pos: #8eb4ff;
+        --div-neg: #ff8fa3;
+        --div-mid: #3a405a;
+        --tbl-bg: var(--page);
+        --good: #9ece6a;
+        --warn: #e0af68;
+        --crit: #f7768e;
       }
-      .dashboard-hero {
-        background: linear-gradient(135deg, rgba(122, 162, 247, 0.12), rgba(187, 154, 247, 0.08));
-        border: 1px solid var(--border);
-        border-radius: 0.9rem;
-        padding: 1.4rem;
-        margin: 1rem 0 1.2rem;
+      body.paxos { background: var(--page); }
+      .paxos [hidden] { display: none !important; }
+      .paxos .container { max-width: 1100px; padding: 0 16px; box-sizing: border-box; }
+      .paxos main { padding: 0 0 2rem; }
+      .paxos h1 { margin: 0.4rem 0 0.3rem; }
+      .paxos h2 { font-size: 1.15rem; margin: 0 0 0.25rem; color: var(--h2); }
+      .paxos h3 { font-size: 0.95rem; margin: 0 0 0.4rem; color: var(--ink); }
+      .paxos p { margin: 0.4rem 0; }
+      .muted, .sub { color: var(--ink-muted); }
+      .sub { font-size: 0.82rem; margin: 0 0 0.9rem; }
+      .small { font-size: 0.78rem; }
+      .num { font-variant-numeric: tabular-nums; }
+      .nowrap { white-space: nowrap; }
+      .mono-wrap { overflow-wrap: anywhere; word-break: break-all; }
+      .cname { display: inline-block; max-width: 14rem; white-space: normal; overflow-wrap: break-word; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+      :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      button { font-family: inherit; }
+
+      /* Header */
+      .head-meta { font-size: 0.82rem; color: var(--ink-muted); display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; align-items: center; }
+      .status-row { margin: 0.5rem 0 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
+      .status-line { font-size: 0.82rem; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: center; min-width: 0; flex: 1 1 18rem; }
+      .status-line a { color: var(--link); }
+      .status-line .ico { font-weight: 700; }
+      .btn { background: transparent; color: var(--ink); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer; }
+      .btn:hover { background: var(--raised); }
+      .btn-link { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+      .pills { list-style: none; padding: 0; margin: 0.7rem 0 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+      .pills li { margin: 0; position: relative; }
+      .pill { display: inline-flex; gap: 0.35rem; align-items: center; border: 1px solid var(--border); background: var(--surface-2); border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.72rem; color: var(--ink-2); cursor: default; }
+      .pill .ico { font-weight: 700; }
+      /* The tip wraps long URLs and is shifted left by app.js when it would pass the viewport edge. */
+      .pill .tip { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: max-content; max-width: min(320px, calc(100vw - 32px)); background: var(--surface-2); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.45rem 0.6rem; color: var(--ink); font-size: 0.75rem; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+      .pill:hover .tip, .pill:focus .tip, .pill:focus-within .tip { display: block; }
+      /* Narrow screens: the open tip is a panel pinned to the viewport's bottom gutters, so it can never
+         widen the page, whatever the pill's position (no script needed). */
+      @media (max-width: 760px) { .pill .tip { position: fixed; top: auto; bottom: 16px; left: 16px !important; right: 16px; width: auto; max-width: none; } }
+      .st-ok .ico, .s-good { color: var(--good); }
+      .st-partial .ico, .st-stale .ico, .s-warn { color: var(--warn); }
+      .st-error .ico, .s-crit { color: var(--crit); }
+      .st-skipped .ico { color: var(--ink-muted); }
+
+      /* Filter bar */
+      .filters { position: relative; z-index: 20; background: var(--page); border-bottom: 1px solid var(--border); margin: 1rem -16px 0; padding: 0.55rem 16px; display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; align-items: center; }
+      .fgroup { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+      .fgroup > .flabel { font-size: 0.72rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      .seg { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: thin; min-width: 0; padding: 2px; }
+      .seg button, .toggle { flex: 0 0 auto; background: transparent; color: var(--ink-2); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.22rem 0.6rem; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; }
+      .seg button:hover, .toggle:hover { background: var(--raised); }
+      .seg button[aria-pressed="true"], .toggle[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+      .fgroup.assets { flex: 1 1 340px; }
+      .swatch { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; flex: 0 0 auto; }
+      .swatch.line { height: 3px; width: 1em; border-radius: 2px; }
+      .swatch.dash { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
+      .badge { display: inline-block; font-size: 0.68rem; border: 1px solid var(--axis); border-radius: 0.3rem; padding: 0 0.35rem; color: var(--ink-2); white-space: nowrap; }
+
+      /* Sections */
+      .sec { padding: 1.6rem 0 0.4rem; border-top: 1px solid var(--border); margin-top: 1.4rem; }
+      .sec:first-of-type { border-top: 0; }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.85rem 0.95rem; min-width: 0; --tbl-bg: var(--surface); }
+      .card.missing { border-style: dashed; background: transparent; --tbl-bg: var(--page); }
+      .card.missing h3 { font-weight: 600; }
+      .grid { display: grid; gap: 0.75rem; }
+      .grid + .grid, .card + .grid, .grid + .card, .tiles + .grid, .tiles + .card, .card + .card, .tiles + .tw, .tw + h3 { margin-top: 0.75rem; }
+      .grid > .card + .card, .grid > * + * { margin-top: 0; }
+      .g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+      .g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+      .tiles { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
+      .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.65rem 0.75rem; min-width: 0; text-align: left; color: var(--ink); font-size: inherit; }
+      button.tile { cursor: pointer; }
+      button.tile:hover { background: var(--raised); }
+      button.tile[aria-pressed="true"] { border-color: var(--ink-2); }
+      .tile > span { display: block; }
+      .tile .label { font-size: 0.74rem; color: var(--ink-muted); display: flex; align-items: center; gap: 0.35rem; }
+      .tile .value { font-size: 1.2rem; font-weight: 600; margin-top: 0.15rem; line-height: 1.2; overflow-wrap: anywhere; }
+      .tile .meta { font-size: 0.74rem; color: var(--ink-2); margin-top: 0.15rem; }
+      .tile svg.spark { display: block; width: 100%; height: 28px; margin-top: 0.4rem; }
+      .is-refreshing #content { opacity: 0.55; transition: opacity 0.2s; }
+      .placeholder { color: var(--ink-muted); font-size: 0.85rem; }
+      .sec-error { color: var(--ink-2); font-size: 0.85rem; border-left: 3px solid var(--crit); padding-left: 0.6rem; }
+
+      /* Hero */
+      .hero { display: grid; gap: 0.75rem 1.5rem; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: end; margin: 1.2rem 0 1rem; }
+      .hero .k { font-size: 0.8rem; color: var(--ink-muted); }
+      .hero .fig { font-size: clamp(3rem, 10vw, 3.6rem); font-weight: 600; line-height: 1.05; letter-spacing: -0.02em; color: var(--ink); margin: 0.15rem 0; }
+      .hero .deltas { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.85rem; color: var(--ink-2); }
+      .hero .deltas b { color: var(--ink); font-weight: 600; }
+      .hero .side { display: grid; gap: 0.5rem; }
+      .hero .side .row { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.85rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
+      .hero .side .row span:first-child { color: var(--ink-muted); }
+      .hero .side .row span:last-child { text-align: right; }
+      .verdict { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 0.9rem; max-width: 80ch; }
+      @media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
+
+      /* Insight cards */
+      .feed { display: grid; gap: 0.7rem; }
+      .feed > .card + .card { margin-top: 0; }
+      .feed + .btn, .tw + .btn { margin-top: 0.6rem; }
+      .ins .chips { display: flex; flex-wrap: wrap; gap: 0.3rem 0.45rem; align-items: center; margin-bottom: 0.4rem; font-size: 0.72rem; }
+      .chip { display: inline-flex; align-items: center; gap: 0.3rem; border-radius: 0.3rem; padding: 0.05rem 0.45rem; border: 1px solid var(--axis); color: var(--ink); font-size: 0.72rem; white-space: nowrap; }
+      .chip .ico { font-weight: 700; }
+      .pol-positive .ico { color: var(--good); }
+      .pol-negative .ico { color: var(--crit); }
+      .pol-neutral .ico { color: var(--ink-2); }
+      /* Data-quality notes are about the sources: neutral chip, dashed outline, recessed surface. */
+      .pol-dq { border-style: dashed; }
+      .pol-dq .ico { color: var(--ink-2); font-style: italic; font-family: Georgia, serif; }
+      .ins.dq { background: var(--surface-2); border-style: dashed; border-color: var(--axis); --tbl-bg: var(--surface-2); }
+      .ins .related li.dq { border-left-style: dashed; }
+      .paxos .dq-head { margin: 1.4rem 0 0.1rem; font-size: 0.9rem; }
+      .badge.new-you { border-color: var(--focus); color: var(--ink); }
+      .ins h3 { font-size: 0.92rem; line-height: 1.45; margin: 0 0 0.3rem; font-weight: 600; }
+      .ins .why { font-size: 0.78rem; color: var(--ink-2); margin: 0.2rem 0; }
+      .ins details { margin-top: 0.4rem; font-size: 0.8rem; }
+      .ins summary { cursor: pointer; color: var(--link); font-size: 0.78rem; }
+      .ins dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.8rem; margin: 0.5rem 0; }
+      .ins dt { color: var(--ink-muted); }
+      .ins dd { margin: 0; overflow-wrap: anywhere; }
+      .ins .related { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.45rem; }
+      .ins .related li { margin: 0; border-left: 2px solid var(--axis); padding-left: 0.6rem; }
+      .ins .related h4 { font-size: 0.82rem; margin: 0.15rem 0; font-weight: 600; }
+      .ins svg.spark { width: 100%; max-width: 360px; height: 40px; display: block; margin: 0.3rem 0; }
+      .empty { padding: 1rem; text-align: center; color: var(--ink-2); }
+      .compact-list { display: grid; gap: 0.5rem; margin-top: 0.6rem; }
+      details.fold > summary { cursor: pointer; font-weight: 600; color: var(--ink); padding: 0.4rem 0; }
+      details.fold > summary .muted { font-weight: 400; }
+
+      /* Charts */
+      figure.viz { margin: 0; }
+      figure.viz figcaption { font-size: 0.85rem; color: var(--ink); font-weight: 600; margin-bottom: 0.15rem; }
+      figure.viz .cap-sub { font-size: 0.74rem; color: var(--ink-muted); font-weight: 400; display: block; margin-top: 0.1rem; }
+      .chart-box { position: relative; height: 260px; margin-top: 0.4rem; }
+      .chart-box.sm { height: 190px; }
+      .chart-box.xs { height: 140px; }
+      @media (max-width: 600px) { .chart-box { height: 220px; } .chart-box.sm { height: 170px; } }
+      .chart-box canvas { display: block; }
+      details.tv { margin-top: 0.45rem; font-size: 0.78rem; }
+      details.tv > summary { cursor: pointer; color: var(--link); width: max-content; }
+      .legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.74rem; color: var(--ink-2); margin-top: 0.3rem; }
+      .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+      /* Tables */
+      .tw { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+      .tw.tall { max-height: 420px; overflow-y: auto; }
+      .paxos table { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.78rem; }
+      .paxos th, .paxos td { border: 0; border-bottom: 1px solid var(--border); padding: 0.35rem 0.5rem; text-align: right; vertical-align: top; }
+      .paxos th { background: transparent; color: var(--ink-muted); font-weight: 500; font-size: 0.72rem; white-space: nowrap; }
+      /* Only column headers stick (inside scrolling .tw.tall wrappers), on the background they sit on;
+         row headers scroll with their row. */
+      .paxos thead th { position: sticky; top: 0; z-index: 1; background: var(--tbl-bg); }
+      .paxos td:not(.l) { white-space: nowrap; }
+      .paxos th:first-child, .paxos td:first-child, .paxos .l { text-align: left; }
+      .paxos td { font-variant-numeric: tabular-nums; }
+      .paxos caption { text-align: left; color: var(--ink-muted); font-size: 0.74rem; padding-bottom: 0.25rem; }
+      .tnote { margin: 0.2rem 0 0.1rem; max-width: 90ch; }
+      .paxos tr.sel td { background: var(--raised); }
+      td svg.spark { width: 90px; height: 22px; display: block; margin-left: auto; }
+      /* Sources table: a multi-host source line may wrap; long messages keep a readable column. */
+      .paxos th .small.muted { white-space: normal; overflow-wrap: anywhere; }
+      .paxos td > span.mono-wrap { display: inline-block; min-width: 16rem; }
+      .asset-cell { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+
+      /* Health grid */
+      .hg td, .hg th { text-align: center; padding: 0.2rem 0.15rem; }
+      .hg th:first-child, .hg td:first-child { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--page); }
+      .hg thead th:first-child { z-index: 2; }
+      .hg-key { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 0.3rem; }
+      .hc { width: 100%; min-width: 4.6rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-2); border-radius: 0.35rem; padding: 0.25rem 0.35rem; font-size: 0.72rem; cursor: pointer; }
+      .hc .ico { font-weight: 700; }
+      .hc.st-notable_negative { color: var(--ink); border-color: var(--crit); }
+      .hc.st-notable_negative .ico { color: var(--crit); }
+      .hc.st-notable_positive { color: var(--ink); border-color: var(--good); }
+      .hc.st-notable_positive .ico { color: var(--good); }
+      .hc.st-notable_neutral { color: var(--ink); border-color: var(--warn); }
+      .hc.st-notable_neutral .ico { color: var(--warn); }
+      .hc.st-no_data { color: var(--ink-muted); background: transparent; }
+      .hc.st-dq { color: var(--ink); border-style: dashed; border-color: var(--ink-muted); }
+      .hc.st-dq .ico { color: var(--ink-2); font-style: italic; font-family: Georgia, serif; }
+      .hc[aria-pressed="true"] { outline: 2px solid var(--ink-2); outline-offset: 1px; }
+      .hc-detail { margin-top: 0.6rem; font-size: 0.82rem; min-height: 1.4em; }
+      .summaries { list-style: none; padding: 0; margin: 0.6rem 0 0; font-size: 0.8rem; display: grid; gap: 0.25rem; }
+      .summaries li { margin: 0; }
+
+      /* Heatmap */
+      .hm { display: grid; gap: 2px; margin-top: 0.5rem; font-size: 0.72rem; position: relative; }
+      .hm .row { display: grid; grid-template-columns: minmax(5.5rem, 9.5rem) minmax(0, 1fr); gap: 0.4rem; align-items: center; }
+      .hm .rl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+      .hm .cells { display: grid; gap: 1px; height: 18px; }
+      .hm .cells span { display: block; height: 100%; border-radius: 1px; }
+      .nd { background: repeating-linear-gradient(135deg, var(--axis) 0 1.5px, transparent 1.5px 4px); }
+      .nd-key { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .nd-key .nd { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+      .hm .axis { color: var(--ink-muted); position: relative; height: 1.1em; }
+      .hm .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+      .hm .axis span.first { transform: none; }
+      .hm .axis span.last { transform: translateX(-100%); }
+      .scale { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--ink-muted); margin-top: 0.5rem; flex-wrap: wrap; }
+      .scale .bar { height: 10px; width: 160px; border-radius: 2px; }
+      .tooltip { position: fixed; z-index: 40; pointer-events: none; background: var(--surface-2); border: 1px solid var(--axis); border-radius: 0.35rem; padding: 0.35rem 0.55rem; font-size: 0.75rem; color: var(--ink); max-width: 260px; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+      .tooltip b { display: block; font-size: 0.82rem; }
+
+      .error-panel { margin: 2rem 0; padding: 1rem 1.1rem; border: 1px solid var(--crit); border-radius: 0.6rem; background: var(--surface); }
+      .error-panel h2 { color: var(--ink); }
+      .banner { margin: 0.6rem 0 0; padding: 0.5rem 0.7rem; border: 1px solid var(--warn); border-radius: 0.5rem; font-size: 0.8rem; color: var(--ink); display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+      .method p { font-size: 0.85rem; color: var(--ink-2); max-width: 78ch; }
+      footer .src { display: block; margin-top: 0.4rem; color: var(--ink-muted); }
+      @media (min-width: 760px) { .filters { position: sticky; top: 0; } }
+      .srcfold { margin-top: 0.6rem; font-size: 0.78rem; }
+      .srcfold > summary { cursor: pointer; color: var(--ink-2); width: max-content; max-width: 100%; }
+      .srcfold .pills { margin-top: 0.4rem; }
+      @media (max-width: 600px) {
+        .paxos h1 { font-size: 1.5rem; }
+        .seg { flex-wrap: wrap; overflow: visible; }
+        .hm .row { grid-template-columns: minmax(4.5rem, 6.5rem) minmax(0, 1fr); }
+        .hm .axis span.mid { display: none; }
+        .seg button, .toggle { font-size: 0.74rem; padding: 0.2rem 0.5rem; }
+        .card { padding: 0.7rem; }
+        .filters { gap: 0.4rem 0.6rem; }
+        .fgroup.assets { flex-basis: 100%; }
       }
-      .dashboard-hero h1 { margin: 0 0 0.55rem; }
-      .dashboard-hero p { max-width: 820px; margin: 0; color: var(--gray); }
-      .source-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 1rem;
-      }
-      .source-pill {
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 0.28rem 0.65rem;
-        font-size: 0.74rem;
-        color: var(--gray);
-        background: rgba(26, 27, 38, 0.55);
-      }
-      .source-pill.live { color: var(--green); border-color: rgba(158, 206, 106, 0.35); }
-      .source-pill.warn { color: var(--yellow); border-color: rgba(224, 175, 104, 0.35); }
-      .dashboard-toolbar {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        align-items: center;
-        flex-wrap: wrap;
-        margin: 1.2rem 0 0.6rem;
-      }
-      .dashboard-toolbar .global-controls { margin: 0; }
-      .adoption-brief {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.8rem;
-        margin: 1rem 0 1.4rem;
-      }
-      .brief-card {
-        background: rgba(36, 40, 59, 0.72);
-        border: 1px solid var(--border);
-        border-radius: 0.7rem;
-        padding: 0.85rem 1rem;
-      }
-      .brief-card .kicker {
-        color: var(--gray);
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.25rem;
-      }
-      .brief-card .takeaway { color: var(--fg); font-size: 0.9rem; }
-      .business-readout,
-      .watchlist-alerts {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 0.85rem;
-        margin: 1rem 0 1.4rem;
-      }
-      .signal-card {
-        background: rgba(36, 40, 59, 0.78);
-        border: 1px solid var(--border);
-        border-radius: 0.7rem;
-        padding: 0.9rem 1rem;
-        min-height: 104px;
-      }
-      .signal-card.good { border-color: rgba(158, 206, 106, 0.35); }
-      .signal-card.warn { border-color: rgba(224, 175, 104, 0.38); }
-      .signal-card.risk { border-color: rgba(247, 118, 142, 0.36); }
-      .signal-card.info { border-color: rgba(122, 162, 247, 0.34); }
-      .signal-card .kicker,
-      .score-row .kicker {
-        color: var(--gray);
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.25rem;
-      }
-      .signal-card .headline { color: var(--fg); font-weight: 600; margin-bottom: 0.35rem; }
-      .signal-card .detail { color: var(--gray); font-size: 0.8rem; line-height: 1.45; }
-      .scorecard-list { display: grid; gap: 0.65rem; }
-      .score-row {
-        background: rgba(26, 27, 38, 0.55);
-        border: 1px solid var(--border);
-        border-radius: 0.55rem;
-        padding: 0.75rem 0.85rem;
-      }
-      .score-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
-      .score-row strong { color: var(--fg); }
-      .score-row .score { font-weight: 700; }
-      .score-row .score.strong { color: var(--green); }
-      .score-row .score.watch { color: var(--yellow); }
-      .score-row .score.weak { color: var(--red); }
-      .score-row .detail { color: var(--gray); font-size: 0.78rem; margin-top: 0.3rem; }
-      .mini-bars { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
-      .mini-bar { display: grid; grid-template-columns: 120px 1fr 96px; gap: 0.55rem; align-items: center; font-size: 0.78rem; }
-      .mini-bar-name { color: var(--gray); text-align: right; }
-      .mini-bar-track { height: 22px; background: var(--bg); border-radius: 4px; overflow: hidden; }
-      .mini-bar-fill { height: 100%; border-radius: 4px; }
-      .mini-bar-value { text-align: right; color: var(--fg); }
-      .live-graph-grid { align-items: stretch; }
-      .section canvas { max-height: 360px; }
-      .chart-note { font-size:0.78rem;color:var(--gray);margin:0.35rem 0 0; }
-      .dashboard-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin: 1.5rem 0;
-      }
-      .metric-card {
-        background: var(--bg2);
-        border: 1px solid var(--border);
-        border-radius: 0.5rem;
-        padding: 1rem 1.2rem;
-      }
-      .metric-card .label {
-        font-size: 0.75rem;
-        color: var(--gray);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.3rem;
-      }
-      .metric-card .value {
-        font-size: 1.4rem;
-        font-weight: 600;
-        color: var(--fg);
-      }
-      .metric-card .delta {
-        font-size: 0.78rem;
-        margin-top: 0.2rem;
-      }
-      .delta.up { color: var(--green); }
-      .delta.down { color: var(--red); }
-      .delta.neutral { color: var(--gray); }
-      .section {
-        background: var(--bg2);
-        border: 1px solid var(--border);
-        border-radius: 0.5rem;
-        padding: 1.2rem;
-        margin: 1.5rem 0;
-      }
-      .section h3 { margin: 0 0 0.75rem; font-size: 1rem; }
-      .section canvas { margin: 0; border-radius: 0; }
-      .race-track {
-        position: relative;
-        height: 48px;
-        background: var(--bg);
-        border-radius: 6px;
-        margin: 0.75rem 0;
-        overflow: hidden;
-      }
-      .race-bar {
-        position: absolute;
-        top: 0; bottom: 0;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        padding: 0 12px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        transition: width 0.6s ease;
-        white-space: nowrap;
-      }
-      .race-gap {
-        text-align: center;
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: var(--h3);
-        margin: 0.5rem 0 0;
-      }
-      .chain-bar {
-        display: flex;
-        align-items: center;
-        margin: 0.5rem 0;
-        gap: 0.75rem;
-      }
-      .chain-bar .chain-name {
-        width: 100px;
-        font-size: 0.82rem;
-        text-align: right;
-        color: var(--gray);
-        flex-shrink: 0;
-      }
-      .chain-bar .bar-track {
-        flex: 1;
-        height: 28px;
-        background: var(--bg);
-        border-radius: 4px;
-        overflow: hidden;
-      }
-      .chain-bar .bar-fill {
-        height: 100%;
-        border-radius: 4px;
-        transition: width 0.6s ease;
-      }
-      .chain-bar .bar-meta {
-        width: 140px;
-        font-size: 0.78rem;
-        color: var(--fg);
-        flex-shrink: 0;
-        text-align: right;
-      }
-      .chain-bar .bar-meta .chain-delta { font-size: 0.72rem; }
-      .market-table { font-size: 0.82rem; }
-      .market-table td:nth-child(n+2),
-      .market-table th:nth-child(n+2) { text-align: right; }
-      .highlight-row { background: rgba(122, 162, 247, 0.08); }
-      .insight-callout {
-        background: rgba(122, 162, 247, 0.06);
-        border-left: 3px solid var(--h2);
-        padding: 0.75rem 1rem;
-        margin: 1rem 0;
-        font-size: 0.85rem;
-        color: var(--fg);
-        border-radius: 0 4px 4px 0;
-      }
-      .insight-callout strong { color: var(--h3); }
-      .global-controls {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-        flex-wrap: wrap;
-        margin: 1rem 0 0.5rem;
-      }
-      .control-label {
-        font-size: 0.75rem;
-        color: var(--gray);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-      .toggle-group {
-        display: inline-flex;
-        background: var(--bg2);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        overflow: hidden;
-      }
-      .toggle-group button {
-        background: none;
-        border: none;
-        color: var(--gray);
-        font-family: inherit;
-        font-size: 0.78rem;
-        padding: 0.35rem 0.75rem;
-        cursor: pointer;
-        transition: all 0.15s;
-      }
-      .toggle-group button.active {
-        background: var(--h2);
-        color: var(--bg);
-        font-weight: 600;
-      }
-      .toggle-group button:hover:not(.active) {
-        color: var(--fg);
-      }
-      .updated-time {
-        text-align: center;
-        color: var(--gray);
-        font-size: 0.78rem;
-        margin-top: 2rem;
-      }
-      .two-col {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-      }
-      @media (max-width: 768px) {
-        .two-col { grid-template-columns: 1fr; }
-      }
+      @media (prefers-reduced-motion: reduce) { .is-refreshing #content { transition: none; } }
     </style>
   </head>
-  <body class="paxos-dashboard">
+  <body class="paxos">
     <div class="container">
-      <nav class="top">
-        <a href="/" class="back" aria-label="Back to home">&larr; back</a>
-      </nav>
+      <nav class="top"><a href="/" class="back" aria-label="Back to home">&larr; back</a></nav>
+      <header>
+        <h1>Paxos Health</h1>
+        <div class="head-meta" id="head-meta"><span>Every Paxos-issued asset, chain and peer is discovered from public data on each load.</span></div>
+        <div class="status-row">
+          <div class="status-line" id="status" role="status" aria-live="polite"><span>Loading the latest snapshot…</span></div>
+          <button type="button" class="btn" id="refresh" data-action="reload" hidden>Refresh</button>
+        </div>
+      </header>
+
+      <div class="filters" id="filters" role="group" aria-label="Dashboard filters">
+        <div class="fgroup assets"><span class="flabel" id="lbl-asset">Asset</span><div class="seg" id="f-asset" role="group" aria-labelledby="lbl-asset"></div></div>
+        <div class="fgroup"><span class="flabel" id="lbl-range">Range</span><div class="seg" id="f-range" role="group" aria-labelledby="lbl-range"></div></div>
+        <div class="fgroup"><button type="button" class="toggle" id="f-legacy" aria-pressed="false">Show legacy</button></div>
+      </div>
+
       <main id="content">
-        <section class="dashboard-hero">
-          <h1>Paxos Stablecoin Dashboard</h1>
-          <p>Live USDG / PYUSD growth, chain adoption, supply momentum, and activity signals. Built for trend-reading rather than one-off point-in-time screenshots.</p>
-          <div class="source-row" aria-label="Data sources">
-            <span class="source-pill live" id="llama-status">DefiLlama live on page load</span>
-            <span class="source-pill" id="dune-status">Dune activity cache loading…</span>
-            <span class="source-pill">USDG + PYUSD focus</span>
-          </div>
+        <section id="s-hero" aria-label="Headline supply"><div class="placeholder" data-body>Loading…</div></section>
+
+        <section class="sec" id="s-unusual" aria-labelledby="h-unusual">
+          <h2 id="h-unusual">What's unusual</h2>
+          <p class="sub" id="sub-unusual">Findings that are rare for the asset's own history or its peers, after allowing for the number of checks run, ranked without weights.</p>
+          <div data-body class="placeholder">Loading…</div>
         </section>
 
-        <!-- Global controls -->
-        <div class="dashboard-toolbar">
-          <div class="global-controls">
-            <span class="control-label">Asset:</span>
-            <span class="toggle-group" id="asset-toggle">
-              <button data-asset="usdg" class="active">USDG</button>
-              <button data-asset="pyusd">PYUSD</button>
-              <button data-asset="combined">USDG + PYUSD</button>
-            </span>
-            <span class="control-label" style="margin-left:0.5rem">Period:</span>
-            <span class="toggle-group" id="period-toggle">
-              <button data-period="7d">7d</button>
-              <button data-period="30d" class="active">30d</button>
-            </span>
-          </div>
-        </div>
+        <section class="sec" id="s-changed" aria-labelledby="h-changed">
+          <h2 id="h-changed">What changed</h2>
+          <p class="sub" id="sub-changed">Supply change over the selected range, split by asset and by chain.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Top metrics -->
-        <div class="dashboard-grid" id="metrics-grid"></div>
+        <section class="sec" id="s-health" aria-labelledby="h-health">
+          <h2 id="h-health">Health grid</h2>
+          <p class="sub">Each cell summarises the checks run for one asset and dimension. Select a cell to see its strongest evidence.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Adoption brief -->
-        <div id="adoption-brief" class="adoption-brief"></div>
+        <section class="sec" id="s-assets" aria-labelledby="h-assets">
+          <h2 id="h-assets">Assets</h2>
+          <p class="sub">Every discovered Paxos-issued asset, including legacy ones when "Show legacy" is on.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Executive business readout -->
-        <div id="executive-readout" class="business-readout"></div>
+        <section class="sec" id="s-supply" aria-labelledby="h-supply">
+          <h2 id="h-supply">Supply over time</h2>
+          <p class="sub" id="sub-supply"></p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Portfolio and momentum scorecards -->
-        <div class="two-col live-graph-grid">
-          <div class="section">
-            <h3 style="color: var(--h3);">Portfolio Momentum Scorecard</h3>
-            <p class="chart-note">USDG, PYUSD, and combined Paxos momentum from the selected window.</p>
-            <div id="portfolio-scorecard" class="scorecard-list"></div>
-          </div>
-          <div class="section">
-            <h3 style="color: var(--h3);">Selected-Period Momentum Scorecard</h3>
-            <p class="chart-note">Supply, adoption, liquidity, distribution, competitive position, and risk flags.</p>
-            <div id="momentum-scorecard" class="scorecard-list"></div>
-          </div>
-        </div>
+        <section class="sec" id="s-peers" aria-labelledby="h-peers">
+          <h2 id="h-peers">Peers</h2>
+          <p class="sub" id="sub-peers"></p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Drivers of change -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Drivers of Change</h3>
-          <p class="chart-note" id="drivers-subtitle"></p>
-          <canvas id="driver-waterfall-chart" height="260"></canvas>
-          <div id="driver-waterfall-detail" class="mini-bars"></div>
-        </div>
+        <section class="sec" id="s-chains" aria-labelledby="h-chains">
+          <h2 id="h-chains">Chains</h2>
+          <p class="sub" id="sub-chains"></p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Watchlist alerts -->
-        <div id="watchlist-alerts" class="watchlist-alerts"></div>
+        <section class="sec" id="s-peg" aria-labelledby="h-peg">
+          <h2 id="h-peg">Peg</h2>
+          <p class="sub" id="sub-peg"></p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Race to next rank -->
-        <div class="section" id="race-section">
-          <h3 style="color: var(--h3);">Race to Next Rank</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="race-subtitle"></p>
-          <div class="race-track" id="race-track"></div>
-          <div class="race-gap" id="race-gap"></div>
-        </div>
+        <section class="sec" id="s-defi" aria-labelledby="h-defi">
+          <h2 id="h-defi">DeFi footprint</h2>
+          <p class="sub">Pools whose underlying tokens include a discovered Paxos contract. Pair pools count fully for each asset, so the footprint is an upper bound.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Supply chart -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Supply Over Time</h3>
-          <p class="chart-note">Live circulating supply history from DefiLlama.</p>
-          <canvas id="supply-chart" height="260"></canvas>
-        </div>
+        <section class="sec" id="s-econ" aria-labelledby="h-econ">
+          <h2 id="h-econ">Issuer economics</h2>
+          <p class="sub" id="sub-econ"></p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Momentum + mix -->
-        <div class="two-col live-graph-grid">
-          <div class="section">
-            <h3 style="color: var(--h3);">Supply Momentum</h3>
-            <p class="chart-note" id="momentum-subtitle"></p>
-            <canvas id="supply-momentum-chart" height="260"></canvas>
-          </div>
-          <div class="section">
-            <h3 style="color: var(--h3);">USDG vs PYUSD Supply</h3>
-            <p class="chart-note" id="paxos-mix-subtitle"></p>
-            <canvas id="paxos-mix-chart" height="260"></canvas>
-          </div>
-        </div>
+        <section class="sec" id="s-usage" aria-labelledby="h-usage">
+          <h2 id="h-usage">On-chain &amp; usage</h2>
+          <p class="sub">Holders per chain, transfer activity where a public series exists, and trading turnover (24h volume / market cap).</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Chain adoption trend -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Chain Adoption Trend</h3>
-          <p class="chart-note" id="chain-trend-subtitle"></p>
-          <canvas id="chain-trend-chart" height="300"></canvas>
-        </div>
+        <section class="sec" id="s-standing" aria-labelledby="h-standing">
+          <h2 id="h-standing">Standing conditions &amp; watchlist</h2>
+          <p class="sub">Standing: notable for 30 days or longer. Watchlist: rarer than a coin flip and material, but not notable after accounting for the number of checks.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
 
-        <!-- Chain distribution -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Chain Distribution &amp; Velocity</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="chain-subtitle"></p>
-          <div id="chain-bars"></div>
-          <div id="chain-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
-        </div>
-
-        <!-- Growth rate vs peers -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Growth Rate vs Peers</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="growth-subtitle"></p>
-          <canvas id="growth-chart" height="350"></canvas>
-        </div>
-
-        <!-- Alt-stable market share -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Alt-Stable Market Share</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="alt-subtitle"></p>
-          <div style="max-width:400px;margin:0 auto"><canvas id="alt-share-chart" height="250"></canvas></div>
-        </div>
-
-        <!-- Growth capture -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Growth Capture</h3>
-          <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="capture-subtitle"></p>
-          <canvas id="capture-chart" height="250"></canvas>
-          <div id="capture-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
-        </div>
-
-        <!-- On-chain metrics (Dune) -->
-        <div id="dune-section" style="display:none">
-          <h2 style="color: var(--h2); margin-top: 2rem;">On-Chain Metrics</h2>
-          <p style="color: var(--gray); margin-top: -0.5rem; font-size: 0.82rem;">Daily refreshed on-chain data from <a href="https://dune.com" target="_blank">Dune Analytics</a>. <span id="dune-updated-at"></span></p>
-
-          <div class="dashboard-grid" id="dune-metrics-grid"></div>
-
-          <!-- Transfer volume chart -->
-          <div class="section">
-            <h3 style="color: var(--h3);">Daily Transfer Volume &amp; Chain-Summed Senders</h3>
-            <canvas id="volume-chart" height="260"></canvas>
-          </div>
-
-          <!-- Whale concentration -->
-          <div class="section" id="whale-section">
-            <h3 style="color: var(--h3);">Top Holder Concentration</h3>
-            <p style="font-size:0.82rem;color:var(--gray);margin:0 0 0.5rem" id="whale-subtitle"></p>
-            <canvas id="whale-chart" height="220"></canvas>
-            <div id="whale-insight" class="insight-callout" style="display:none;margin-top:0.75rem"></div>
-          </div>
-
-          <!-- DEX liquidity -->
-          <div class="section" id="dex-section">
-            <h3 style="color: var(--h3);" id="dex-title">DEX Trading Activity</h3>
-            <p class="chart-note" id="dex-subtitle"></p>
-            <div id="dex-bars"></div>
-          </div>
-        </div>
-
-        <!-- Market table -->
-        <div class="section">
-          <h3 style="color: var(--h3);">Stablecoin Rankings</h3>
-          <table class="market-table">
-            <thead><tr><th>Stablecoin</th><th>Market Cap</th><th id="table-period-header">30d</th><th>Share</th></tr></thead>
-            <tbody id="market-tbody"></tbody>
-          </table>
-        </div>
-
-        <p class="updated-time" id="updated-time"></p>
+        <section class="sec method" id="s-quality" aria-labelledby="h-quality">
+          <h2 id="h-quality">Data quality &amp; methodology</h2>
+          <p class="sub">Where the numbers come from and how fresh they are (judged against each source's own update cadence), and how findings are flagged.</p>
+          <div data-body class="placeholder">Loading…</div>
+        </section>
       </main>
-      <footer><p><a href="/">rodiger.io</a></p></footer>
+      <footer><p><a href="/">rodiger.io</a> · <a href="/api/paxos">/api/paxos</a><span class="src" id="foot-src"></span></p></footer>
     </div>
-
-    <script>
-const USDG_ID = '286';
-const PYUSD_ID = '120';
-const CHAIN_COLORS = {
-  'Solana': '#9945FF', 'Ethereum': '#627EEA', 'X Layer': '#e0af68', 'Ink': '#f7768e',
-  'Robinhood Chain': '#00C805', 'Polygon': '#8247E5', 'Arbitrum': '#28A0F0', 'OP Mainnet': '#FF0420',
-  'ZKsync Era': '#4E529A', 'Linea': '#61DFFF', 'Mantle': '#000',
-};
-const ASSET_COLORS = {
-  usdg: '#7aa2f7', pyusd: '#bb9af7', combined: '#9ece6a',
-};
-
-
-function fmt(n) {
-  n = Number(n) || 0;
-  if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-  if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-  if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
-  return '$' + n.toFixed(0);
-}
-function pct(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
-function daysStr(n) { return n + (n === 1 ? ' day' : ' days'); }
-function esc(value) {
-  const span = document.createElement('span');
-  span.textContent = String(value ?? '');
-  return span.innerHTML;
-}
-function stableId(asset) { return String(asset?.id ?? ''); }
-function periodDays(period = STATE.period) { return period === '7d' ? 7 : 30; }
-function periodPrevKey(period = STATE.period) { return period === '7d' ? 'circulatingPrevWeek' : 'circulatingPrevMonth'; }
-function periodChainPrevKey(period = STATE.period) { return period === '7d' ? 'prev7' : 'prev30'; }
-function periodLabelFor(period = STATE.period) { return period === '7d' ? '7 days' : '30 days'; }
-function selectedPeriodDelta(current, previous) {
-  current = Number(current) || 0;
-  previous = Number(previous) || 0;
-  const change = current - previous;
-  return { change, rate: previous > 0 ? (change / previous * 100) : 0 };
-}
-function classifyScore(score) {
-  if (score >= 70) return 'strong';
-  if (score >= 45) return 'watch';
-  return 'weak';
-}
-function scoreLabel(score) {
-  if (score >= 70) return 'Strong';
-  if (score >= 45) return 'Watch';
-  return 'Weak';
-}
-function pctOf(value, total) { total = Number(total) || 0; return total ? (Number(value) || 0) / total * 100 : 0; }
-function entrySupply(entry) { return Number(entry?.circulating?.peggedUSD) || 0; }
-function entryPrev(entry, period) { return Number(entry?.[periodPrevKey(period)]?.peggedUSD) || entrySupply(entry); }
-async function fetchJSON(url) {
-  // Proxy DefiLlama calls through our API to avoid CORS issues
-  if (url.includes('stablecoins.llama.fi')) {
-    const path = url.replace('https://stablecoins.llama.fi', '');
-    url = '/api/llama?path=' + encodeURIComponent(path);
-  }
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`);
-  return res.json();
-}
-
-// Global state
-let STATE = { asset: 'usdg', period: '30d' };
-let DATA = {};
-
-// Chart instances for cleanup
-let charts = {};
-function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
-
-const PALETTE = ['#7aa2f7', '#bb9af7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#ff9e64'];
-function chartColor(i) { return PALETTE[i % PALETTE.length]; }
-function stableValue(point) {
-  return Number(point?.totalCirculating?.peggedUSD ?? point?.totalCirculatingUSD?.peggedUSD ?? point?.circulating?.peggedUSD ?? 0) || 0;
-}
-function normalizeHistory(history) {
-  return (history || [])
-    .map(p => ({ date: Number(p.date), value: stableValue(p) }))
-    .filter(p => Number.isFinite(p.date) && p.value >= 0)
-    .sort((a, b) => a.date - b.date);
-}
-function movingAverage(values, window = 7) {
-  return values.map((_, i) => {
-    const start = Math.max(0, i - window + 1);
-    const slice = values.slice(start, i + 1);
-    return slice.reduce((s, v) => s + v, 0) / slice.length;
-  });
-}
-function buildMomentumSeries(history, maxDays = null, maWindow = 7) {
-  const series = normalizeHistory(history);
-  const deltas = [];
-  for (let i = 1; i < series.length; i++) {
-    deltas.push({ date: series[i].date, net: series[i].value - series[i - 1].value });
-  }
-  const trimmed = Number.isFinite(maxDays) ? deltas.slice(-maxDays) : deltas;
-  const movingAvg = movingAverage(trimmed.map(p => p.net), maWindow);
-  return trimmed.map((p, i) => ({ ...p, movingAvg: movingAvg[i] }));
-}
-function buildPaxosMixSeries(usdgHistory, pyusdHistory, maxDays = null) {
-  const usdg = new Map(normalizeHistory(usdgHistory).map(p => [p.date, p.value]));
-  const pyusd = new Map(normalizeHistory(pyusdHistory).map(p => [p.date, p.value]));
-  const allDates = [...new Set([...usdg.keys(), ...pyusd.keys()])].sort((a, b) => a - b);
-  const dates = Number.isFinite(maxDays) ? allDates.slice(-maxDays) : allDates;
-  return dates.map(date => {
-    const u = usdg.get(date) || 0;
-    const p = pyusd.get(date) || 0;
-    const total = u + p;
-    return { date, usdg: u, pyusd: p, usdgShare: total ? (u / total * 100) : 0 };
-  });
-}
-function buildChainTrendSeries(chainBalanceMaps, maxChains = 5, maxDays = null) {
-  const chainMaps = new Map();
-  for (const balances of chainBalanceMaps.filter(Boolean)) {
-    for (const [chain, data] of Object.entries(balances || {})) {
-      const map = chainMaps.get(chain) || new Map();
-      for (const point of data.tokens || []) {
-        const date = Number(point.date);
-        const value = stableValue(point);
-        if (!Number.isFinite(date)) continue;
-        map.set(date, (map.get(date) || 0) + value);
-      }
-      chainMaps.set(chain, map);
-    }
-  }
-  const rankedChains = [...chainMaps.entries()]
-    .map(([chain, map]) => {
-      const dates = [...map.keys()].sort((a, b) => a - b);
-      return { chain, map, latest: dates.length ? map.get(dates[dates.length - 1]) : 0 };
-    })
-    .filter(row => row.latest > 0)
-    .sort((a, b) => b.latest - a.latest)
-    .slice(0, maxChains);
-  const allDates = [...new Set(rankedChains.flatMap(row => [...row.map.keys()]))]
-    .sort((a, b) => a - b);
-  const dates = Number.isFinite(maxDays) ? allDates.slice(-maxDays) : allDates;
-  return { dates, chains: rankedChains };
-}
-function sumNet(series, days) {
-  return series.slice(-days).reduce((s, p) => s + (p.net || 0), 0);
-}
-function renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket, period, periodLabel }) {
-  const brief = document.getElementById('adoption-brief');
-  if (!brief) return;
-  const safeAssetLabel = esc(assetLabel);
-  const momentum = buildMomentumSeries(history);
-  const selectedDays = periodDays(period);
-  const selectedNet = sumNet(momentum, selectedDays);
-  const sortedChains = Object.entries(chains || {}).filter(([,d]) => d.current > 0).sort((a,b) => b[1].current - a[1].current);
-  const topChain = sortedChains[0];
-  const chainTotal = sortedChains.reduce((s, [,d]) => s + d.current, 0) || supply || 1;
-  const chainPrevKey = periodChainPrevKey(period);
-  const fastest = sortedChains
-    .filter(([,d]) => d[chainPrevKey] && d[chainPrevKey] > 0)
-    .map(([name, d]) => [name, selectedPeriodDelta(d.current, d[chainPrevKey]).rate])
-    .sort((a,b) => b[1] - a[1])[0];
-  brief.innerHTML = `
-    <div class="brief-card"><div class="kicker">Live adoption read</div><div class="takeaway"><strong>${safeAssetLabel}</strong> ranks <strong>#${rank}</strong> with <strong>${fmt(supply)}</strong> circulating.</div></div>
-    <div class="brief-card"><div class="kicker">Net issuance</div><div class="takeaway"><strong>${fmt(selectedNet)}</strong> over ${esc(periodLabel)}. ${periodDelta >= 0 ? 'Supply is expanding' : 'Supply is contracting'} over the selected window.</div></div>
-    <div class="brief-card"><div class="kicker">Chain concentration</div><div class="takeaway">${topChain ? `<strong>${esc(topChain[0])}</strong> holds <strong>${(topChain[1].current / chainTotal * 100).toFixed(1)}%</strong> of visible supply.` : 'No chain split available.'}</div></div>
-    <div class="brief-card"><div class="kicker">Fastest chain</div><div class="takeaway">${fastest ? `<strong>${esc(fastest[0])}</strong> is up <strong>${pct(fastest[1])}</strong> over ${esc(periodLabel)}.` : 'Not enough chain history yet.'} Market share is <strong>${(supply / totalMarket * 100).toFixed(2)}%</strong>.</div></div>
-  `;
-}
-function renderSupplyMomentum(history, color, assetLabel, period) {
-  destroyChart('momentum');
-  const avgWindow = periodDays(period);
-  const data = buildMomentumSeries(history, null, avgWindow);
-  document.getElementById('momentum-subtitle').textContent = `Daily net issuance for ${assetLabel}; line is trailing ${periodLabelFor(period)} average.`;
-  if (!data.length) return;
-  charts['momentum'] = new Chart(document.getElementById('supply-momentum-chart').getContext('2d'), {
-    data: {
-      labels: data.map(d => new Date(d.date * 1000)),
-      datasets: [
-        { type: 'bar', label: 'Daily net issuance', data: data.map(d => d.net), backgroundColor: data.map(d => d.net >= 0 ? color + '66' : '#f7768e66'), borderColor: data.map(d => d.net >= 0 ? color : '#f7768e'), borderWidth: 1 },
-        { type: 'line', label: `${period} avg`, data: data.map(d => d.movingAvg), borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2 }
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
-      scales: {
-        x: { type: 'time', time: { unit: 'week' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
-      }
-    }
-  });
-}
-function renderPaxosMix(usdgHistory, pyusdHistory) {
-  destroyChart('paxosMix');
-  const data = buildPaxosMixSeries(usdgHistory, pyusdHistory);
-  document.getElementById('paxos-mix-subtitle').textContent = 'Absolute USDG and PYUSD supply lines, live from DefiLlama.';
-  if (!data.length) return;
-  charts['paxosMix'] = new Chart(document.getElementById('paxos-mix-chart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: data.map(d => new Date(d.date * 1000)),
-      datasets: [
-        { label: 'USDG', data: data.map(d => d.usdg), borderColor: ASSET_COLORS.usdg, backgroundColor: ASSET_COLORS.usdg + '12', fill: true, pointRadius: 0, tension: 0.25, borderWidth: 2 },
-        { label: 'PYUSD', data: data.map(d => d.pyusd), borderColor: ASSET_COLORS.pyusd, backgroundColor: ASSET_COLORS.pyusd + '12', fill: true, pointRadius: 0, tension: 0.25, borderWidth: 2 },
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
-      scales: {
-        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-        y: { stacked: false, grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
-      }
-    }
-  });
-}
-function renderChainTrend(chainBalanceMaps, assetLabel) {
-  destroyChart('chainTrend');
-  const { dates, chains } = buildChainTrendSeries(chainBalanceMaps, 5);
-  const topNames = chains.map(c => c.chain).join(', ');
-  document.getElementById('chain-trend-subtitle').textContent = topNames ? `Top live chains for ${assetLabel}: ${topNames}.` : `No chain history available for ${assetLabel}.`;
-  if (!dates.length || !chains.length) return;
-  charts['chainTrend'] = new Chart(document.getElementById('chain-trend-chart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: dates.map(d => new Date(d * 1000)),
-      datasets: chains.map((row, i) => ({
-        label: row.chain,
-        data: dates.map(d => row.map.get(d) ?? null),
-        borderColor: CHAIN_COLORS[row.chain] || chartColor(i),
-        backgroundColor: (CHAIN_COLORS[row.chain] || chartColor(i)) + '12',
-        fill: false,
-        pointRadius: 0,
-        spanGaps: true,
-        tension: 0.25,
-        borderWidth: 2,
-      }))
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#565f89' } }, tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } } },
-      scales: {
-        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-        y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
-      }
-    }
-  });
-}
-
-function mergeChainSnapshots(a = {}, b = {}) {
-  const merged = {};
-  for (const [chain, data] of Object.entries(a || {})) merged[chain] = { ...data };
-  for (const [chain, data] of Object.entries(b || {})) {
-    if (merged[chain]) {
-      merged[chain].current += Number(data.current) || 0;
-      if (data.prev30 !== undefined && merged[chain].prev30 !== undefined) merged[chain].prev30 += Number(data.prev30) || 0;
-      if (data.prev7 !== undefined && merged[chain].prev7 !== undefined) merged[chain].prev7 += Number(data.prev7) || 0;
-    } else {
-      merged[chain] = { ...data };
-    }
-  }
-  return merged;
-}
-function resolveAssetSnapshot(asset, data, period = STATE.period) {
-  const sorted = data.sorted || [];
-  const label = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
-  if (asset === 'usdg') {
-    const entry = data.usdgEntry;
-    const supply = entrySupply(entry);
-    const prevPeriod = entryPrev(entry, period);
-    return {
-      asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
-      prevDay: Number(entry?.circulatingPrevDay?.peggedUSD) || supply,
-      rank: sorted.indexOf(entry) + 1,
-      history: data.usdgHistory || [],
-      chains: data.usdgChains || {},
-      ids: [USDG_ID],
-    };
-  }
-  if (asset === 'pyusd') {
-    const entry = data.pyusdEntry;
-    const supply = entrySupply(entry);
-    const prevPeriod = entryPrev(entry, period);
-    return {
-      asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
-      prevDay: Number(entry?.circulatingPrevDay?.peggedUSD) || supply,
-      rank: sorted.indexOf(entry) + 1,
-      history: data.pyusdHistory || [],
-      chains: data.pyusdChains || {},
-      ids: [PYUSD_ID],
-    };
-  }
-  const supply = Number(data.combinedSupply) || 0;
-  const prevPeriod = period === '7d' ? Number(data.combinedPrevWeek) || supply : Number(data.combinedPrevMonth) || supply;
-  return {
-    asset, label, supply, prevPeriod, delta: selectedPeriodDelta(supply, prevPeriod),
-    prevDay: Number(data.combinedPrevDay) || supply,
-    rank: Number(data.combinedRank) || 0,
-    history: data.combinedHistory || [],
-    chains: mergeChainSnapshots(data.usdgChains, data.pyusdChains),
-    ids: [USDG_ID, PYUSD_ID],
-  };
-}
-function peerStats(sorted, assetIds, targetRate, period = STATE.period) {
-  const rates = sorted
-    .filter(a => entrySupply(a) > 500e6 && entryPrev(a, period) > 0)
-    .map(a => ({ symbol: String(a.symbol || ''), id: stableId(a), rate: selectedPeriodDelta(entrySupply(a), entryPrev(a, period)).rate }))
-    .sort((a, b) => b.rate - a.rate);
-  if (!rates.length) return { percentile: 0, median: 0, rank: 0, count: 0 };
-  const sortedRates = rates.map(r => r.rate).sort((a, b) => a - b);
-  const median = sortedRates[Math.floor(sortedRates.length / 2)];
-  const percentile = sortedRates.filter(r => r <= targetRate).length / sortedRates.length * 100;
-  const explicitRank = assetIds.length === 1 ? rates.findIndex(r => assetIds.includes(r.id)) : -1;
-  const rank = explicitRank >= 0 ? explicitRank + 1 : rates.filter(r => r.rate > targetRate).length + 1;
-  return { percentile, median, rank, count: rates.length };
-}
-function chainDriverRows(chains, period) {
-  const prevKey = periodChainPrevKey(period);
-  return Object.entries(chains || {})
-    .map(([chain, data]) => {
-      const current = Number(data.current) || 0;
-      const prev = Number(data[prevKey]) || 0;
-      if (!current || !prev) return null;
-      const delta = selectedPeriodDelta(current, prev);
-      return { name: chain, current, previous: prev, change: delta.change, rate: delta.rate };
-    })
-    .filter(Boolean)
-    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-}
-function productDriverRows(data, period) {
-  const rows = [
-    { name: 'USDG', color: ASSET_COLORS.usdg, current: entrySupply(data.usdgEntry), previous: entryPrev(data.usdgEntry, period) },
-    { name: 'PYUSD', color: ASSET_COLORS.pyusd, current: entrySupply(data.pyusdEntry), previous: entryPrev(data.pyusdEntry, period) },
-  ];
-  return rows.map(row => ({ ...row, ...selectedPeriodDelta(row.current, row.previous) }));
-}
-function buildDuneSnapshot(asset, period) {
-  if (!DUNE_DATA?.data) return null;
-  const d = DUNE_DATA.data;
-  const wantUSDG = asset === 'usdg' || asset === 'combined';
-  const wantPYUSD = asset === 'pyusd' || asset === 'combined';
-  const tokenOk = token => (wantUSDG && String(token) === 'USDG') || (wantPYUSD && String(token) === 'PYUSD');
-  const summaries = Object.keys(d).filter(k => k.endsWith('_summary')).flatMap(k => Array.isArray(d[k]) ? d[k] : []).filter(r => tokenOk(r.token));
-  const suffix = period === '7d' ? '7d' : '30d';
-  const active = summaries.reduce((s, r) => s + (Number(r[`active_${suffix}`]) || 0), 0);
-  const transfers = summaries.reduce((s, r) => s + (Number(r[`transfers_${suffix}`]) || 0), 0);
-  const volume = summaries.reduce((s, r) => s + (Number(r[`volume_${suffix}`]) || 0), 0);
-  const holders = summaries.reduce((s, r) => s + (Number(r.holders) || 0), 0);
-  const whaleRows = Object.keys(d).filter(k => k.endsWith('_whales')).flatMap(k => Array.isArray(d[k]) ? d[k] : []).filter(r => tokenOk(r.token));
-  const concentration = new Map();
-  for (const row of whaleRows) {
-    const key = `${row.token}/${row.chain}`;
-    concentration.set(key, (concentration.get(key) || 0) + (Number(row.pct) || 0));
-  }
-  const maxTop10 = Math.max(0, ...concentration.values());
-  const dex = Array.isArray(d.dex_volume) ? d.dex_volume.filter(r => tokenOk(r.token)) : [];
-  const dexVolumeKey = `volume_${suffix}`;
-  const dexVolume = dex.reduce((s, r) => s + (Number(r[dexVolumeKey]) || 0), 0);
-  const dexTrades = dex.reduce((s, r) => s + (Number(r[`trades_${suffix}`] ?? (suffix === '30d' ? r.trades : 0)) || 0), 0);
-  return { active, transfers, volume, holders, maxTop10, dexVolume, dexTrades };
-}
-function buildBusinessSnapshot(ctx) {
-  const { asset, period, sorted, totalMarket } = ctx;
-  const snap = resolveAssetSnapshot(asset, DATA, period);
-  const periodLabel = periodLabelFor(period);
-  const chainRows = chainDriverRows(snap.chains, period);
-  const topChain = Object.entries(snap.chains || {}).filter(([, d]) => Number(d.current) > 0).sort((a, b) => b[1].current - a[1].current)[0];
-  const chainTotal = Object.values(snap.chains || {}).reduce((s, d) => s + (Number(d.current) || 0), 0) || snap.supply;
-  const fastest = chainRows.filter(r => r.rate > 0).sort((a, b) => b.rate - a.rate)[0];
-  const weakest = chainRows.filter(r => r.rate < 0).sort((a, b) => a.rate - b.rate)[0];
-  const peers = peerStats(sorted, snap.ids, snap.delta.rate, period);
-  const productDrivers = productDriverRows(DATA, period);
-  const dune = buildDuneSnapshot(asset, period);
-  const topChainShare = topChain ? pctOf(topChain[1].current, chainTotal) : 0;
-  const doingWell = [];
-  const needsAttention = [];
-  const watchlist = [];
-  if (snap.delta.rate > 0) doingWell.push(`${snap.label} supply is up ${pct(snap.delta.rate)} over ${periodLabel} (${fmt(snap.delta.change)} net).`);
-  else needsAttention.push(`${snap.label} supply is down ${pct(snap.delta.rate)} over ${periodLabel} (${fmt(Math.abs(snap.delta.change))} net outflow).`);
-  if (fastest) doingWell.push(`${fastest.name} is the strongest chain mover at ${pct(fastest.rate)} over ${periodLabel}.`);
-  if (peers.percentile >= 75) doingWell.push(`${snap.label} is in the ${peers.percentile.toFixed(0)}th percentile vs $500M+ stablecoins.`);
-  if (weakest && Math.abs(weakest.change) > snap.supply * 0.01) needsAttention.push(`${weakest.name} is the biggest chain drag at ${pct(weakest.rate)} (${fmt(Math.abs(weakest.change))}).`);
-  if (topChainShare >= 45) watchlist.push(`${topChain[0]} holds ${topChainShare.toFixed(1)}% of visible supply — concentration is high.`);
-  if (dune?.maxTop10 >= 85) watchlist.push(`Top-holder concentration reaches ${dune.maxTop10.toFixed(1)}% on at least one cached token/chain.`);
-  if (peers.percentile < 50) watchlist.push(`${snap.label} is under the peer median for selected-period growth.`);
-  const diverged = productDrivers.some(r => r.rate > 0) && productDrivers.some(r => r.rate < 0);
-  if (asset === 'combined' && diverged) needsAttention.push(`Portfolio story is split: ${productDrivers.map(r => `${r.name} ${pct(r.rate)}`).join(' vs ')}.`);
-  return { ...snap, period, periodLabel, totalMarket, chainRows, fastest, weakest, topChain, topChainShare, peers, productDrivers, dune, doingWell, needsAttention, watchlist };
-}
-function peerPositionHeadline(snapshot) {
-  if (!snapshot.peers.count) return 'Peer sample unavailable';
-  return `Growth rank #${snapshot.peers.rank} / ${snapshot.peers.count}`;
-}
-function peerPositionDetail(snapshot) {
-  if (!snapshot.peers.count) return `${pct(snapshot.delta.rate)} selected-period growth; no $500M+ peer sample available.`;
-  return `Peer percentile ${snapshot.peers.percentile.toFixed(0)} / 100; ${snapshot.periodLabel} growth ${pct(snapshot.delta.rate)}; peer median ${pct(snapshot.peers.median)}.`;
-}
-function signalCard(kind, kicker, headline, detail) {
-  return `<div class="signal-card ${kind}"><div class="kicker">${esc(kicker)}</div><div class="headline">${headline}</div><div class="detail">${detail}</div></div>`;
-}
-function renderExecutiveReadout(snapshot) {
-  const primaryGood = snapshot.doingWell[0] || `${snapshot.label} has ${fmt(snapshot.supply)} circulating supply.`;
-  const primaryNeed = snapshot.needsAttention[0] || 'No major selected-window deterioration in the current view.';
-  const mover = snapshot.fastest ? `${esc(snapshot.fastest.name)} ${pct(snapshot.fastest.rate)}` : 'No chain mover yet';
-  document.getElementById('executive-readout').innerHTML = [
-    signalCard('good', 'Doing well', esc(primaryGood), `Rank #${snapshot.rank}; market share ${(pctOf(snapshot.supply, snapshot.totalMarket)).toFixed(2)}%.`),
-    signalCard('warn', 'Needs attention', esc(primaryNeed), snapshot.weakest ? `Biggest negative chain contribution: ${esc(snapshot.weakest.name)} ${fmt(snapshot.weakest.change)}.` : 'Watch selected-window net issuance and peer-relative growth.'),
-    signalCard('info', 'Biggest mover', mover, snapshot.fastest ? `${fmt(snapshot.fastest.change)} selected-window chain contribution.` : 'No chain history available for the selected window.'),
-    signalCard('risk', 'Peer position', esc(peerPositionHeadline(snapshot)), esc(peerPositionDetail(snapshot))),
-  ].join('');
-}
-function renderPortfolioScorecard(period) {
-  const snapshots = ['usdg', 'pyusd', 'combined'].map(asset => resolveAssetSnapshot(asset, DATA, period));
-  document.getElementById('portfolio-scorecard').innerHTML = snapshots.map(snap => {
-    const peers = peerStats(DATA.sorted || [], snap.ids, snap.delta.rate, period);
-    const score = Math.max(0, Math.min(100, 50 + snap.delta.rate * 2 + (snap.rank && snap.rank <= 10 ? 10 : 0) + (peers.percentile - 50) / 3));
-    const klass = classifyScore(score);
-    const detail = `${pct(snap.delta.rate)} over ${periodLabelFor(period)} (${fmt(snap.delta.change)}); rank #${snap.rank}; peer percentile ${peers.percentile.toFixed(0)}.`;
-    return `<div class="score-row"><div class="score-row-head"><strong>${esc(snap.label)}</strong><span class="score ${klass}">${scoreLabel(score)} ${score.toFixed(0)}</span></div><div class="detail">${esc(detail)}</div></div>`;
-  }).join('');
-}
-function renderMomentumScorecard(snapshot) {
-  const supplyScore = Math.max(0, Math.min(100, 50 + snapshot.delta.rate * 3));
-  const competitiveScore = Math.max(0, Math.min(100, snapshot.peers.percentile));
-  const distributionScore = Math.max(0, Math.min(100, 100 - Math.max(0, snapshot.topChainShare - 35) * 1.6));
-  const usageScore = snapshot.dune ? Math.max(0, Math.min(100, 45 + Math.log10(Math.max(1, snapshot.dune.volume / Math.max(1, snapshot.supply)) + 1) * 25 + Math.log10(Math.max(1, snapshot.dune.active)) * 6)) : 45;
-  const liquidityScore = snapshot.dune ? Math.max(0, Math.min(100, 45 + pctOf(snapshot.dune.dexVolume, snapshot.supply) * 1.8)) : 45;
-  const riskScore = Math.max(0, Math.min(100, 100 - (snapshot.dune?.maxTop10 || 0) * 0.55 - Math.max(0, snapshot.topChainShare - 50)));
-  const rows = [
-    ['Supply momentum', supplyScore, `${pct(snapshot.delta.rate)} over ${snapshot.periodLabel}; ${fmt(snapshot.delta.change)} net.`],
-    ['Usage momentum', usageScore, snapshot.dune ? `${snapshot.dune.active.toLocaleString()} chain-summed active addresses; ${fmt(snapshot.dune.volume)} transfer volume.` : 'Dune cache unavailable; score waits for usage data.'],
-    ['Liquidity momentum', liquidityScore, snapshot.dune?.dexVolume ? `${fmt(snapshot.dune.dexVolume)} DEX volume in selected window.` : 'Selected-window DEX volume unavailable until Dune cache refreshes.'],
-    ['Distribution quality', distributionScore, snapshot.topChain ? `${snapshot.topChain[0]} concentration ${snapshot.topChainShare.toFixed(1)}%.` : 'No chain distribution data.'],
-    ['Competitive position', competitiveScore, `Peer percentile ${snapshot.peers.percentile.toFixed(0)}; growth rank ${snapshot.peers.rank}/${snapshot.peers.count}.`],
-    ['Risk flags', riskScore, snapshot.watchlist[0] || 'No major selected-window risk flag.'],
-  ];
-  document.getElementById('momentum-scorecard').innerHTML = rows.map(([name, score, detail]) => {
-    const klass = classifyScore(score);
-    return `<div class="score-row"><div class="score-row-head"><strong>${esc(name)}</strong><span class="score ${klass}">${scoreLabel(score)} ${score.toFixed(0)}</span></div><div class="detail">${esc(detail)}</div></div>`;
-  }).join('');
-}
-function renderDriverWaterfall(snapshot, color) {
-  destroyChart('drivers');
-  const chainRows = snapshot.chainRows.slice(0, 8);
-  const rows = snapshot.asset === 'combined' ? [...snapshot.productDrivers, ...chainRows.slice(0, 6)] : chainRows;
-  document.getElementById('drivers-subtitle').textContent = `Selected ${snapshot.periodLabel} contribution drivers for ${snapshot.label}; positive bars are inflows, negative bars are outflows.`;
-  if (!rows.length) {
-    document.getElementById('driver-waterfall-detail').innerHTML = '<div class="detail">Not enough selected-period chain history yet.</div>';
-    return;
-  }
-  charts['drivers'] = new Chart(document.getElementById('driver-waterfall-chart').getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: rows.map(r => r.name),
-      datasets: [{
-        data: rows.map(r => r.change),
-        backgroundColor: rows.map(r => r.change >= 0 ? (r.color || color) + '77' : '#f7768e77'),
-        borderColor: rows.map(r => r.change >= 0 ? (r.color || color) : '#f7768e'),
-        borderWidth: 1,
-      }]
-    },
-    options: {
-      indexAxis: 'y', responsive: true,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${fmt(ctx.parsed.x)} (${pct(rows[ctx.dataIndex].rate)})` } } },
-      scales: {
-        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } },
-        y: { grid: { display: false }, ticks: { color: '#565f89' } }
-      }
-    }
-  });
-  const maxAbs = Math.max(...rows.map(r => Math.abs(r.change)), 1);
-  document.getElementById('driver-waterfall-detail').innerHTML = rows.slice(0, 6).map(row => {
-    const width = Math.max(3, Math.abs(row.change) / maxAbs * 100).toFixed(1);
-    const barColor = row.change >= 0 ? (row.color || color) : '#f7768e';
-    return `<div class="mini-bar"><div class="mini-bar-name">${esc(row.name)}</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${width}%;background:${barColor}"></div></div><div class="mini-bar-value">${fmt(row.change)}</div></div>`;
-  }).join('');
-}
-function renderWatchlistAlerts(snapshot) {
-  const alerts = snapshot.watchlist.length ? snapshot.watchlist : ['No major concentration, peer, or selected-window outflow alert in the current view.'];
-  document.getElementById('watchlist-alerts').innerHTML = alerts.slice(0, 4).map((alert, i) => signalCard(i ? 'warn' : 'risk', i ? 'Watchlist' : 'Largest risk', esc(alert), 'Dynamic alert from selected asset, selected period, live DefiLlama data, and cached Dune activity where available.')).join('');
-}
-function renderBusinessPanels(ctx) {
-  const snapshot = buildBusinessSnapshot(ctx);
-  renderExecutiveReadout(snapshot);
-  renderPortfolioScorecard(ctx.period);
-  renderMomentumScorecard(snapshot);
-  renderDriverWaterfall(snapshot, ASSET_COLORS[ctx.asset]);
-  renderWatchlistAlerts(snapshot);
-}
-
-async function main() {
-  try {
-    const [usdgDetail, pyusdDetail, allStables, usdgHistory, pyusdHistory] = await Promise.all([
-      fetchJSON(`https://stablecoins.llama.fi/stablecoin/${USDG_ID}`),
-      fetchJSON(`https://stablecoins.llama.fi/stablecoin/${PYUSD_ID}`),
-      fetchJSON('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
-      fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${USDG_ID}`),
-      fetchJSON(`https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=${PYUSD_ID}`),
-    ]);
-
-    // Parse chain data for both assets
-    function parseChains(detail) {
-      const chains = {};
-      for (const [chain, data] of Object.entries(detail.chainBalances || {})) {
-        const tokens = data.tokens || [];
-        if (tokens.length) {
-          const c = stableValue(tokens[tokens.length - 1]);
-          chains[chain] = { current: c };
-          if (tokens.length > 30) chains[chain].prev30 = stableValue(tokens[tokens.length - 31]);
-          if (tokens.length > 7) chains[chain].prev7 = stableValue(tokens[tokens.length - 8]);
-        }
-      }
-      return chains;
-    }
-
-    const sorted = allStables.peggedAssets
-      .filter(a => a.circulating?.peggedUSD > 0)
-      .sort((a, b) => b.circulating.peggedUSD - a.circulating.peggedUSD);
-    const totalMarket = sorted.reduce((s, a) => s + a.circulating.peggedUSD, 0);
-
-    const usdgEntry = sorted.find(a => stableId(a) === USDG_ID);
-    const pyusdEntry = sorted.find(a => stableId(a) === PYUSD_ID);
-
-    // Build combined history (aligned by date)
-    const usdgMap = new Map(usdgHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
-    const pyusdMap = new Map((pyusdHistory||[]).map(p => [p.date, p.totalCirculating.peggedUSD]));
-    const allDates = [...new Set([...usdgMap.keys(), ...pyusdMap.keys()])].sort((a,b) => a - b);
-    const combinedHistory = allDates.map(d => ({
-      date: d,
-      totalCirculating: { peggedUSD: (usdgMap.get(d) || 0) + (pyusdMap.get(d) || 0) }
-    }));
-
-    // Combined chains = merge both chain maps
-    function mergeChains(a, b) {
-      const merged = {};
-      for (const [chain, data] of Object.entries(a)) {
-        merged[chain] = { ...data };
-      }
-      for (const [chain, data] of Object.entries(b)) {
-        if (merged[chain]) {
-          merged[chain].current += data.current;
-          if (data.prev30 && merged[chain].prev30) merged[chain].prev30 += data.prev30;
-          if (data.prev7 && merged[chain].prev7) merged[chain].prev7 += data.prev7;
-        } else {
-          merged[chain] = { ...data };
-        }
-      }
-      return merged;
-    }
-
-    const usdgChains = parseChains(usdgDetail);
-    const pyusdChains = parseChains(pyusdDetail);
-
-    // Combined entry for rankings simulation
-    const combinedSupply = (usdgEntry?.circulating?.peggedUSD || 0) + (pyusdEntry?.circulating?.peggedUSD || 0);
-    const combinedPrevDay = (usdgEntry?.circulatingPrevDay?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevDay?.peggedUSD || 0);
-    const combinedPrevWeek = (usdgEntry?.circulatingPrevWeek?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevWeek?.peggedUSD || 0);
-    const combinedPrevMonth = (usdgEntry?.circulatingPrevMonth?.peggedUSD || 0) + (pyusdEntry?.circulatingPrevMonth?.peggedUSD || 0);
-    const combinedRank = sorted.filter(a => a.circulating.peggedUSD > combinedSupply).length + 1;
-
-
-
-    // Store everything
-    DATA = {
-      sorted, totalMarket, usdgEntry, pyusdEntry,
-      usdgChains, pyusdChains,
-      usdgHistory, pyusdHistory: pyusdHistory || [], combinedHistory,
-      usdgChainBalances: usdgDetail.chainBalances || {}, pyusdChainBalances: pyusdDetail.chainBalances || {},
-      combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
-
-    };
-
-    render();
-
-    // Toggle listeners
-    document.getElementById('asset-toggle').addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      document.querySelectorAll('#asset-toggle button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      STATE.asset = btn.dataset.asset;
-      render();
-    });
-    document.getElementById('period-toggle').addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      document.querySelectorAll('#period-toggle button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      STATE.period = btn.dataset.period;
-      render();
-    });
-
-    document.getElementById('updated-time').textContent = 'Live data, refreshed on page load. ' + new Date().toLocaleString();
-
-  } catch (err) {
-    console.error('Dashboard error:', err);
-    document.getElementById('metrics-grid').innerHTML = '<div class="metric-card"><div class="label">Error</div><div class="value" style="font-size:1rem">Failed to load data. Check console.</div></div>';
-  }
-}
-
-function render() {
-  const { asset, period } = STATE;
-  const { sorted, totalMarket, usdgEntry, pyusdEntry, usdgChains, pyusdChains,
-    usdgHistory, pyusdHistory, combinedHistory,
-    usdgChainBalances, pyusdChainBalances,
-    combinedSupply, combinedPrevDay, combinedPrevWeek, combinedPrevMonth, combinedRank,
-    } = DATA;
-
-  const prevKey = periodPrevKey(period);
-  const periodLabel = periodLabelFor(period);
-  const color = ASSET_COLORS[asset];
-  const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
-  const assetIds = asset === 'usdg' ? [USDG_ID] : asset === 'pyusd' ? [PYUSD_ID] : [USDG_ID, PYUSD_ID];
-
-  // Resolve current asset's data
-  let supply, prevDay, prevWeek, prevMonth, rank, history, chains;
-  if (asset === 'usdg') {
-    supply = usdgEntry.circulating.peggedUSD;
-    prevDay = usdgEntry.circulatingPrevDay?.peggedUSD || supply;
-    prevWeek = usdgEntry.circulatingPrevWeek?.peggedUSD || supply;
-    prevMonth = usdgEntry.circulatingPrevMonth?.peggedUSD || supply;
-    rank = sorted.indexOf(usdgEntry) + 1;
-    history = usdgHistory;
-    chains = usdgChains;
-  } else if (asset === 'pyusd') {
-    supply = pyusdEntry.circulating.peggedUSD;
-    prevDay = pyusdEntry.circulatingPrevDay?.peggedUSD || supply;
-    prevWeek = pyusdEntry.circulatingPrevWeek?.peggedUSD || supply;
-    prevMonth = pyusdEntry.circulatingPrevMonth?.peggedUSD || supply;
-    rank = sorted.indexOf(pyusdEntry) + 1;
-    history = pyusdHistory;
-    chains = pyusdChains;
-  } else {
-    supply = combinedSupply;
-    prevDay = combinedPrevDay; prevWeek = combinedPrevWeek; prevMonth = combinedPrevMonth;
-    rank = combinedRank;
-    history = combinedHistory;
-    chains = {};
-    // merge chains
-    for (const [c, d] of Object.entries(usdgChains)) { chains[c] = { ...d }; }
-    for (const [c, d] of Object.entries(pyusdChains)) {
-      if (chains[c]) {
-        chains[c].current += d.current;
-        if (d.prev30 !== undefined && chains[c].prev30 !== undefined) chains[c].prev30 += d.prev30;
-        if (d.prev7 !== undefined && chains[c].prev7 !== undefined) chains[c].prev7 += d.prev7;
-      } else { chains[c] = { ...d }; }
-    }
-  }
-
-  const prevPeriod = period === '7d' ? prevWeek : prevMonth;
-  const dayDelta = prevDay > 0 ? ((supply - prevDay) / prevDay * 100) : 0;
-  const periodDelta = prevPeriod > 0 ? ((supply - prevPeriod) / prevPeriod * 100) : 0;
-
-  // ── Metrics cards ──
-  document.getElementById('metrics-grid').innerHTML = `
-    <div class="metric-card">
-      <div class="label">Total Supply</div>
-      <div class="value">${fmt(supply)}</div>
-      <div class="delta ${dayDelta >= 0 ? 'up' : 'down'}">${pct(dayDelta)} (24h)</div>
-    </div>
-    <div class="metric-card">
-      <div class="label">${asset === 'combined' ? 'Effective Rank' : 'Stablecoin Rank'}</div>
-      <div class="value">#${rank}</div>
-      <div class="delta neutral">${asset === 'combined' ? 'if treated as one asset' : 'of ' + sorted.length + ' stablecoins'}</div>
-    </div>
-    <div class="metric-card">
-      <div class="label">${period} Change</div>
-      <div class="value" style="color:${periodDelta >= 0 ? 'var(--green)' : 'var(--red)'}">${pct(periodDelta)}</div>
-      <div class="delta ${periodDelta >= 0 ? 'up' : 'down'}">${fmt(Math.abs(supply - prevPeriod))}</div>
-    </div>
-    <div class="metric-card">
-      <div class="label">Market Share</div>
-      <div class="value">${(supply / totalMarket * 100).toFixed(2)}%</div>
-      <div class="delta neutral">of ${fmt(totalMarket)} total</div>
-    </div>
-  `;
-
-  // ── Adoption brief ──
-  renderAdoptionBrief({ assetLabel, supply, periodDelta, history, chains, rank, totalMarket, period, periodLabel });
-  renderBusinessPanels({ asset, period, sorted, totalMarket });
-
-  // ── Race to next rank ──
-  const raceSection = document.getElementById('race-section');
-  // Find what's directly above in rankings
-  const effectiveRank = rank;
-  if (effectiveRank > 1) {
-    raceSection.style.display = '';
-    // For combined, we need to find who's above the combined supply
-    let aboveEntry;
-    if (asset === 'combined') {
-      aboveEntry = sorted.find(a => a.circulating.peggedUSD > supply && !assetIds.includes(stableId(a)));
-      // actually find the one just above
-      const aboveAll = sorted.filter(a => a.circulating.peggedUSD > supply && !assetIds.includes(stableId(a)));
-      aboveEntry = aboveAll[aboveAll.length - 1]; // closest one above
-    } else {
-      aboveEntry = sorted[effectiveRank - 2];
-    }
-    if (aboveEntry) {
-      const gap = aboveEntry.circulating.peggedUSD - supply;
-      const abovePct = (supply / aboveEntry.circulating.peggedUSD * 100);
-      document.getElementById('race-subtitle').textContent =
-        `${assetLabel} (#${effectiveRank}) vs ${aboveEntry.symbol} (#${sorted.indexOf(aboveEntry)+1})`;
-      document.getElementById('race-track').innerHTML = `
-        <div class="race-bar" style="width:${abovePct}%;background:${color}88;z-index:2;color:var(--fg);">
-          ${esc(assetLabel)} ${fmt(supply)}
-        </div>
-        <div class="race-bar" style="width:100%;background:rgba(247,118,142,0.2);z-index:1;justify-content:flex-end;color:var(--red);">
-          ${esc(aboveEntry.symbol)} ${fmt(aboveEntry.circulating.peggedUSD)}
-        </div>`;
-      let gapHtml = fmt(gap) + ' to overtake';
-      const paceDays = periodDays(period);
-      if (history && history.length > paceDays) {
-        const recent = history.slice(-(paceDays + 1));
-        const dailyRate = (stableValue(recent[recent.length - 1]) - stableValue(recent[0])) / paceDays;
-        if (dailyRate > 0) {
-          gapHtml += `<br><span style="font-size:0.8rem;color:var(--gray)">~${daysStr(Math.ceil(gap / dailyRate))} at current ${esc(periodLabel)} pace</span>`;
-        }
-      }
-      document.getElementById('race-gap').innerHTML = gapHtml;
-    }
-  } else {
-    raceSection.style.display = 'none';
-  }
-
-  // ── Supply chart ──
-  destroyChart('supply');
-  if (history && history.length) {
-    const datasets = [];
-    if (asset === 'combined') {
-      // Show all three lines
-      const usdgMap = new Map(usdgHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
-      const pyusdMap = new Map(pyusdHistory.map(p => [p.date, p.totalCirculating.peggedUSD]));
-      datasets.push({
-        label: 'Combined', data: history.map(d => d.totalCirculating.peggedUSD),
-        borderColor: ASSET_COLORS.combined, backgroundColor: ASSET_COLORS.combined + '14',
-        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
-      });
-      datasets.push({
-        label: 'USDG', data: history.map(d => usdgMap.get(d.date) || 0),
-        borderColor: ASSET_COLORS.usdg, backgroundColor: 'transparent',
-        fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
-      });
-      datasets.push({
-        label: 'PYUSD', data: history.map(d => pyusdMap.get(d.date) || 0),
-        borderColor: ASSET_COLORS.pyusd, backgroundColor: 'transparent',
-        fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
-      });
-    } else {
-      datasets.push({
-        label: assetLabel, data: history.map(d => d.totalCirculating.peggedUSD),
-        borderColor: color, backgroundColor: color + '14',
-        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
-      });
-    }
-    charts['supply'] = new Chart(document.getElementById('supply-chart').getContext('2d'), {
-      type: 'line',
-      data: { labels: history.map(d => new Date(d.date * 1000)), datasets },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: asset === 'combined', labels: { color: '#565f89' } },
-          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } }
-        },
-        scales: {
-          x: { type: 'time', time: { unit: 'month' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-          y: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } }
-        }
-      }
-    });
-  }
-
-
-  // ── Live graph extras ──
-  renderSupplyMomentum(history, color, assetLabel, period);
-  renderPaxosMix(usdgHistory, pyusdHistory);
-  const chainBalanceMaps = asset === 'usdg' ? [usdgChainBalances] : asset === 'pyusd' ? [pyusdChainBalances] : [usdgChainBalances, pyusdChainBalances];
-  renderChainTrend(chainBalanceMaps, assetLabel);
-
-  // ── Chain bars ──
-  const chainContainer = document.getElementById('chain-bars');
-  chainContainer.innerHTML = '';
-  document.getElementById('chain-subtitle').textContent = `Where ${assetLabel} lives and where it's growing.`;
-  const sortedChains = Object.entries(chains).filter(([,d]) => d.current > 0).sort((a,b) => b[1].current - a[1].current);
-  const maxChain = sortedChains[0]?.[1].current || 1;
-  const chainTotal = sortedChains.reduce((s,[,d]) => s + d.current, 0);
-
-  for (const [chain, data] of sortedChains) {
-    const pctOfTotal = (data.current / chainTotal * 100).toFixed(1);
-    const barPct = (data.current / maxChain * 100).toFixed(1);
-    const clr = CHAIN_COLORS[chain] || '#7dcfff';
-    let deltaHtml = '';
-    const prevChain = period === '7d' ? data.prev7 : data.prev30;
-    if (prevChain && prevChain > 0) {
-      const rate = ((data.current - prevChain) / prevChain * 100);
-      deltaHtml = `<span class="chain-delta delta ${rate >= 0 ? 'up' : 'down'}">${pct(rate)} ${period}</span>`;
-    }
-    chainContainer.innerHTML += `
-      <div class="chain-bar">
-        <div class="chain-name">${esc(chain)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${clr}"></div></div>
-        <div class="bar-meta">${fmt(data.current)} (${pctOfTotal}%)<br>${deltaHtml}</div>
-      </div>`;
-  }
-
-  const ci = document.getElementById('chain-insight');
-  const prevChainKey = period === '7d' ? 'prev7' : 'prev30';
-  const fastest = sortedChains
-    .filter(([,d]) => d[prevChainKey] && d[prevChainKey] > 0)
-    .map(([name, d]) => [name, ((d.current - d[prevChainKey]) / d[prevChainKey] * 100)])
-    .sort((a,b) => b[1] - a[1])[0];
-  if (fastest) {
-    ci.style.display = 'block';
-    ci.innerHTML = `<strong>${esc(fastest[0])}</strong> is the fastest-growing chain at <strong>${pct(fastest[1])}</strong> over ${periodLabel}.${
-      sortedChains[0][0] !== fastest[0] ? ` Meanwhile, <strong>${esc(sortedChains[0][0])}</strong> holds the most supply.` : ''
-    }`;
-  } else { ci.style.display = 'none'; }
-
-  // ── Alt-stable share ──
-  destroyChart('altShare');
-  const bigTwo = sorted.slice(0, 2).reduce((s, a) => s + a.circulating.peggedUSD, 0);
-  const altMarket = totalMarket - bigTwo;
-  const altShare = (supply / altMarket * 100);
-  document.getElementById('alt-subtitle').textContent = `${assetLabel}'s share of non-USDT/USDC stablecoins`;
-  charts['altShare'] = new Chart(document.getElementById('alt-share-chart').getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: [assetLabel, 'Other alt-stables'],
-      datasets: [{ data: [supply, altMarket - supply], backgroundColor: [color, '#292e43'], borderColor: [color, '#565f89'], borderWidth: 1 }]
-    },
-    options: {
-      responsive: true, cutout: '65%',
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) } } }
-    },
-    plugins: [{
-      id: 'centerText',
-      afterDraw(chart) {
-        const { ctx, chartArea: { width, height, top, left } } = chart;
-        ctx.save();
-        ctx.fillStyle = '#c0caf5';
-        ctx.font = 'bold 1.3rem "IBM Plex Mono", monospace';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(altShare.toFixed(1) + '%', left + width/2, top + height/2 - 8);
-        ctx.font = '0.7rem "IBM Plex Mono", monospace';
-        ctx.fillStyle = '#565f89';
-        ctx.fillText('of alt-stables', left + width/2, top + height/2 + 14);
-        ctx.restore();
-      }
-    }]
-  });
-
-  // ── Growth rate vs peers ──
-  destroyChart('growth');
-  const pd = sorted
-    .filter(a => a.circulating.peggedUSD > 500e6 && a[prevKey]?.peggedUSD > 0)
-    .map(a => ({
-      symbol: a.symbol, id: a.id,
-      rate: ((a.circulating.peggedUSD - a[prevKey].peggedUSD) / a[prevKey].peggedUSD * 100),
-      isTarget: assetIds.includes(stableId(a)),
-    }))
-    .sort((a, b) => b.rate - a.rate)
-    .slice(0, 12);
-  document.getElementById('growth-subtitle').textContent = `${period} growth rate, stablecoins >$500M`;
-  charts['growth'] = new Chart(document.getElementById('growth-chart').getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: pd.map(d => d.isTarget ? d.symbol + ' ◀' : d.symbol),
-      datasets: [{
-        data: pd.map(d => d.rate),
-        backgroundColor: pd.map(d => d.isTarget ? color : '#292e43'),
-        borderColor: pd.map(d => d.isTarget ? color : '#565f89'),
-        borderWidth: 1,
-      }]
-    },
-    options: {
-      indexAxis: 'y', responsive: true,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => pct(ctx.parsed.x) } } },
-      scales: {
-        x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => pct(v) } },
-        y: { grid: { display: false }, ticks: {
-          color: ctx => pd[ctx.index]?.isTarget ? color : '#565f89',
-          font: ctx => ({ weight: pd[ctx.index]?.isTarget ? 'bold' : 'normal' })
-        } }
-      }
-    }
-  });
-
-  // ── Growth capture ──
-  destroyChart('capture');
-  const growthData = sorted
-    .filter(a => a[prevKey]?.peggedUSD > 0)
-    .map(a => ({
-      symbol: a.symbol, id: a.id,
-      growth: a.circulating.peggedUSD - a[prevKey].peggedUSD,
-      isTarget: assetIds.includes(stableId(a)),
-    }))
-    .filter(a => a.growth > 0)
-    .sort((a, b) => b.growth - a.growth)
-    .slice(0, 10);
-  const totalPosGrowth = growthData.reduce((s, a) => s + a.growth, 0);
-  const capCI = document.getElementById('capture-insight');
-  document.getElementById('capture-subtitle').textContent = `${period}: when the market grows, where do new dollars go?`;
-
-  if (growthData.length > 0) {
-    // Ensure target assets in top 6
-    const targetInTop = growthData.slice(0, 6).some(d => d.isTarget);
-    let top6 = growthData.slice(0, 6);
-    let rest = growthData.slice(6);
-    if (!targetInTop) {
-      const targetItem = growthData.find(d => d.isTarget);
-      if (targetItem) {
-        top6 = [...growthData.slice(0, 5), targetItem];
-        rest = growthData.slice(5).filter(d => !d.isTarget);
-      }
-    }
-    const otherGrowth = rest.reduce((s, d) => s + d.growth, 0);
-    const pieData = [...top6];
-    if (otherGrowth > 0) pieData.push({ symbol: 'Other', growth: otherGrowth, isTarget: false });
-
-    const pieColors = pieData.map(d => {
-      if (d.isTarget) return color;
-      const palette = ['#f7768e','#e0af68','#9ece6a','#7dcfff','#bb9af7','#ff9e64','#565f89'];
-      return palette[pieData.indexOf(d) % palette.length];
-    });
-
-    charts['capture'] = new Chart(document.getElementById('capture-chart').getContext('2d'), {
-      type: 'doughnut',
-      data: {
-        labels: pieData.map(d => d.symbol),
-        datasets: [{ data: pieData.map(d => d.growth), backgroundColor: pieColors, borderColor: '#1a1b26', borderWidth: 2 }]
-      },
-      options: {
-        responsive: true, cutout: '45%',
-        plugins: {
-          legend: { position: 'right', labels: { color: '#c0caf5', font: { size: 11 }, padding: 12 } },
-          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.parsed) + ' (' + (ctx.parsed/totalPosGrowth*100).toFixed(1) + '%)' } }
-        }
-      }
-    });
-
-    // Sum target assets' growth for insight
-    const targetGrowth = growthData.filter(d => d.isTarget).reduce((s, d) => s + d.growth, 0);
-    if (targetGrowth > 0) {
-      capCI.style.display = 'block';
-      capCI.innerHTML = `Of all stablecoins that grew in the last ${periodLabel}, ${assetLabel} captured <strong>${(targetGrowth/totalPosGrowth*100).toFixed(1)}%</strong> of new supply (<strong>${fmt(targetGrowth)}</strong>).`;
-    } else { capCI.style.display = 'none'; }
-  } else {
-    capCI.style.display = 'block';
-    capCI.innerHTML = `The stablecoin market contracted over the last ${periodLabel}.`;
-  }
-
-  // ── Market table ──
-  document.getElementById('table-period-header').textContent = period;
-  const tbody = document.getElementById('market-tbody');
-  tbody.innerHTML = '';
-  const top20 = sorted.slice(0, 20);
-  let targetInTable = false;
-  for (const s of top20) {
-    const mcap = s.circulating.peggedUSD;
-    const share = (mcap / totalMarket * 100);
-    const prev = s[prevKey]?.peggedUSD || mcap;
-    const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
-    const isTarget = assetIds.includes(stableId(s));
-    if (isTarget) targetInTable = true;
-    const idx = sorted.indexOf(s) + 1;
-    tbody.innerHTML += `<tr class="${isTarget ? 'highlight-row' : ''}">
-      <td>${idx}. ${esc(s.symbol)}</td>
-      <td>${fmt(mcap)}</td>
-      <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
-      <td>${share.toFixed(2)}%</td>
-    </tr>`;
-  }
-  if (!targetInTable) {
-    // Add target rows
-    for (const id of assetIds) {
-      const entry = sorted.find(a => stableId(a) === id);
-      if (!entry) continue;
-      const mcap = entry.circulating.peggedUSD;
-      const share = (mcap / totalMarket * 100);
-      const prev = entry[prevKey]?.peggedUSD || mcap;
-      const change = prev > 0 ? ((mcap - prev) / prev * 100) : 0;
-      const idx = sorted.indexOf(entry) + 1;
-      tbody.innerHTML += `<tr class="highlight-row">
-        <td>${idx}. ${esc(entry.symbol)}</td>
-        <td>${fmt(mcap)}</td>
-        <td class="delta ${change >= 0 ? 'up' : 'down'}">${pct(change)}</td>
-        <td>${share.toFixed(2)}%</td>
-      </tr>`;
-    }
-  }
-}
-
-main();
-
-// ── Dune Analytics on-chain data ──
-let DUNE_DATA = null;
-async function loadDuneData() {
-  try {
-    const res = await fetch('/data/dune.json');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    DUNE_DATA = await res.json();
-    document.getElementById('dune-section').style.display = '';
-    if (DUNE_DATA.updated) {
-      const dt = new Date(DUNE_DATA.updated);
-      const status = document.getElementById('dune-status');
-      if (Number.isFinite(dt.getTime())) {
-        const ageDays = Math.max(0, Math.round((Date.now() - dt.getTime()) / 86400000));
-        if (status) {
-          status.textContent = ageDays > 2 ? `Dune activity cache ${ageDays}d old` : 'Dune activity cache fresh';
-          status.classList.toggle('warn', ageDays > 2);
-        }
-        document.getElementById('dune-updated-at').textContent = 'Last updated ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '.';
-      } else if (status) {
-        status.textContent = 'Dune activity cache timestamp invalid';
-        status.classList.add('warn');
-      }
-    }
-    if (DATA?.sorted) render();
-    else renderDune();
-  } catch (err) {
-    const status = document.getElementById('dune-status');
-    if (status) { status.textContent = 'Dune activity cache unavailable'; status.classList.add('warn'); }
-    console.warn('Dune data unavailable:', err.message);
-  }
-}
-
-function renderDune() {
-  if (!DUNE_DATA?.data) return;
-  const { asset, period } = STATE;
-  const d = DUNE_DATA.data;
-  const color = ASSET_COLORS[asset];
-  const assetLabel = asset === 'combined' ? 'USDG + PYUSD' : asset.toUpperCase();
-  const is7d = period === '7d';
-  const wantUSDG = asset === 'usdg' || asset === 'combined';
-  const wantPYUSD = asset === 'pyusd' || asset === 'combined';
-
-  // Collect all summary rows from ALL chains (evm_summary + sol_summary)
-  const summaryKeys = Object.keys(d).filter(k => k.endsWith('_summary'));
-  const allSummary = summaryKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
-  // Filter to selected asset(s)
-  const relevant = allSummary.filter(r =>
-    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
-  );
-  let holders = 0, activeAddrs = 0, transfers = 0, volume = 0;
-  for (const r of relevant) {
-    holders += Number(r.holders) || 0;
-    activeAddrs += is7d ? (Number(r.active_7d) || 0) : (Number(r.active_30d) || 0);
-    transfers += is7d ? (Number(r.transfers_7d) || 0) : (Number(r.transfers_30d) || 0);
-    volume += is7d ? (Number(r.volume_7d) || 0) : (Number(r.volume_30d) || 0);
-  }
-  // Chain breakdown for subtitle
-  const chainBreakdown = relevant.map(r => `${esc(r.token)} on ${esc(r.chain)}`).join(', ');
-
-  const grid = document.getElementById('dune-metrics-grid');
-  grid.innerHTML = `
-    ${holders ? `<div class="metric-card">
-      <div class="label">Known Holders</div>
-      <div class="value">${holders.toLocaleString()}</div>
-      <div class="delta neutral">EVM balance holders; activity spans all cached chains</div>
-    </div>` : ''}
-    <div class="metric-card">
-      <div class="label">Chain-summed Active Addresses (${period})</div>
-      <div class="value">${activeAddrs.toLocaleString()}</div>
-      <div class="delta neutral">${chainBreakdown || 'across chains'}; not globally de-duplicated</div>
-    </div>
-    <div class="metric-card">
-      <div class="label">Transfers (${period})</div>
-      <div class="value">${transfers.toLocaleString()}</div>
-    </div>
-    <div class="metric-card">
-      <div class="label">Transfer Volume (${period})</div>
-      <div class="value">${fmt(volume)}</div>
-    </div>
-  `;
-
-  // ── Daily volume chart ──
-  destroyChart('volume');
-  // Merge all daily data from ALL chains
-  const dailyKeys = Object.keys(d).filter(k => k.endsWith('_daily'));
-  const allDaily = dailyKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : [])
-    .filter(r => (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD'));
-
-  // Aggregate by date
-  const dailyMap = new Map();
-  for (const r of allDaily) {
-    const key = String(r.day || '').split(' ')[0];
-    if (!key) continue;
-    const existing = dailyMap.get(key) || { day: key, volume_m: 0, transfers: 0, unique_senders: 0 };
-    existing.volume_m += Number(r.volume_m) || 0;
-    existing.transfers += Number(r.transfers) || 0;
-    existing.unique_senders += Number(r.unique_senders) || 0;
-    dailyMap.set(key, existing);
-  }
-  const dailyData = [...dailyMap.values()].sort((a,b) => a.day.localeCompare(b.day)).slice(is7d ? -7 : -30);
-
-  if (dailyData.length > 0) {
-    charts['volume'] = new Chart(document.getElementById('volume-chart').getContext('2d'), {
-      data: {
-        labels: dailyData.map(r => new Date(r.day)),
-        datasets: [
-          {
-            type: 'bar', label: 'Transfer volume',
-            data: dailyData.map(r => r.volume_m || 0),
-            backgroundColor: color + '66', borderColor: color, borderWidth: 1,
-            yAxisID: 'y'
-          },
-          {
-            type: 'line', label: 'Chain-summed senders',
-            data: dailyData.map(r => r.unique_senders || 0),
-            borderColor: '#e0af68', pointRadius: 0, tension: 0.25, borderWidth: 2,
-            yAxisID: 'y1'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { labels: { color: '#565f89' } },
-          tooltip: { callbacks: { label: ctx => ctx.dataset.label === 'Transfer volume' ? fmt(ctx.parsed.y) : ctx.parsed.y.toLocaleString() + ' senders' } }
-        },
-        scales: {
-          x: { type: 'time', time: { unit: 'week' }, grid: { color: '#292e43' }, ticks: { color: '#565f89' } },
-          y: { position: 'left', grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => fmt(v) } },
-          y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#565f89' } }
-        }
-      }
-    });
-  }
-
-  // ── Whale concentration ──
-  destroyChart('whale');
-  const whaleSection = document.getElementById('whale-section');
-  const whaleKeys = Object.keys(d).filter(k => k.endsWith('_whales'));
-  const allWhales = whaleKeys.flatMap(k => Array.isArray(d[k]) ? d[k] : []);
-  const whaleData = allWhales.filter(r =>
-    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
-  );
-  if (whaleData.length > 0) {
-    whaleSection.style.display = '';
-    const tokens = [...new Set(whaleData.map(r => r.token))];
-    const whaleChains = [...new Set(whaleData.map(r => r.chain))];
-    document.getElementById('whale-subtitle').textContent = `Top holders on ${whaleChains.join(', ')}: ${tokens.join(' & ')}`;
-    const multiContext = tokens.length > 1 || whaleChains.length > 1;
-    const labels = whaleData.map(r => (multiContext ? r.token + '/' + r.chain + ' ' : '') + r.address.slice(0, 6) + '...' + r.address.slice(-4));
-    const barColors = whaleData.map(r => r.token === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd);
-    charts['whale'] = new Chart(document.getElementById('whale-chart').getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data: whaleData.map(r => r.pct),
-          backgroundColor: barColors.map(c => c + '66'),
-          borderColor: barColors,
-          borderWidth: 1,
-        }]
-      },
-      options: {
-        indexAxis: 'y', responsive: true,
-        plugins: { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => whaleData[ctx.dataIndex].token + ' ' + whaleData[ctx.dataIndex].address + ': ' + fmt(whaleData[ctx.dataIndex].balance) + ' (' + ctx.parsed.x.toFixed(1) + '%)' }
-        }},
-        scales: {
-          x: { grid: { color: '#292e43' }, ticks: { color: '#565f89', callback: v => v.toFixed(0) + '%' } },
-          y: { grid: { display: false }, ticks: { color: '#565f89', font: { size: 10 } } }
-        }
-      }
-    });
-    // Insight per token
-    const wi = document.getElementById('whale-insight');
-    const insights = [];
-    for (const token of tokens) {
-      for (const chain of whaleChains) {
-        const tw = whaleData.filter(r => r.token === token && r.chain === chain);
-        if (!tw.length) continue;
-        const top10 = tw.slice(0, 10).reduce((s,r) => s + r.pct, 0);
-        insights.push(`Top 10 ${esc(token)} holders on ${esc(chain)} control <strong>${top10.toFixed(1)}%</strong> of supply.`);
-      }
-    }
-    wi.style.display = 'block';
-    wi.innerHTML = insights.join(' ');
-  } else {
-    whaleSection.style.display = 'none';
-  }
-
-  // ── DEX trading ──
-  const dexSection = document.getElementById('dex-section');
-  const allDex = Array.isArray(d.dex_volume) ? d.dex_volume : [];
-  const dexData = allDex.filter(r =>
-    (wantUSDG && String(r.token) === 'USDG') || (wantPYUSD && String(r.token) === 'PYUSD')
-  );
-  if (dexData.length > 0) {
-    dexSection.style.display = '';
-    const dexBars = document.getElementById('dex-bars');
-    dexBars.innerHTML = '';
-    const rankedDex = dexData
-      .map(row => ({
-        ...row,
-        selectedVolume: is7d ? (Number(row.volume_7d) || 0) : (Number(row.volume_30d) || 0),
-        selectedTrades: is7d ? (Number(row.trades_7d) || 0) : (Number(row.trades_30d ?? row.trades) || 0),
-      }))
-      .filter(row => row.selectedVolume > 0 || row.selectedTrades > 0)
-      .sort((a, b) => b.selectedVolume - a.selectedVolume);
-    document.getElementById('dex-title').textContent = `DEX Trading Activity (${period})`;
-    document.getElementById('dex-subtitle').textContent = `${assetLabel} venues ranked by selected-period Dune volume; updates with the period toggle.`;
-    if (!rankedDex.length) {
-      dexBars.innerHTML = '<div class="insight-callout">No selected-period DEX activity in the current Dune cache for this asset/window.</div>';
-      return;
-    }
-    const maxVol = rankedDex[0]?.selectedVolume || 1;
-    for (const row of rankedDex.slice(0, 12)) {
-      const barPct = (row.selectedVolume / maxVol * 100).toFixed(1);
-      const barColor = String(row.token) === 'USDG' ? ASSET_COLORS.usdg : ASSET_COLORS.pyusd;
-      dexBars.innerHTML += `
-        <div class="chain-bar">
-          <div class="chain-name" style="width:140px">${esc(row.token)} / ${esc(row.project)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
-          <div class="bar-meta" style="width:180px">${fmt(row.selectedVolume)}<br><span style="font-size:0.72rem;color:var(--gray)">${esc(row.token_pair)} (${row.selectedTrades.toLocaleString()} trades)</span></div>
-        </div>`;
-    }
-  } else {
-    dexSection.style.display = 'none';
-  }
-}
-
-// Hook Dune re-render into toggle changes
-const origRender = render;
-render = function() {
-  origRender();
-  if (DUNE_DATA) { try { renderDune(); } catch(e) { console.warn('Dune render error:', e); } }
-};
-
-loadDuneData();
-    </script>
+    <noscript><p>This dashboard needs JavaScript to load its data.</p></noscript>
   </body>
 </html>
