@@ -31,6 +31,7 @@ The trades page refreshes every 30 seconds, expires exchange responses after 90 
   - `GOOGLE_CREDENTIALS` — raw JSON
 - Ensure the target Docs are shared with the Service Account email.
 - `COINGECKO_DEMO_API_KEY` (recommended for production) — CoinGecko demo API key for `/api/paxos`. Without it CoinGecko is called keyless (2 s spacing) and from Vercel's shared IPs it is mostly rate-limited, so its figures (turnover, gold premium, gold references) are often missing on cold instances; with it the spacing is 0.65 s. A cold build makes about 13 CoinGecko calls and a warm instance rebuilds at most 4 times an hour, well within the demo plan's monthly quota at normal traffic. Sent only to api.coingecko.com.
+- `BLOCKSCOUT_API_KEY` (recommended) — free Blockscout PRO API key from https://dev.blockscout.com, used for holder counts and token data on every Blockscout chain via api.blockscout.com. Without it the public explorer hosts are used, and some (e.g. Robinhood Chain's) block scripted requests, so those holder counts are missing. Sent only to api.blockscout.com, as a header.
 
 **Prepare Credentials**
 - Base64 example: `base64 -w0 service-account.json` (macOS: `base64 service-account.json | tr -d '\n'`)

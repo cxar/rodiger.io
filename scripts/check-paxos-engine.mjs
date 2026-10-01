@@ -872,7 +872,7 @@ test('#56 no dead exports in the engine helpers', () => {
 // the notability rule, a detector or the data layer shows up as a reviewed diff. After reviewing a change,
 // refresh with: PAXOS_GOLDEN=print node scripts/check-paxos-engine.mjs (prints the object to paste here).
 const GOLDEN = {
-  fixture: 'd890b37fbf4f1ee672f1d38f96a967a3169c0c87',
+  fixture: '540ed4379ea98698f2887cf378a469471aaea86c',
   feed: [
     'peg.deviation:USDP:abs:up',
     'peg.deviation:USDP:excess:up',

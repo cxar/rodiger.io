@@ -110,6 +110,7 @@ const trims = [
   [/^https:\/\/api\.coingecko\.com\/api\/v3\/asset_platforms$/, slim.platforms],
   [/^https:\/\/api\.coingecko\.com\/api\/v3\/coins\/markets\?/, slim.cgMarkets],
   [/^https:\/\/chains\.blockscout\.com\//, slim.chainscout],
+  [/^https:\/\/chainid\.network\//, (j) => j.filter((c) => c && Array.isArray(c.rpc) && c.rpc.length).map((c) => pick(c, ['chainId', 'name', 'rpc']))],
   [/^https:\/\/community-api\.coinmetrics\.io\/v4\/catalog/, (j) => ({ data: j.data.map((x) => ({ asset: x.asset })) })],
   [
     /^https:\/\/yields\.llama\.fi\/pools$/,

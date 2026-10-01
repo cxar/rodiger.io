@@ -49,15 +49,26 @@ a reader's current age is `ageHours + (now - generatedAt)` (the page does this).
 | llama-yields | yields.llama.fi `/pools`, `/lendBorrow`, `/chart/{pool}` | DeFi footprint and pool trends | 1 h |
 | llama-fees | api.llama.fi fee adapter `paxos-stablecoin-issuer` (fees, revenue) | issuer economics (model estimate) | 24 h |
 | coinmetrics | community-api.coinmetrics.io asset metrics | activity (3 years), gold supply history since inception | 24 h |
-| onchain | Blockscout instances (via Chainscout), Jupiter + Solana RPC | holders, token supply per chain | 15 min |
+| onchain | Blockscout (PRO API with `BLOCKSCOUT_API_KEY`, else public instances via Chainscout), EVM public RPCs (via the chainid.network registry), Jupiter + Solana RPC | holders (explorers), token supply per chain (`totalSupply` over RPC, explorer as fallback) | 15 min |
 | paxos-docs | docs.paxos.com `llms.txt` -> mainnet address tables | discovery, addresses | 24 h |
 | llama-protocol | api.llama.fi protocol graph `paxos`, `/v2/chains` | discovery, chain names | 24 h |
 | chainscout | chains.blockscout.com | explorer hosts per chain | 24 h |
+| chainlist | chainid.network `chains_mini.json` | EVM chain ids by name (last resort after DefiLlama and CoinGecko) and public RPC endpoints | 24 h |
 
 Keyless CoinGecko is the binding constraint (it rate-limits after a handful of calls per IP). Set
 `COINGECKO_DEMO_API_KEY` in the Vercel environment to raise the spacing from 2 s to 0.65 s; without
 it, CoinGecko-only figures (turnover, XAU premium, gold references) may be missing on a cold
-instance and the source shows `partial` or `error`. Dune was removed: the account's plan has no API
+instance and the source shows `partial` or `error`.
+
+Blockscout's public per-chain explorers (e.g. robinhoodchain.blockscout.com) sit behind bot protection
+and can answer scripted requests with a 403 challenge page. Set `BLOCKSCOUT_API_KEY` (free at
+dev.blockscout.com: 5 requests/s, 100K credits/day, about 20 credits per token read) to read every
+Blockscout chain through `api.blockscout.com/{chainId}`, the supported route; without it the public
+hosts are tried and a blocked one is named in the `onchain` source message. Token supply does not
+depend on an explorer: it is read from each chain with ERC-20 `totalSupply()` over the public RPCs that
+the chainid.network registry lists (https on a public name, no templated keys), trying them in turn
+and remembering the last one that answered. An endpoint that fails while another answers is reported
+as a fail-over, not a data gap. Dune was removed: the account's plan has no API
 access, and a build-time snapshot would have been stale data presented next to live data.
 
 Ingestion rules (data layer): every daily point means "the value at 00:00 UTC of that day" (DefiLlama
@@ -354,7 +365,10 @@ model about 20 ms, engine about 340 ms (detectors about 210 ms, novelty about 12
 - Environment variable `COINGECKO_DEMO_API_KEY` (CoinGecko demo key, sent only to api.coingecko.com,
   never logged): optional, but recommended for production, where keyless CoinGecko is mostly
   rate-limited from Vercel's shared IPs. A cold build makes about 13 CoinGecko calls; a warm instance
-  rebuilds at most 4 times an hour and query-string variants never build.
+  rebuilds at most 4 times an hour whatever URL variant is requested.
+- Environment variable `BLOCKSCOUT_API_KEY` (Blockscout PRO API key, free tier; sent only to
+  api.blockscout.com as `authorization: Bearer`, never in a URL or log): recommended. Without it,
+  holder counts are missing on chains whose public explorer blocks scripted requests.
 
 ## Known limitations
 

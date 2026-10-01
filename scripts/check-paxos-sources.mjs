@@ -677,6 +677,96 @@ check('#57 the fixture recorder replaces the fixture only after its replay repro
   assert.ok(!/writeFileSync\(out\b/.test(src), 'never writes the destination directly');
 });
 
+// ---------- on-chain: Blockscout PRO API route, RPC supply, chain registry ----------
+const { slim } = require('../lib/paxos/sources.js');
+const onchainRows = (m) => m.assets.flatMap((a) => (a.onchain || []).map((o) => ({ asset: a.key, ...o })));
+const onchainSrc = (r) => r.sources.find((s) => s.id === 'onchain');
+const isRpc = (url, init) => (init && init.method === 'POST' && /"eth_call"/.test(String(init.body || '')));
+check('chain registry: only plain https RPCs on public names are kept (no templated keys, ports, IPs, http, wss)', () => {
+  const out = slim.chainlist([
+    { chainId: 1, name: 'Ethereum Mainnet', rpc: ['https://mainnet.infura.io/v3/${INFURA_API_KEY}', 'wss://eth.example.org', 'http://eth.example.org', 'https://127.0.0.1:8545', 'https://user:pw@eth.example.org', 'https://eth.example.org:8443', 'https://eth.example.org/rpc?key=1', 'https://ethereum-rpc.example.org', 'https://eth.example.org/v1/rpc'] },
+    { chainId: 2, name: 'No RPC', rpc: [] },
+    { chainId: 'x', name: 'Bad id', rpc: ['https://ok.example.org'] },
+  ]);
+  assert.deepEqual(out, { 1: { name: 'Ethereum Mainnet', rpc: ['https://ethereum-rpc.example.org', 'https://eth.example.org/v1/rpc'] } });
+});
+check('chain ids: the chain registry fills an EVM id only for an unambiguous name, never one already taken', () => {
+  const n = R.makeChainNamer({
+    listChains: [{ name: 'Alpha' }, { name: 'Beta Layer' }, { name: 'Gamma' }, { name: 'Delta' }],
+    llamaChains: [{ name: 'Alpha', chainId: 10 }],
+    evmChains: { 10: { name: 'Alpha Mainnet' }, 20: { name: 'Beta Layer Mainnet' }, 30: { name: 'Gamma' }, 31: { name: 'Gamma Mainnet' }, 40: { name: 'Alpha One' } },
+  });
+  assert.equal(n.chainId('Alpha'), 10, 'DefiLlama id wins');
+  assert.equal(n.chainId('Beta Layer'), 20, 'registry name "Beta Layer Mainnet" normalises to the display name');
+  assert.equal(n.chainId('Gamma'), null, 'two registry chains normalise to "gamma": ambiguous, not guessed');
+  assert.equal(n.chainId('Delta'), null);
+});
+check('every active EVM issuer contract has a chain id and an on-chain supply (RPC), even on chains without an explorer', () => {
+  const evm = model.assets.filter((a) => a.status === 'active').flatMap((a) => a.addresses.filter((x) => R.isEvm(x.address)).map((x) => ({ a, x })));
+  assert.ok(evm.length > 0);
+  for (const { a, x } of evm) {
+    assert.ok(x.chainId, `${a.key} ${x.chain} has no chain id`);
+    const row = (a.onchain || []).find((o) => o.chain === x.chain && R.normAddr(o.address) === R.normAddr(x.address));
+    assert.ok(row && Number.isFinite(row.totalSupply), `${a.key} ${x.chain}: no on-chain supply`);
+  }
+});
+await checkAsync('a failing RPC that another endpoint covers is not a data gap; all endpoints failing is', async () => {
+  // The first RPC of every chain fails and the next one answers: no data gap, no failed request.
+  const reg = raw.chainlist || {};
+  const first = new Set(Object.values(reg).map((c) => c.rpc[0]));
+  const multi = new Set(Object.entries(reg).filter(([, c]) => c.rpc.length > 1).map(([id]) => id));
+  const answer = (init) => {
+    const sig = JSON.parse(init.body).params[0].data;
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: sig === '0x313ce567' ? '0x6' : '0x' + (123456789n * 10n ** 6n).toString(16) }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const flaky = await run((url, init) => (isRpc(url, init) ? (first.has(String(url)) ? new Response('bad gateway', { status: 502 }) : answer(init)) : null));
+  const s = onchainSrc(flaky.raw);
+  const failedChains = [...String(s.message || '').matchAll(/no RPC answered eth_call on chain (\d+)/g)].map((m) => m[1]);
+  assert.deepEqual(failedChains.filter((id) => multi.has(id)), [], s.message);
+  assert.match(String(s.message), /failed over to an alternative/);
+  const usedChains = new Set(model.assets.flatMap((a) => a.addresses).filter((x) => R.isEvm(x.address) && multi.has(String(x.chainId))).map((x) => x.chain));
+  for (const ch of usedChains) assert.ok(onchainRows(flaky.model).some((o) => o.chain === ch && o.totalSupply === 123456789), `${ch} keeps an RPC supply`);
+  // Every RPC fails: reported as a failure naming the chain.
+  const dead = await run((url, init) => (isRpc(url, init) ? new Response('down', { status: 503 }) : null));
+  const d = onchainSrc(dead.raw);
+  assert.ok(d.status !== 'ok' && /no RPC answered eth_call on chain/.test(d.message), d.message);
+});
+await checkAsync('BLOCKSCOUT_API_KEY routes explorer reads through api.blockscout.com with the key in a header, only there', async () => {
+  const had = process.env.BLOCKSCOUT_API_KEY;
+  process.env.BLOCKSCOUT_API_KEY = 'proapi_check_only_dummy';
+  const seen = [];
+  try {
+    const r = await run((url, init) => {
+      const auth = init && init.headers ? init.headers.authorization || init.headers.Authorization || null : null;
+      seen.push({ url: String(url), auth });
+      const m = /^https:\/\/api\.blockscout\.com\/(\d+)\/api\/v2\/tokens\/(0x[0-9a-fA-F]{40})$/.exec(String(url));
+      if (!m) return null;
+      return new Response(JSON.stringify({ holders_count: '4242', total_supply: '1000000000', decimals: '6' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const pro = seen.filter((x) => x.url.startsWith('https://api.blockscout.com/'));
+    assert.ok(pro.length > 0, 'PRO API used');
+    assert.ok(pro.every((x) => x.auth === 'Bearer proapi_check_only_dummy'), 'key sent as a bearer header');
+    assert.ok(seen.filter((x) => !x.url.startsWith('https://api.blockscout.com/')).every((x) => !x.auth), 'key never sent elsewhere');
+    assert.ok(seen.every((x) => !x.url.includes('proapi_check_only_dummy')), 'key never in a URL');
+    const s = onchainSrc(r.raw);
+    assert.ok(!/blocks scripted requests/.test(s.message || ''), s.message);
+    const rows = onchainRows(r.model).filter((o) => o.holders === 4242);
+    assert.ok(rows.length > 0 && rows.every((o) => o.source.startsWith('api.blockscout.com')), 'holders from the PRO API');
+    assert.ok(!JSON.stringify(r.raw.sources).includes('proapi_check_only_dummy'), 'key never in source records');
+  } finally {
+    if (had === undefined) delete process.env.BLOCKSCOUT_API_KEY;
+    else process.env.BLOCKSCOUT_API_KEY = had;
+  }
+});
+await checkAsync('without a key, a bot-protected explorer is reported with the fix, and the chain keeps its RPC supply', async () => {
+  const blocked = await run((url) => (/^https:\/\/[^/]*blockscout\.com\/api\/v2\/tokens\//.test(String(url)) && !String(url).startsWith('https://api.blockscout.com/') && /eth\./.test(String(url)) ? new Response('<!DOCTYPE html><title>Just a moment...</title>', { status: 403, headers: { 'content-type': 'text/html' } }) : null));
+  const s = onchainSrc(blocked.raw);
+  assert.ok(/blocks scripted requests; set BLOCKSCOUT_API_KEY/.test(s.message || ''), s.message);
+  const eth = onchainRows(blocked.model).filter((o) => /eth\.blockscout/.test(o.source || ''));
+  assert.equal(eth.length, 0, 'no explorer rows from the blocked host');
+  assert.ok(onchainRows(blocked.model).some((o) => o.holders === null && Number.isFinite(o.totalSupply)), 'supply still from RPC');
+});
+
 const ms = Date.now() - T0;
 // Timing is advisory (a slow CI machine must not fail the deploy); PAXOS_PERF_STRICT=1 enforces it.
 if (ms >= 8000) {

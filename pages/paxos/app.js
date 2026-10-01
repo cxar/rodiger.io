@@ -2076,14 +2076,21 @@
     for (const d of scope) {
       const a = d.data;
       const have = new Set((a.onchain || []).map((x) => x.chain));
-      for (const x of a.onchain || []) rows.push({ cells: [x.chain, assetLabel(d.key), fmtCount(x.holders), fmtNum(x.totalSupply), x.source, x.asOf ? fmtDateTime(x.asOf) : 'n/a'] });
+      for (const x of a.onchain || []) rows.push({ cells: [x.chain, assetLabel(d.key), isNum(x.holders) ? fmtCount(x.holders) : h('span', { class: 'muted', title: 'Holder counts come from a block explorer; none answered for this chain' }, 'n/a'), fmtNum(x.totalSupply), x.source, x.asOf ? fmtDateTime(x.asOf) : 'n/a'] });
       if (d.status === 'dead') continue;
       const floor = floorOf(d.key);
       const material = (a.chains || []).filter((c) => isNum(c.currentUsd) && c.currentUsd > 0 && (!isNum(floor) || c.currentUsd >= floor)).map((c) => c.chain);
       const want = [...new Set([...material, ...addressesOf(d.key).map((x) => x.chain)])].filter((c) => !have.has(c));
-      for (const c of want) rows.push({ cells: [c, assetLabel(d.key), 'n/a', 'n/a', h('span', { class: 'muted' }, `not available${degradedNote(['onchain']) || ': no explorer reading for this chain'}`), 'n/a'] });
+      // Why a chain has no reading: an issuer contract that did not answer (the source's state says why),
+      // or no issuer contract at all on that chain (supply DefiLlama counts there is bridged in or held by
+      // a third-party contract), in which case there is nothing of Paxos's to read.
+      const issuerChains = new Set(addressesOf(d.key).map((x) => x.chain));
+      const thirdParty = new Set(((P().discovery && P().discovery.addresses) || []).filter((x) => x && x.asset === d.key && !isIssuerAddress(x)).map((x) => x.chain));
+      const why = (c) => (issuerChains.has(c) ? `not available${degradedNote(['onchain']) || ': no on-chain reading for this chain'}` : thirdParty.has(c) ? 'no issuer contract on this chain (only a third-party contract; see the address registry)' : 'no issuer contract on this chain in the address registry');
+      for (const c of want) rows.push({ cells: [c, assetLabel(d.key), 'n/a', 'n/a', h('span', { class: 'muted' }, why(c)), 'n/a'] });
     }
-    out.push(h('h3', null, 'Holders by chain'));
+    out.push(h('h3', null, 'Holders and on-chain supply by chain'));
+    out.push(h('p', { class: 'small muted' }, 'Token supply is read from each chain (ERC-20 totalSupply over its public RPC, or the explorer); holder counts need a block explorer (Blockscout, Jupiter on Solana).'));
     if (rows.length) out.push(table({ head: ['Chain', 'Asset', 'Holders', 'Token supply', { t: 'Source', l: true }, 'As of'], rows }));
     else out.push(h('p', { class: 'placeholder' }, `No holder counts for ${scopeLabel()} in this snapshot.`));
     return out;
