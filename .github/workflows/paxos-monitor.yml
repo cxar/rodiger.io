@@ -1,0 +1,50 @@
+# Paxos Health monitor and CDN warmer (docs/paxos-dashboard.md, "Monitoring").
+# Runs scripts/monitor-paxos.mjs against production after each successful Production deployment (Vercel
+# posts deployment_status to GitHub; the run waits for the new deployment to serve a fresh payload, which
+# also warms its CDN cache), once a day after the 06:00 UTC cron redeploy, and on demand. A failure is a
+# failed workflow run (GitHub notifies the owner as for any failed run); no secrets are used.
+name: Paxos monitor
+
+on:
+  deployment_status:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    if: github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    # Job-level, so runs skipped by the `if` above (pending, in_progress and other deployments' statuses)
+    # never enter the group and cannot replace a queued Production run.
+    concurrency:
+      group: paxos-monitor
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/monitor-paxos.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The previous run's status level, so a payload degraded on two consecutive runs fails.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .paxos-monitor
+          key: paxos-monitor-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: paxos-monitor-
+      - name: Check https://www.rodiger.io/api/paxos
+        run: node scripts/monitor-paxos.mjs https://www.rodiger.io
+        env:
+          DEPLOYED_AT: ${{ github.event.deployment.created_at }}
+          STATE_FILE: .paxos-monitor/state.json
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .paxos-monitor
+          key: paxos-monitor-${{ github.run_id }}-${{ github.run_attempt }}

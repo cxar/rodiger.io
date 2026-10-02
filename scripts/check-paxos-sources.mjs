@@ -767,6 +767,30 @@ await checkAsync('without a key, a bot-protected explorer is reported with the f
   assert.ok(onchainRows(blocked.model).some((o) => o.holders === null && Number.isFinite(o.totalSupply)), 'supply still from RPC');
 });
 
+// ---------- H16: CoinGecko identity data is cached for 7 days ----------
+// Observed, not read from a table: every cache write of a fixture run is recorded with its TTL. Identity
+// data (coins/{id} details, asset_platforms, the gold category list) changes over weeks and shares the
+// demo plan's monthly quota with prices, so it is cached weekly; price rows stay short-lived.
+await checkAsync('H16: CoinGecko identity requests are cached for 7 days, prices for minutes', async () => {
+  const inner = createCache(), ttls = new Map();
+  const cache = { get: inner.get, peek: inner.peek, delete: inner.delete, clear: inner.clear, set: (k, v, o) => { ttls.set(String(k), o && o.ttlMs); return inner.set(k, v, o); }, get size() { return inner.size; }, get bytes() { return inner.bytes; } };
+  await run(null, cache);
+  const WEEK = 7 * 864e5;
+  const cg = [...ttls].filter(([k]) => /api\.coingecko\.com\/api\/v3\//.test(k));
+  const kinds = {
+    details: cg.filter(([k]) => /\/coins\/[^/?]+\?localization=false/.test(k)),
+    platforms: cg.filter(([k]) => /\/asset_platforms(\?|$)/.test(k)),
+    gold: cg.filter(([k]) => /\/coins\/markets\?/.test(k) && new RegExp(`[?&]category=${R.ISSUER.goldCategory}(&|$)`).test(k)),
+  };
+  for (const [name, rows] of Object.entries(kinds)) {
+    assert.ok(rows.length >= 1, `the fixture run caches CoinGecko ${name} (${cg.length} CoinGecko writes)`);
+    for (const [k, t] of rows) assert.equal(t, WEEK, `${name} ${k.replace(/x_cg_demo_api_key=[^&]+/, 'x_cg_demo_api_key=…').slice(0, 120)} cached ${t} ms, not 7 days`);
+  }
+  const identity = new Set(Object.values(kinds).flat().map(([k]) => k));
+  const prices = cg.filter(([k]) => !identity.has(k) && /\/coins\/markets\?/.test(k));
+  assert.ok(prices.length >= 1 && prices.every(([, t]) => t < 864e5), `CoinGecko market rows stay short-lived (${prices.map(([, t]) => t).join(', ')})`);
+});
+
 const ms = Date.now() - T0;
 // Timing is advisory (a slow CI machine must not fail the deploy); PAXOS_PERF_STRICT=1 enforces it.
 if (ms >= 8000) {

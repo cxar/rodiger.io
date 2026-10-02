@@ -3,8 +3,11 @@
 `/paxos` (`paxos.rodiger.io/` redirects there) is a health dashboard for every Paxos-issued asset. Assets,
 chains, contract addresses, peer sets, reference assets, thresholds and windows are discovered or
 derived from public data on each build; nothing about specific assets is hard-coded. An insight
-engine reports findings that are statistically unusual for the asset's own history or its peers,
-and every figure carries its source and age.
+engine reports findings that are statistically unusual for the asset's own history or its peers; a
+deterministic briefing turns them, the supply attribution and the peg into one verdict and three to
+five short lines per period; and every figure carries its source and age. The page answers "is
+everything OK, what moved and where, anything to look at?" in one screen (about 140 words, 7 graphics)
+and keeps every number reachable within two clicks.
 
 ## Architecture
 
@@ -18,9 +21,14 @@ GET /api/paxos  (api/paxos.js, Vercel function, maxDuration 60 s)
     model.js              buildModel(): normalised series per asset (pure, no clock)
     engine.js             run(): 34 detectors -> E = m x p -> novelty -> Pareto rank -> clusters, health grid
       detectors.js, stats.js, format.js
+      copy.js             render(test): plain title, why, role and evidence labels from the detector's facts
     attribution.js        deterministic "what changed" by asset and chain
-    payload.js            buildPayload(): the schemaVersion 1 JSON (Compact series, rounding, no NaN)
-pages/paxos/index.html + app.js   static page; one fetch of /api/paxos, everything derived from it
+    payload.js            buildPayload(): the schemaVersion 1 JSON (Compact series, rounding, no NaN),
+                          status, cache policy; briefing.js applyBriefing() after the insights
+pages/paxos/index.html + app.js + paxos.css + vendor/chart.umd.min.js
+                          static page; one fetch of /api/paxos (preloaded), everything derived from it
+scripts/monitor-paxos.mjs + .github/workflows/paxos-monitor.yml
+                          production monitor and CDN warmer (see Monitoring)
 ```
 
 This document is the reference for the data contracts between the modules (model, engine output,
@@ -155,7 +163,7 @@ flows over the past 365 days at today's price (supply-equivalent USD for economi
 **Novelty.** Every notable and material backtestable finding is dated by re-running only its own
 detector for that asset as of 1, 2, ... days ago (same m and floors). The episode starts after the
 last full native week (7 days) without firing; age is capped at 30 days. Younger than 30 days ->
-feed ("What's unusual"); 30 days or more -> standing conditions. The watchlist holds material,
+feed (stage `new`); 30 days or more -> standing conditions (`ongoing` while a measured condition holds, `past` for a dated event; a peg widening that is the coin's latest split and still describes its last week is a condition holding, `ongoing`, so a coin still off its peg never drops out of the verdict at 30 days). The watchlist holds material,
 non-notable tests that are at least 1 bit surprising (p <= 0.5), at most 40.
 
 **Ranking and clustering.** Feed items are ranked by Pareto fronts on (adjusted surprise -log2 E,
@@ -167,17 +175,105 @@ all history, split by asset and by asset x chain (chains below the floor and cov
 fold into "Other chains", so rows add up exactly). It runs on the payload's token-flow view (USD
 stablecoins valued at today's price, see below), so every window's total equals the hero's change.
 
+## Insight copy (lib/paxos/copy.js)
+
+Detectors emit numbers (`facts`), not page copy. `copy.render(test)` is the one place that writes the
+words the page shows; it never reads `headline`, which stays the technical sentence for the API and the
+page's Method panel. The rules (FINAL-SPEC §4.1, checked on the fixture, a synthetic model that fires
+every detector, and the replays):
+
+- `title`: at most 14 counted words and 100 characters; it starts with its subject (the asset key,
+  `{asset} on {chain}`, `{asset}:` for lens and data notes, `Paxos USD`, or `Est.` for economics), the
+  number comes right after it, and it states its own window (`over 4 days`, `yesterday`, `since Sep 11`).
+- `why`: at most 20 counted words, one plain comparison (peers, rank, record, driver or share); it never
+  repeats the value and baseline, which print in the facts row.
+- Counted words: every whitespace token whose first letter-or-digit is a letter (tickers, chain names and
+  months count; `$5.85B`, `−1.0%`, `7d` and glyphs do not).
+- Banned in titles, `why`, the briefing and the page's default view: `p =`, `E =`, bit(s), materiality,
+  material, rotation, regime, effective, notable, Pareto, CUSUM, robust, percentile, drawdown, dimension,
+  cluster, novelty, underpowered, null, bp(s), basis point(s), utilised, should, consider, warning, risk.
+  The statistics live under Method and in About this data. Never advice.
+- Formats (one formatter set on server and page): money `$5.85B` / `$99M` / `$2.0M` / `$850K`; U+2212
+  minus, `+` for gains, `flat` for an exact zero; percent changes 1 decimal below 10% and none from 10%;
+  shares to 2 significant digits below 1%; peg as a percent of $1 with 2 decimals (`0.44% below $1`,
+  `≈ $1` under 0.005%); gold in ounces; dates `Sep 11` within the current year, else `Mar 2023`.
+- A record clause (`; largest drop since Aug 22`) needs a non-zero change and a date at least one native
+  week before the window starts; `on record` when nothing earlier matches. A change of exactly zero is a
+  tie, never an extreme (`stats.windowTest` gives p = 1), and a change worth less than one dollar counts
+  as zero (sources repeat or round the last value), so dust moves never become findings.
+- A detector without a template would fall back to the headline cut at its first `;` or `:`: the engine
+  check fails on any fallback, so none ships.
+
+Each insight also carries `stage` (`new`, `ongoing`, `past`, `watch`, `context`), `role` (where the page
+places it: `headline`, `evidence`, `lens`, `context`, `note` for data notes, `api` for API-only),
+`novelty.since` (a regime's split date or a dated event's day, else the as-of day minus the episode's
+age) and `tier` (below).
+
+## Briefing and verdict (lib/paxos/briefing.js)
+
+`applyBriefing(payload)` builds `payload.briefing` from the payload alone (no clock, so a memo hit stays
+correct) and sets each insight's `tier` in place. It never throws: a failing builder drops only its own
+bullets and is listed in `briefing.errors`.
+
+- **Tiers** (`tierOf`): a peg finding is `major` when the coin's mean distance from $1 over the finding's
+  own days is wider than every peg peer's (no peer data: major; a peer's isolated bad print, a day at least
+  0.1% from $1 and over four times as far as both neighbours, is left out of the peer bar everywhere); any other finding is `major` at the All
+  scope when it involves at least the **business floor** (`insights.floorsUsd` of the total, its median
+  daily flow: $21.8M on the fixture), and always within an asset's own scope (its floor already gated the
+  feed). Gold tracking and activity findings have no dollar size and are `minor` at All. Data notes,
+  API-only and context items get no tier. Legacy assets and data notes never reach the All-scope verdict
+  or briefing.
+- **Verdict** (per scope): `unknown` without insights or tests; `unusual` when a feed cluster (or a
+  standing item still holding, which joins the cluster about the same asset and area) has a major
+  headline or evidence member (an evidence member states the unit only when it is alone: an excess-only
+  peg unit is still a peg finding); `partial` when `insights.errors` is not empty; `minor` when any other
+  unit is in scope (minor ones, and lens-only units of any size: `verdict.minor` counts them all, so the
+  verdict never says "Nothing unusual" over a listed item); else `clear`. In an asset's scope, an item
+  about the total belongs to the asset when its title names it or the asset is its largest driver by at
+  least the asset's floor. Copy: `Unusual: USDP peg`,
+  `3 unusual: USDP peg, USDG supply +1 more`, `Nothing major · 1 smaller finding`,
+  `Nothing unusual · 851 checks` (`USDG: nothing unusual · 214 checks` in an asset scope),
+  `Partly checked · 2 checks could not run`, `Checks unavailable in this snapshot`.
+- **Frames** `d7`, `d30`, `d90`, `d365` over the attribution windows (a gold asset's own frames end on its
+  own supply day). Bullets, 3 to 5 per frame and scope, in this order: the state (the hero on the page),
+  up to three major findings (stated by the member whose precedence is highest: the peg deviation before
+  the regime, supply before chains), events (a record, a new chain, a change of the largest coin), movers
+  (the largest asset moves with the chains behind them, signed: `USDG −$99M (−3.1%): X Layer −$85M,
+  Ethereum −$25M, Solana +$21M`, plus `others ±$X` when the named chains leave a tenth unexplained; a single
+  chain never reads larger than the whole: `led by Ethereum −$52M; other chains +$15M`), the steady lines
+  (peg against the peg peers: `within X% of $1` for coins inside the peers' widest day, `{coin}'s widest
+  day X% below $1 (Sep 25)` for one outside; `Steady:` and tone `positive` only when no coin is outside,
+  every peg cell is within its own history and no peg item or split is about the coin; gold:
+  `PAXG supply steady: …`), and filler (kind `filler`: another period, the period first, `30 days: …`)
+  only while fewer than three lines exist. `within X%` and `X% or less` are bounds, so X is rounded up to
+  0.01% unless it exceeds the rounded figure by under 0.001% (then it prints as a table would).
+- **A peg finding is restated on the period** from the series the cards and the Peg lens use (the daily
+  consensus price): `USDP 0.44% below $1 on average over 7 days`, or, when the widening began inside the
+  period, `… since Sep 11`; the detail gives the peers over the same days and the typical gap before the
+  split; `values = { gap, days, peerGap, before }`. The detector's own window stays in Method.
+- Yesterday, when it moved the total by at least the business floor, is folded into its asset's mover
+  (`…; +$113M yesterday`, its chains or what the other days did in the detail) or is its own line
+  (`Yesterday, PYUSD +$113M (+4.1%): …`). Records read `Up from {level} on {period start}`; a new chain
+  folds into its asset's mover detail, and a chain whose first day already held the asset's floor reads
+  `first tracked {D} at {usd}` (a tracking start, not a launch). A record or "largest since" clause needs
+  its date at least min(3 windows, 90 days) before the window starts.
+- Numbers agree: the state's `values.deltaUsd` is `totals.usd.change[w].abs`, a mover's is its
+  `attribution.windows[w].assets` row, and the market's move is the `market.usdTotal` ratio over the frame.
+
 ## Payload (GET /api/paxos, schemaVersion 1)
 
-Top level: `schemaVersion, generatedAt, dataAsOf, cache, timingsMs, sources, discovery, totals,
-market, assets, peers, pegPeers, goldRefs, economics, attribution, insights`. Conventions:
+Top level: `schemaVersion, generatedAt, dataAsOf, status, cache, timingsMs, sources, discovery, totals,
+market, assets, peers, pegPeers, goldRefs, economics, attribution, insights, briefing`. The contract is
+`scripts/fixtures/paxos/contract-v2.mjs` (`validate(payload)` lists every shape, enum, cap and rule
+violation; every check uses it), and `scripts/fixtures/paxos/contract-v2.sample.json` is the day-1 slice
+of the v2 additions on the recorded fixture (deep-merge it onto a v1 payload: `mergeSample`). Conventions:
 
 - `Compact = { start: 'YYYY-MM-DD', values: [...] }`, contiguous days, `null` = no observation.
 - Changes `{ d1, d7, d30, d90, d365 }`, each `{ abs, pct }` with `pct` in **percent**; `drawdownPct` in
   percent (<= 0). Shares, `marketShare`, `turnover24h`, `turnover7d`, `utilization`, `impliedYield`,
   `footprintShare` and `rewardShare` are **fractions**. `pegDevBp` in basis points (gold: premium of
   the XAU price over one ounce). Pool `apy*` in percent (DefiLlama native). Hourly `t` in unix seconds.
-- **One snapshot per number.** The hero total, the asset table, the chain table and the attribution
+- **One snapshot per number.** The hero total, the cards, the chain table and the attribution
   all use the last point of each asset's daily supply series. `assets[k].current.supplyAsOf` and
   `totals.usd.supplyAsOf` say when that is from: DefiLlama's daily charts are a snapshot taken around
   00:00 UTC and labelled with that day, so the time is 00:00 UTC of the last day unless the model
@@ -232,14 +328,43 @@ market, assets, peers, pegPeers, goldRefs, economics, attribution, insights`. Co
 - `sources[].staleAfterHours`: the age at which the data layer calls the source stale (null: not
   stated; the rule is two publication intervals). The page re-judges ages at view time with it.
 - `insights.watch` and `insights.context` sparklines keep their last 60 points (feed and standing 120).
+  `insights.watch` holds every data note plus the 20 most unusual other items, in engine order;
+  `insights.watchTotal` is the count before that cap. `facts` is dropped from watch and context items.
+- v2 insight fields (every list): `title`, `why`, `stage`, `role`, `tier`, `novelty.since`,
+  `evidence.unit` (`usd`, `fraction`, `count`, `oz`, `ratio`, `usdPerDay`: the unit of `evidence.series`,
+  null without a series), `evidence.valueLabel`/`valueText` and `baselineLabel`/`baselineText` (formatted
+  strings for the facts row), and on feed and standing items `facts` (per detector: USD in dollars, shares,
+  gaps, growth and yields as fractions (`defi.yield_outlier.facts.apy` 0.0991 = 9.91%), days as
+  integers, dates `YYYY-MM-DD`, `record` as `{ word, since }` or null; peg facts carry `peers` and
+  `peerGap`, the widest peer's mean |price − 1| over the same days; the field names per detector are the
+  `facts` literals in `lib/paxos/detectors.js`). `evidence.unit` describes `evidence.series`, or
+  `evidence.value` when there is no series (`ratio` is a plain number: effective chains, a correlation,
+  an APY in percent units). See Insight copy above.
+- `briefing = { version: 1, asOf (= totals.usd.supplyAsOf), key, floorUsd, peers, verdict, frames: { d7,
+  d30, d90, d365 }, byAsset: { [asset key]: { verdict, frames } }, errors }`; `verdict = { level, tone,
+  items: [{ id (the unit's lead insight), asset, chain, area, lens, tone, since }], minor, checks, text }`;
+  each frame `{ window, days, from, to, label, more, bullets }` (3 to 5 bullets; an asset with no supply
+  figure in the snapshot has its state bullet only); each bullet `{ kind: state | finding | event | mover
+  | steady | filler, tone, tier (findings), since, text (≤14 words), detail (≤20), subject: { asset,
+  chain }, link: { lens, focus, insight }, refs, values? }`. `null` (with an `insights.errors` entry
+  `payload.briefing`) if it could not be built.
+- `status = { level: 'ok' | 'degraded', reasons: [{ kind: 'source' | 'section' | 'engine', id, status,
+  message }] }`: degraded when a source is `stale` or `error`, a section is null, an asset has no USD
+  value (`totals.allUsd.missing`, reason id `totals.allUsd`) or `insights.errors` is not empty; one reason
+  each. The response header `X-Paxos-Status` and the monitor use the same rule.
+- `economics.assets`: the asset keys DefiLlama's fee model covers (the fee-label discovery tier).
+- Rounding (size): `assets[k].chains[].series` and `market.allTotal` carry 4 significant digits,
+  `market.usdTotal` 6 (a ratio input); asset supply series, `totals.usd` and the attribution stay exact, so the hero, the
+  briefing and "Where supply moved" reconcile to the dollar.
 - `insights.family = { counted, dimensions, floor, underpowered }`: the tests counted in the family
   sizes, the dimensions that ran one (up to about that many findings per load can be chance), the
   average size per dimension, and the tests left out as underpowered. `insights.families` maps each
   dimension to the size `m` its findings were judged with.
 - `timingsMs` are the stage timings of the build that produced this payload; `engine` is null when the
   insights were reused from an identical model (memo hit, see below).
-- Size on the recorded fixture: about 630 KB raw, 192 KB gzip (gold supply history runs from 2019;
-  three peg peers with hourly and daily prices); the dashboard check fails above 650 KB.
+- Size on the recorded fixture: about 633 KB raw, 170 KB gzip, of which the briefing is about 31 KB (gold
+  supply history runs from 2019; three peg peers with hourly and daily prices); the dashboard check fails
+  above 700 KB raw or 190 KB gzip and warns above 680 / 180.
 
 `insights.errors` lists detector errors, records or sections the data layer had to drop
 (`sources`, `model`: one malformed upstream record degrades only itself) and any payload section that
@@ -248,15 +373,23 @@ unaffected.
 
 ## Caching and failure behaviour
 
-- CDN: `Cache-Control: public, s-maxage=1800, stale-while-revalidate=86400` on success. If a core
-  source (stablecoin supply or market totals) is in `error`, or an active asset has no USD value (the
-  all-assets total is then incomplete), `s-maxage` drops to 300 s so the page recovers sooner. The
-  payload repeats the policy in `cache`. A snapshot is current while `now - generatedAt <=
-  cache.sMaxAge`; after that the page says "Snapshot from <time>" and refetches
+- CDN: `Cache-Control: public, s-maxage=1800, stale-while-revalidate=86400, stale-if-error=86400` on
+  success. If a core source (stablecoin supply or market totals) is in `error`, or an active asset has no
+  USD value (the all-assets total is then incomplete), `s-maxage` drops to 300 s so the page recovers
+  sooner; any other source in `error` gives 600 s (`partial` and `stale` never shorten it). The payload
+  repeats the policy in `cache` (`sMaxAge`, `staleWhileRevalidate`, `staleIfError`). Every response also
+  sends `X-Paxos-Status` (the `status.level`), `X-Paxos-Generated-At`, `Access-Control-Allow-Origin: *`
+  and `Cross-Origin-Resource-Policy: cross-origin`, so `curl -I` answers "healthy, and how old?". Each
+  build logs one JSON line, `{"evt":"paxos.build","memo","status","totalMs","fetchMs","engineMs",
+  "sources":{"ok","partial","stale","error"},"cgCalls","tests","feed","errors","briefingErrors","bytes"}`
+  (`cgCalls` audits the CoinGecko quota); a failed build logs `{"evt":"paxos.build_failed"}`. A snapshot is
+  current while `now - generatedAt <= cache.sMaxAge`; after that the page says "Snapshot {HH:MM} UTC"
+  and refetches
   (stale-while-revalidate is the CDN's mechanism for serving it meanwhile, not a freshness promise).
   The header's `s-maxage` is what is left of that budget (`sMaxAge` minus the payload's age when a
   memoised payload is served), so the CDN never holds a payload as fresh past `generatedAt + sMaxAge`.
-- Warm instances: upstream responses are cached per endpoint (TTL 5 min to 24 h, last good copy kept
+- Warm instances: upstream responses are cached per endpoint (TTL 5 min to 24 h, 7 days for CoinGecko identity data:
+  coin details, asset platforms, the gold category; last good copy kept
   for stale-on-error). The last payload is kept too (`X-Paxos-Memo` says which path served a request):
   `reuse` = younger than 15 minutes and than its own `sMaxAge`, returned as is (same `generatedAt`, no
   upstream call), which bounds an instance to at most 4 rebuilds an hour whatever requests reach it;
@@ -282,68 +415,166 @@ model about 20 ms, engine about 340 ms (detectors about 210 ms, novelty about 12
 
 ## Running and testing
 
-- Offline checks (no network, about 15 s; run by `scripts/build-vercel.sh` before the site build):
-  `node scripts/check-paxos-dashboard.mjs`. It runs `check-paxos-sources.mjs` (data layer),
-  `check-paxos-engine.mjs` (statistics and engine) and `check-paxos-page.mjs` (the page's own
-  behaviour rules under its DOM shim: freshness labels, coverage starts, net issuance, focus, units,
-  data-quality presentation; `PAXOS_CHECK_KEEP_GOING=1` lists every failure), builds the payload from
-  the recorded fixture and validates it against the contract, then checks semantics, not just shapes:
-  - units: every share, turnover, peg deviation, drawdown and change is checked against the figures
-    it is derived from (a x100 slip fails);
-  - one snapshot per number: `dataAsOf = totals.usd.supplyAsOf`, every `supplyAsOf` falls on its
-    series' last day, attribution totals equal the hero's changes in every window;
-  - token flows: a 50 bp price wobble in the model must not change a USD stablecoin's supply change;
-    a gold price move must not change `changeNative`;
-  - freshness: hourly series older than a day are dropped with a note; a lagging source is not `ok`;
-    a source older than two cadences is `stale` (synthetic `createClient` runs); a memo hit recomputes
-    source ages; a degraded payload is not reused past its own budget; rebuilds per hour are bounded;
-  - `api/paxos.js` with a fake request: 200, HEAD, query string -> 308 without building, OPTIONS,
-    405, reuse headers (remaining `s-maxage`, truthful `Server-Timing`), CoinGecko down, both price
-    providers down (incomplete total, short cache), everything down -> 502 with a generic message;
-  - the deploy config: host redirect (not a rewrite), security headers, and a CSP derived from what
-    `index.html` and `app.js` actually load;
-  - the page: hard-coded assets, chains, addresses, dual axes, pie charts, `innerHTML`, eval; the pure
-    helpers and formatters in a `vm`; and the page itself rendered under a small DOM shim against the
-    payload for every asset filter and range (plus a narrow viewport, a stale snapshot and a failed
-    load). Any "could not be rendered" section, "could not be drawn" chart, `console.error`, NaN or
-    undefined text, or chart config breaking the dataviz rules (pie, second value axis, non-numeric
-    points, throwing tick or tooltip callbacks) fails the build. The shim supports simple compound
-    selectors only and names any DOM member it lacks.
-  Wall-clock time is reported, not asserted, so a slow build machine cannot fail a deploy;
-  `PAXOS_PERF_STRICT=1` turns the 60 s budget into a failure.
+- Offline checks (no network; about 7 s locally, run by `scripts/build-vercel.sh` before the site build):
+  `node scripts/check-paxos-dashboard.mjs`. It starts its four sub-checks as child processes at once and
+  awaits them at the end:
+  - `check-paxos-sources.mjs`: the data layer (discovery, model invariants, http robustness, stale-on-error,
+    the 7-day CoinGecko identity TTL, on-chain routes);
+  - `check-paxos-engine.mjs`: statistics, engine and detectors, the insight schema, the copy rules on every
+    detector (caps, banned words, no fallback title, `copy.js` never reads `headline`), the zero-change
+    and record-clause fixes, and the golden feed;
+  - `check-paxos-briefing.mjs`: the briefing's shape and copy, reconciliation with the totals and the
+    attribution, tiers and verdict items recomputed independently from the payload, today's output on the
+    fixture, the damaged-payload set, the partial / smaller-finding / busy-day variants, a newly discovered
+    asset, and a replay of the fixture truncated to 6 earlier days (`PAXOS_REPLAY=31` replays all 31),
+    each without `briefing.errors`;
+  - `check-paxos-page.mjs`: the page under a DOM shim (`scripts/fixtures/paxos/dom-shim.mjs`): the default
+    view's word budget (≤180 words, ≤110 without tickers, chain names and months; ≤350 anywhere), one
+    sentence per line, no banned word, ≤8 graphics, no table before a Table toggle, ≤2,500 elements;
+    briefing rows and links; hero = Net = "Where supply moved" rows, In + Out = Net; card peg = the Peg
+    table's Average = the daily-price mean; every asset × period × lens; focus after period, asset and lens changes; live regions, nested controls, the tab keys, a
+    Table toggle per figure, a throw in each component; the Cache Storage snapshot, the chip states and
+    the verdict's late-source override; older (v1), degraded, busy, quiet and newly discovered payloads;
+    375 px; the palette.
+
+  The dashboard check itself builds the payload from the recorded fixture and validates it against the
+  contract (and the day-1 sample), then checks semantics, not just shapes:
+  - units: every share, turnover, peg deviation, drawdown and change is checked against the figures it is
+    derived from (a x100 slip fails);
+  - one snapshot per number: `dataAsOf = totals.usd.supplyAsOf`, every `supplyAsOf` falls on its series'
+    last day, attribution totals equal the hero's changes in every window;
+  - token flows: a 50 bp price wobble in the model must not change a USD stablecoin's supply change; a gold
+    price move must not change `changeNative`;
+  - freshness: hourly series older than a day are dropped with a note; a lagging source is not `ok`; a
+    source older than two cadences is `stale`; a memo hit recomputes source ages;
+  - status and cache: the TTL rule (ok, partial, stale, a non-core and a core source in error), the status
+    reasons, the watch cap (every data note kept), rounding, size guards;
+  - memoisation with the engine stubbed (it tests the memo, not the engine): shared builds, reuse, hits,
+    at most 4 rebuilds an hour, a degraded payload not reused past its budget; two real builds are
+    byte-identical;
+  - `api/paxos.js` with a fake request and stub builds: 200, HEAD, the exact Cache-Control per TTL variant,
+    `X-Paxos-Status` / `X-Paxos-Generated-At` / CORP, the JSON build log line, query string ignored,
+    OPTIONS, 405, reuse headers; real builds with CoinGecko down, both price providers down and the
+    stablecoin list down; everything down -> 502 with a generic message;
+  - the deploy config: host redirect (not a rewrite), the exact strict CSP for `/paxos` (no
+    `'unsafe-inline'`, no external origin), Permissions-Policy, COOP and CORP, the vendored Chart.js hash,
+    the API preload before the scripts, no inline styles, the build script's skip guard (executed), the
+    monitor workflow's triggers; and nothing hard-coded in the page (assets, chains, addresses).
+
+  `PAXOS_CHECK_KEEP_GOING=1` lists every failure instead of stopping at the first (the dashboard check and
+  its sub-checks). Wall-clock time is reported, not asserted, so a slow build machine cannot fail a
+  deploy; `PAXOS_PERF_STRICT=1` turns the 30 s budget into a failure.
+- Build: `scripts/build-vercel.sh` skips the Paxos checks when `VERCEL_GIT_PREVIOUS_SHA` (the last
+  successful deployment) is in the clone and nothing they cover changed since (`lib/paxos`, `api/paxos.js`,
+  `pages/paxos`, the check scripts and fixtures, `dev-paxos.mjs`, the monitor script and workflow, the build
+  script, `vercel.json`, `static`), logging `paxos unchanged since <sha>`; the daily same-commit cron
+  redeploy takes that path. Any doubt (no SHA, a shallow clone without it, no git, a diff) runs them.
+  Vercel exposes `VERCEL_GIT_PREVIOUS_SHA` only to projects with an Ignored Build Step, so `vercel.json`
+  sets `"ignoreCommand": "exit 1"` (exit 1 = always build). Confirm on the first redeploy after merge that
+  the build log shows `paxos unchanged since …`.
 - Fixture: `scripts/fixtures/paxos/upstream.json.gz` (recorded responses, replayed by
   `fixture-fetch.mjs`). Re-record when the request set changes:
   `node scripts/record-paxos-fixtures.mjs` (live, about 3.5 min keyless; it refuses to write a
   fixture whose CoinGecko or DefiLlama requests failed, writes a temporary file and replaces the
-  fixture only after verifying that replay reproduces the model).
+  fixture only after verifying that replay reproduces the model). The golden feed in the engine check and
+  today's output in the briefing check then need a reviewed refresh.
 - Live: `node scripts/dev-paxos.mjs [port]` serves `pages/paxos`, `static/` and `api/paxos.js` (live
   upstreams) on 127.0.0.1 (set `HOST` to expose it; every cold build spends upstream requests,
   including CoinGecko calls on your key when it is set). It applies vercel.json's redirects and headers
   as Vercel would, so the CSP and the host redirect behave locally as in production; `/` is 404 unless
   the Host is `paxos.rodiger.io` (`curl -H 'Host: paxos.rodiger.io' http://127.0.0.1:8790/`). Like
-  Vercel's CDN it strips `s-maxage` and `stale-while-revalidate` from the browser's `Cache-Control`
-  (the browser would otherwise serve stale copies itself); the CDN policy is in
-  `x-dev-cdn-cache-control`.
+  Vercel's CDN it strips `s-maxage`, `stale-while-revalidate` and `stale-if-error` from the browser's
+  `Cache-Control`; the CDN policy is in `x-dev-cdn-cache-control`. `PAXOS_DEV_PAYLOAD=<file.json>` serves
+  a saved payload instead (`error:<status>` simulates a failure, `PAXOS_DEV_DELAY_MS` a slow build).
   `vercel dev` also works.
+
+## Monitoring
+
+`.github/workflows/paxos-monitor.yml` runs `node scripts/monitor-paxos.mjs https://www.rodiger.io` (no
+dependencies, no secrets) after every successful **Production** deployment (Vercel posts
+`deployment_status` to GitHub), once a day at 07:17 UTC (after the 06:00 cron redeploy) and on demand
+(`workflow_dispatch`). After a deployment it polls `/api/paxos` every 10 s for up to 120 s until the payload
+is newer than the deployment, which also warms the new deployment's CDN cache.
+
+- **Fails** (a failed run; GitHub notifies the owner as for any failed workflow): not 200 or not JSON;
+  `schemaVersion` not 1; a payload older than `cache.sMaxAge` + 1 h also on a second request 45 s later
+  (`PAXOS_MONITOR_RETRY_MS`; the first may be a stale-while-revalidate copy whose rebuild it started); a supply
+  or market source in `error`; `totals.allUsd.missing` not empty; `status.level` `degraded` on this run
+  and the previous one (the workflow keeps the previous level in an Actions cache); after a deployment, no
+  newer payload within 120 s.
+- **Warns** (annotations): any source `stale` or `error`; `insights.errors`; `briefing.errors`; a payload
+  over 650 KB; a `Server-Timing` total over 30 s; an `X-Paxos-Status` header that disagrees with the body;
+  a single degraded run.
+- Each run writes a step summary: generatedAt and age, status, cache headers, `x-vercel-cache`,
+  `X-Paxos-Memo`, sources by status, feed, verdict, build time and payload size.
+- Locally: `node scripts/monitor-paxos.mjs http://127.0.0.1:8790` against the dev server (exit 0 or 1).
+- GitHub stops scheduled workflows in a public repository after 60 days without activity; the deployment
+  trigger keeps working regardless.
 
 ## Page behaviour
 
-- Freshness: "Current snapshot" only while the snapshot's age (`now - generatedAt`) is at most
-  `cache.sMaxAge`; older, it says "Snapshot from <time>; refreshing" and refetches once promptly
-  (about 4 s) before the minute tick takes over. Source ages and ok -> stale are re-judged at view time
-  (`ageHours + (now - generatedAt)` against `staleAfterHours`, else two cadences), since a CDN copy
-  keeps the ages it was generated with.
-- Every current figure is labelled with its own time: the hero and asset table with `supplyAsOf`
-  ("Supply snapshot ..."), the peers table with `peers.asOf`.
-- Net issuance is computed per member from each series; a series that starts later than its asset's
-  `discovery.assets[].firstDate` never books its opening balance as issuance (the bucket says which
-  member it excludes). The engine's aggregate does the same for flow statistics (`aggregate().flow`).
-- The market-share line starts at `market.coverageFrom`, and the chart says why.
-- Data-quality findings are shown as neutral "Data quality" notes, after asset-health findings; the
-  health grid's data column reads "Source note" and is excluded from the hero verdict.
-- Gold: changes and drawdown are shown in ounces (`changeNative`, `athNative`, `drawdownNativePct`);
-  the USD change is labelled as a value change including the gold price.
-- `totals.allUsd.current` null is shown as ">= coveredUsd; excludes <missing> (no USD value)".
+The page renders one scope (`All` or one asset, legacy coins behind `+n legacy`) and one period (`7d`,
+`30d`, `90d`, `1y`, `All`; default 7d) everywhere: verdict, hero, briefing, cards and the six lenses
+(`Supply`, `Chains`, `Peg`, `Market`, `Usage`, `Income (est.)`). The URL holds the state
+(`?asset=&range=&lens=&legacy=1&focus=#f=<insight id>`, defaults omitted, `lens=defi` and `lens=revenue`
+still work); nothing is remembered in the browser, so a shared link renders the same for everyone.
+
+- **Freshness chip** (never "Live"): `Supply as of {Mon D} · prices {HH:MM} UTC` while `now - generatedAt <=
+  cache.sMaxAge` (plus `· n sources late|down`, judged at view time, and `· n figure(s) missing` for each
+  `status.reasons` entry of kind `section`, e.g. an asset without a USD value); `Snapshot {HH:MM} UTC · updating` or
+  `· no newer data yet` for an older copy; `· couldn't refresh` with "Showing the last saved data." and
+  Retry when a refresh fails; `Offline · snapshot …`; `Loading…` (after 3 s: "Building a fresh snapshot;
+  this can take up to 15 seconds."); `Data unavailable` with Retry and the raw JSON link when there is
+  nothing to show (a 200 the page cannot read says "The data service sent a snapshot this page cannot
+  read."). Source ages are re-judged at view time (`ageHours + (now - generatedAt)` against
+  `staleAfterHours`, else two cadences; `ok` and `partial` sources alike), since a CDN copy keeps the ages
+  it was generated with.
+- **Last good snapshot**: each validated payload is saved in Cache Storage (`paxos-health:s1`); on the next
+  visit the fetch starts first (the API is preloaded) and the snapshot renders if the network has not
+  answered within 150 ms; a failed fetch waits for the snapshot read before choosing the error panel, and
+  an older network copy never replaces (or overwrites) a newer snapshot. Snapshots older than 7 days or of
+  another schema are ignored; every Cache Storage call is guarded; there is no service worker.
+- **Verdict**: the briefing's verdict for the scope. It never says "Nothing unusual" when `insights.errors`
+  is not empty (`Partly checked …`) or when a supply or market source is late at view time (`Nothing
+  unusual in available data · supply data {age} old`). Without a briefing (older payloads) it is derived
+  from the health cells.
+- **Hero**: the total (or the asset; gold in ounces with `worth $…`), the period's change, a sparkline of
+  at least 90 days with the period drawn in ink and shaded (captioned `90 days` / `7d`), the share of USD
+  stablecoins with its change in percentage points (`(flat)` under 0.005 pp) and `all USD stablecoins
+  ±x%`, and the distance from the peak plus everything Paxos issues (`≥ $X with gold and legacy (PAXG
+  missing)`, "Excludes {key}: no USD value." when a value is missing). An asset without a supply figure
+  says "No supply figure in this snapshot" (hero and card, the failing sources in the tooltip).
+- **Briefing**: the frame's bullets after the state (2 to 4 lines), each with its lens link (`Peg ›`) that
+  sets lens, focus and `#f=` and moves focus to the lens (on narrow screens the link sits at the end of the
+  last line); a `since` badge the text already states is left out; ✓ only on a positive steady line, `·`
+  on other steady lines and fillers; the full-history period's eyebrow adds "(longest summary)". A finding
+  expands into its evidence panel (mini chart, facts row, why, rarity in plain words, size, related lines,
+  Copy link, Method); a restated peg finding's facts row is `Last 7 days: 0.44% · Before Sep 11: 0.05% ·
+  Peers: ≤0.07%` and its size `Covers all $26M of USDP.` The verdict's `Details ›` opens the first finding.
+- **Cards**: one per asset (All) or chain (asset scope): value, period change, sparkline, the main chain
+  behind the move and the peg as the period's mean distance from $1 on daily prices (the same figure as the
+  Peg table's Average); a flag button when the verdict names the asset; `ⓘ` for a material data note.
+- **Lenses**: two figures each, with a computed title and a Table toggle (tables are built on first open;
+  charts in view draw at once, those further down lazily), and a list of that lens's new and ongoing
+  findings (at most 3, then Show more), headed "Unusual here" when the verdict names one of them and
+  "Smaller findings" otherwise. A unit the briefing states reads as its bullet there and in All findings
+  (same words, same start date, led by the same member). Supply's
+  "Where supply moved" is exact arithmetic on the attribution (rows + Other + Unattributed = Net = the
+  hero's change; In + Out = Net). Market starts at `market.coverageFrom` and says so. Market is disabled
+  for gold, Income for assets outside `economics.assets`.
+- **All findings** (Unusual, Earlier, Watching, Data notes) and **About this data** (sources, how findings
+  work, checks by area, data notes, terms, what was found, build notes) are closed by default.
+- Data notes (`dq.*`) are neutral notes, never unusual, never in the verdict or the briefing; gold changes
+  and peaks are in ounces; legacy coins never enter `totals.usd` or the All-scope briefing.
+- Every component renders in isolation: one that fails shows `Not in this snapshot.` (a chart: `This part
+  couldn't be drawn. The table has the numbers.`) and the rest of the page stands. Without Chart.js every
+  chart starts in table view ("Charts unavailable; showing tables.").
+- Copy on the page follows the insight-copy rules above: no statistics vocabulary outside Method and About,
+  one sentence per line, generated text drops a clause rather than print `n/a`, and a status colour (with
+  an icon and a word) only for major findings: a finding line is coloured when its unit is one of the
+  current scope's `verdict.items`, so the verdict, the lens-tab badges, the lists and About › Checks by
+  area (`·` for a flagged cell the verdict does not name) always agree; a lens-only unit is a smaller
+  finding and `verdict.minor` counts it.
 
 ## Deployment notes
 
@@ -352,23 +583,39 @@ model about 20 ms, engine about 340 ms (detectors about 210 ms, novelty about 12
   and `dist/index.html` (the site root) matches `/` first. The domain must be added to the Vercel
   project and pointed at Vercel in DNS by the owner; until then the redirect is inert.
 - Security headers (`vercel.json` `headers`): `/paxos` and `/paxos/*` get `X-Content-Type-Options:
-  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` and an
-  enforced CSP that allows exactly what the page loads: `default-src 'none'`; scripts from `'self'`
-  and the one pinned Chart.js file URL (not all of cdn.jsdelivr.net, which would let any npm package's
-  script run); styles from `'self'` plus `'unsafe-inline'` for the page's inline `<style>` block (a
-  hash would have to be re-pinned on every page edit; there are no inline scripts and app.js only
-  sets styles through the CSSOM); images (favicons) and `fetch` same-origin; no framing, `<base>` or
-  form targets. `/api/paxos` gets nosniff, `Referrer-Policy: no-referrer` and a deny-all CSP. When the
-  page starts loading anything new (a Chart.js upgrade, another script, fonts), update the CSP in
-  both `/paxos` entries; the dashboard check derives the requirement from index.html and fails until
-  it matches.
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`,
+  `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin` and an enforced
+  CSP that allows only the page's own origin: `default-src 'none'; script-src 'self'; style-src 'self';
+  img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';
+  upgrade-insecure-requests`. Chart.js 4.5.1 is vendored at `pages/paxos/vendor/chart.umd.min.js` (its
+  sha256 is the SRI the CDN copy was pinned to, `sha256-SERKgtTty1vsDxll+qzd4Y2cF9swY9BCq62i9wXJ9Uo=`; the
+  check verifies it); styles live in `pages/paxos/paxos.css` (no inline `<style>`, no `style` attributes;
+  app.js sets styles through the CSSOM only). `/api/paxos` gets nosniff, `Referrer-Policy: no-referrer`, a
+  deny-all CSP and `Cross-Origin-Resource-Policy: cross-origin` (public data, set by the handler). When the
+  page starts loading anything new, vendor it or update both `/paxos` entries; the dashboard check derives
+  the requirement from index.html and fails until it matches.
 - Environment variable `COINGECKO_DEMO_API_KEY` (CoinGecko demo key, sent only to api.coingecko.com,
   never logged): optional, but recommended for production, where keyless CoinGecko is mostly
   rate-limited from Vercel's shared IPs. A cold build makes about 13 CoinGecko calls; a warm instance
   rebuilds at most 4 times an hour whatever URL variant is requested.
 - Environment variable `BLOCKSCOUT_API_KEY` (Blockscout PRO API key, free tier; sent only to
-  api.blockscout.com as `authorization: Bearer`, never in a URL or log): recommended. Without it,
-  holder counts are missing on chains whose public explorer blocks scripted requests.
+  api.blockscout.com as `authorization: Bearer`, never in a URL or log): **required for holder coverage**.
+  Without it, holder counts are missing on chains whose public explorer blocks scripted requests: on
+  2026-10-01 USDG's counts covered chains holding only 31% of its supply (Robinhood Chain, 22%, is
+  blocked; X Layer, 46%, has no Blockscout instance), and the Usage lens marks the gap (`36,929+`,
+  "Missing: …").
+
+## Owner actions (not automated)
+
+1. Set `BLOCKSCOUT_API_KEY` in the Vercel project (Production and Preview), a free key from
+   https://dev.blockscout.com. Done when the `onchain` source message no longer names a blocked host and
+   USDG holder coverage reaches at least half of its supply.
+2. Keep `COINGECKO_DEMO_API_KEY` set (identity data is now cached for 7 days, so a warm instance spends its
+   calls on prices and charts).
+3. The monitor needs no secret: Actions must be enabled for the repository and Vercel's GitHub integration
+   must post deployment statuses (it does by default). Failed runs notify through GitHub's usual
+   workflow-failure notifications.
 
 ## Known limitations
 
@@ -390,6 +637,9 @@ model about 20 ms, engine about 340 ms (detectors about 210 ms, novelty about 12
 - Each dimension is judged at its own size or the load's average per dimension, whichever is larger
   (about 30 counted tests on current data, so p < ~0.03); single-window chain moves on short histories
   rarely qualify, and the deterministic "What changed" attribution shows them regardless.
-- Holders by chain lists material or issuer-contract chains without an on-chain reading as "not available";
-  it cannot say whether the explorer failed or none exists for that chain, because the on-chain source
-  records only the chains that answered.
+- Holders by chain lists material or issuer-contract chains without an on-chain reading as missing (the
+  `+` marker and its tooltip); it cannot say whether the explorer failed or none exists for that chain,
+  because the on-chain source records only the chains that answered.
+- `market.usdTotal` carries 6 significant digits (4 misprinted about a quarter of 7-day market moves at
+  their printed precision), so the market's move over a period is exact at 0.01%.
+- The monitor runs from one GitHub runner (US East), so it warms that CDN region only.

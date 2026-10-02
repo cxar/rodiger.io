@@ -5,18 +5,43 @@
   const DAY = 86400;
   const MINUS = '−';
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // One Period control drives every number; `frame` is the briefing frame, `win` the attribution window.
   const RANGES = [
-    { id: '30d', label: '30d', days: 30, win: 'd30', text: '30 days' },
-    { id: '90d', label: '90d', days: 90, win: 'd90', text: '90 days' },
-    { id: '1y', label: '1y', days: 365, win: 'd365', text: '1 year' },
-    { id: 'all', label: 'All', days: null, win: 'all', text: 'full history' },
+    { id: '7d', label: '7d', days: 7, win: 'd7', frame: 'd7', text: '7 days', words: '7 days' },
+    { id: '30d', label: '30d', days: 30, win: 'd30', frame: 'd30', text: '30 days', words: '30 days' },
+    { id: '90d', label: '90d', days: 90, win: 'd90', frame: 'd90', text: '90 days', words: '90 days' },
+    { id: '1y', label: '1y', days: 365, win: 'd365', frame: 'd365', text: '1 year', words: '12 months' },
+    { id: 'all', label: 'All', days: null, win: 'all', frame: 'd365', text: 'full history', words: 'the full history' },
   ];
-  const DEFAULT_RANGE = '90d';
+  const DEFAULT_RANGE = '7d';
+  const LENSES = [
+    { id: 'supply', label: 'Supply' },
+    { id: 'chains', label: 'Chains' },
+    { id: 'peg', label: 'Peg' },
+    { id: 'market', label: 'Market' },
+    { id: 'usage', label: 'Usage' },
+    { id: 'income', label: 'Income (est.)', short: 'Income' },
+  ];
+  const LENS_ALIAS = { defi: 'usage', revenue: 'income' };
+  // Engine dimension -> lens and verdict area word ('data' goes to About > Data notes only).
+  const DIM_LENS = { supply: 'supply', portfolio: 'supply', chains: 'chains', peg: 'peg', market: 'market', defi: 'usage', usage: 'usage', economics: 'income' };
+  const AREA = { supply: 'supply', portfolio: 'supply', market: 'market share', chains: 'chains', peg: 'peg', defi: 'usage', usage: 'usage', economics: 'income' };
+  // Page placement for payloads without insight.role (FINAL-SPEC §4.4); detector ids are engine names.
+  const ROLE_FALLBACK = {
+    'supply.streak': 'evidence', 'supply.bridged_out': 'lens', 'chain.attribution': 'lens', 'chain.concentration': 'lens', 'chain.dominance': 'lens',
+    'defi.utilization': 'lens', 'defi.yield_outlier': 'lens', 'defi.tvl_trend': 'lens', 'defi.divergence': 'lens', 'portfolio.mix': 'lens',
+    'portfolio.leadership': 'lens', 'economics.rate_regime': 'lens', 'defi.footprint': 'context', 'peg.flow_coupling': 'api',
+  };
+  const OTHER = 'Other chains'; // the attribution's fold-in row label (lib/paxos/attribution.js)
   const API = '/api/paxos';
+  const SNAP_CACHE = 'paxos-health:s1';
+  const SNAP_MAX_AGE_MS = 7 * 864e5;
+  const SNAP_WAIT_MS = 150;
   const TIMEOUT_MS = 25000;
   const REVALIDATE_RETRY_MS = 4000;
   const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
   const rangeById = (id) => RANGES.find((r) => r.id === id) || RANGES.find((r) => r.id === DEFAULT_RANGE);
+  const spanOf = (r) => (isNum(r.days) ? Math.max(90, r.days) : null); // span ladder: time graphics show >= 90 days
 
   const tOf = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 1000;
   const isoOf = (t) => new Date(t * 1000).toISOString().slice(0, 10);
@@ -26,7 +51,7 @@
   // Compact = { start:'YYYY-MM-DD', values:[...] } contiguous daily, null = missing.
   const compactEnd = (c) => (c && c.values && c.values.length ? addDays(c.start, c.values.length - 1) : null);
   function compactAt(c, iso) {
-    if (!c || !c.values || !c.values.length || iso < c.start) return null;
+    if (!c || !c.values || !c.values.length || !iso || iso < c.start) return null;
     for (let i = Math.min(daysBetween(c.start, iso), c.values.length - 1); i >= 0; i--) if (isNum(c.values[i])) return c.values[i];
     return null;
   }
@@ -40,8 +65,7 @@
     for (let i = 0; i < c.values.length; i++) if (isNum(c.values[i])) return { date: addDays(c.start, i), value: c.values[i] };
     return null;
   }
-  // The `days` days before endIso plus endIso itself (days+1 points), so the first
-  // point is the base a `days`-day change is measured against. days=null: everything.
+  // The `days` days before endIso plus endIso itself; days=null: everything.
   function sliceCompact(c, days, endIso) {
     if (!c || !c.values) return null;
     const end = endIso || compactEnd(c);
@@ -58,16 +82,15 @@
     const curr = compactAt(c, end);
     if (!isNum(days)) {
       const first = compactFirst(c);
-      return first && isNum(curr) ? { abs: curr - first.value, pct: null, from: first.date } : null;
+      return first && isNum(curr) ? { abs: curr - first.value, pct: first.value > 0 ? (100 * (curr - first.value)) / first.value : null, from: first.date } : null;
     }
     const from = addDays(end, -days);
-    if (from < c.start) return null; // not enough history for this window
+    if (from < c.start) return null;
     const prev = compactAt(c, from);
     if (!isNum(prev) || !isNum(curr)) return null;
     return { abs: curr - prev, pct: prev ? (100 * (curr - prev)) / prev : null, from };
   }
-  // Percent change re-derived from {abs} and the level it ends at, so the page does not depend on
-  // whether a server encodes `pct` as a fraction or in percent. Falls back to `pct` when no level is known.
+  // Percent re-derived from {abs} and the level it ends at (pct is in percent units).
   function pctFrom(ch, curr) {
     if (!ch || !isNum(ch.abs) || !isNum(curr) || !(curr - ch.abs > 0)) return ch;
     return { ...ch, pct: (100 * ch.abs) / (curr - ch.abs) };
@@ -97,81 +120,41 @@
   // Align compacts on [startIso, endIso]; `before` fills days before a series starts (0 for stacks).
   function alignCompacts(list, startIso, endIso, before = null) {
     const dates = datesBetween(startIso, endIso);
-    const rows = list.map((c) =>
-      dates.map((d) => {
-        if (!c || !c.values || d < c.start) return before;
-        const i = daysBetween(c.start, d);
-        return i < c.values.length && isNum(c.values[i]) ? c.values[i] : null;
-      }),
-    );
+    const rows = list.map((c) => dates.map((d) => {
+      if (!c || !c.values || d < c.start) return before;
+      const i = daysBetween(c.start, d);
+      return i < c.values.length && isNum(c.values[i]) ? c.values[i] : null;
+    }));
     return { dates, rows };
   }
-  // A series "starts at launch" when its first observation is the asset's first known date (or a zero
-  // balance): only then is the opening balance issuance. A series that starts later than the asset
-  // existed (a data source began tracking it late) opens with a balance nobody issued in that bucket.
-  function startsAtLaunch(c, firstDate) {
-    const f = compactFirst(c);
-    if (!f) return false;
-    return f.value === 0 || (typeof firstDate === 'string' && firstDate.length >= 10 && f.date <= firstDate.slice(0, 10));
+  function sumCompacts(list, startIso, endIso) {
+    const { dates, rows } = alignCompacts(list, startIso, endIso, 0);
+    return { start: startIso, values: dates.map((_, i) => rows.reduce((s, r) => (isNum(r[i]) ? s + r[i] : s), 0)) };
   }
-  // Net change per bucket from levels at bucket boundaries (robust to single missing days).
-  // mode: 'day' | 'week' (7-day buckets ending at endIso) | 'month' (calendar months).
-  // A bucket whose base precedes the series start has no measurable change (value null, opening: true)
-  // unless opts.launch says the series starts at the asset's launch, when the base level is zero.
-  function bucketChanges(c, startIso, endIso, mode, opts = {}) {
+  // Net change per bucket ('day' | 'week' ending at endIso) from levels at bucket boundaries.
+  function bucketChanges(c, startIso, endIso, mode) {
     const out = [];
     if (!c) return out;
-    const delta = (prevIso, to) => {
-      const a = compactAt(c, prevIso);
-      const b = compactAt(c, to);
-      if (isNum(a) && isNum(b)) return { value: b - a };
-      if (isNum(b) && prevIso < c.start) return opts.launch ? { value: b, opening: true, launch: true } : { value: null, opening: true };
-      return { value: null };
-    };
-    if (mode === 'month') {
-      let m = startIso.slice(0, 7);
-      const last = endIso.slice(0, 7);
-      while (m <= last) {
-        const y = +m.slice(0, 4);
-        const mo = +m.slice(5, 7);
-        const next = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
-        const to = next + '-01' > endIso ? endIso : addDays(next + '-01', -1);
-        out.push({ label: m, from: m + '-01', to, ...delta(addDays(m + '-01', -1), to) });
-        m = next;
-      }
-      return out;
-    }
     const step = mode === 'week' ? 7 : 1;
     const n = Math.max(1, Math.ceil(daysBetween(startIso, endIso) / step));
     for (let k = n - 1; k >= 0; k--) {
       const to = addDays(endIso, -k * step);
       const prev = addDays(to, -step);
-      out.push({ label: to, from: addDays(prev, 1), to, ...delta(prev, to) });
+      const a = compactAt(c, prev);
+      const b = compactAt(c, to);
+      out.push({ label: to, from: addDays(prev, 1), to, value: isNum(a) && isNum(b) && prev >= c.start ? b - a : null });
     }
     return out;
   }
-  // Net issuance of several members (each { key, c, launch }) per bucket: the sum of each member's own
-  // bucket change, so a member whose data starts late adds its flows from then on and never books its
-  // opening balance. `excluded` names members whose opening bucket this is (their change is unknown).
-  function netIssuance(members, startIso, endIso, mode) {
-    const per = members.map((m) => ({ key: m.key, b: bucketChanges(m.c, startIso, endIso, mode, { launch: !!m.launch }) }));
-    if (!per.length) return [];
-    return per[0].b.map((x, i) => {
-      let value = null;
-      const excluded = [];
-      for (const m of per) {
-        const y = m.b[i];
-        if (isNum(y.value)) value = (value || 0) + y.value;
-        else if (y.opening) excluded.push(m.key);
-      }
-      return { label: x.label, from: x.from, to: x.to, value, excluded };
-    });
+  function quantile(xs, q) {
+    const s = xs.filter(isNum).sort((a, b) => a - b);
+    if (!s.length) return null;
+    const pos = (s.length - 1) * q;
+    const lo = Math.floor(pos);
+    return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (pos - lo);
   }
-  // First day of a market total that is comparable with today's: a day whose one-day rise is larger
-  // than every later `week`-day move of the total (up or down), judged only where at least `horizon`
-  // days of later history exist, marks coins being added to the source's history at once (genuine
-  // growth or decline accumulates over days). Returns the last such day (the first day that includes
-  // the added coins), or null when the total has no such step.
+  // First day of a market total comparable with today's: the last one-day rise larger than every later
+  // `week`-day move (judged only with `horizon` days of later history) marks coins added to the history.
   function coverageStart(c, { week = 7, horizon = 365 } = {}) {
     if (!c || !Array.isArray(c.values) || c.values.length < week + horizon + 2) return null;
     const n = c.values.length;
@@ -189,31 +172,27 @@
     }
     return last === null ? null : addDays(c.start, last);
   }
-  // Evidence numbers carry their unit in the payload (`evidence.unit`) or, failing that, in a trailing
-  // "(unit)" of the metric text; format them for reading instead of printing raw floats.
-  function evidenceUnit(e) {
-    if (!e) return null;
-    if (typeof e.unit === 'string' && e.unit) return e.unit;
-    const m = /\(([^()]{1,12})\)\s*$/.exec(String(e.metric || ''));
-    return m ? m[1].trim() : null;
+  // At most `max` indices of a long series, keeping each bucket's min and max (peaks survive).
+  function downsampleIdx(vals, max) {
+    const n = vals.length;
+    if (n <= max || max < 4) return null;
+    const buckets = Math.floor(max / 2);
+    const size = n / buckets;
+    const keep = new Set([0, n - 1]);
+    for (let b = 0; b < buckets; b++) {
+      let lo = -1;
+      let hi = -1;
+      for (let i = Math.floor(b * size), e = Math.min(n, Math.floor((b + 1) * size)); i < e; i++) {
+        if (!isNum(vals[i])) continue;
+        if (lo < 0 || vals[i] < vals[lo]) lo = i;
+        if (hi < 0 || vals[i] > vals[hi]) hi = i;
+      }
+      if (lo >= 0) keep.add(lo);
+      if (hi >= 0) keep.add(hi);
+    }
+    return [...keep].sort((a, b) => a - b);
   }
-  function fmtEvidence(v, unit) {
-    if (v === null || v === undefined) return 'n/a';
-    if (!isNum(v)) return typeof v === 'object' ? JSON.stringify(v) : String(v);
-    const u = String(unit || '').toLowerCase();
-    if (u === 'usd' || u === '$') return fmtUsd(v, { signed: v < 0 });
-    if (u === 'bp') return fmtBp(v);
-    if (u === '%' || u === 'pct' || u === 'percent') return fmtPct(v);
-    if (u === 'fraction' || u === 'share') return fmtShare(v);
-    if (u === 's' || u === 'sec' || u === 'seconds') return fmtHours(v / 3600);
-    if (u === 'h' || u === 'hours') return fmtHours(v);
-    if (u === 'd' || u === 'days') return `${fmtCount(v)} day${Math.round(v) === 1 ? '' : 's'}`;
-    const a = Math.abs(v);
-    const n = a >= 1e4 ? fmtNum(v) : (v < 0 ? MINUS : '') + String(Number(a.toPrecision(4)));
-    return unit ? `${n} ${unit}` : n;
-  }
-  // Snapshot freshness (decision 6): "current" only while the snapshot is within the CDN's s-maxage;
-  // stale-while-revalidate is a delivery mechanism, not a freshness promise.
+  // Snapshot freshness: "current" only while within the CDN's s-maxage.
   function snapshotAge(p, nowMs) {
     const gen = Date.parse(p && p.generatedAt);
     const ageSec = isNum(gen) ? Math.max(0, (nowMs - gen) / 1000) : null;
@@ -225,122 +204,99 @@
     const gen = Date.parse(p && p.generatedAt);
     return s && isNum(s.ageHours) && isNum(gen) ? s.ageHours + Math.max(0, nowMs - gen) / 3.6e6 : s && isNum(s.ageHours) ? s.ageHours : null;
   }
-  // The documented source rule: stale once the data is older than two publication intervals.
+  // An old copy is judged at view time: a source that was ok or partial when built is late once its data
+  // passes its own limit (partial alone never counts as late or down while the copy is current).
   function sourceStatusNow(s, ageNow) {
     if (!s) return 'skipped';
     const limit = isNum(s.staleAfterHours) ? s.staleAfterHours : isNum(s.cadenceHours) ? 2 * s.cadenceHours : null;
-    return s.status === 'ok' && isNum(ageNow) && isNum(limit) && ageNow > limit ? 'stale' : s.status;
-  }
-  // Chains an asset is on: per-chain balances at or above its materiality floor when DefiLlama has
-  // them; otherwise the chains of its discovered contracts and on-chain readings (no balances).
-  function chainCount(a, floor, addresses) {
-    const rows = (a && a.chains) || [];
-    if (rows.length) {
-      const live = rows.filter((c) => isNum(c.currentUsd) && c.currentUsd > 0);
-      const material = isNum(floor) ? live.filter((c) => c.currentUsd >= floor) : live;
-      return { n: material.length, of: rows.length, basis: 'balances' };
-    }
-    const set = new Set([...((a && a.onchain) || []).map((x) => x && x.chain), ...(addresses || []).map((x) => x && x.chain)].filter(Boolean));
-    return set.size ? { n: set.size, of: set.size, basis: 'contracts' } : { n: null, of: 0, basis: null };
-  }
-  function sumCompacts(list, startIso, endIso) {
-    const { dates, rows } = alignCompacts(list, startIso, endIso, 0);
-    return { start: startIso, values: dates.map((_, i) => rows.reduce((s, r) => (isNum(r[i]) ? s + r[i] : s), 0)) };
-  }
-  function quantile(xs, q) {
-    const s = xs.filter(isNum).sort((a, b) => a - b);
-    if (!s.length) return null;
-    const pos = (s.length - 1) * q;
-    const lo = Math.floor(pos);
-    return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (pos - lo);
+    return (s.status === 'ok' || s.status === 'partial') && isNum(ageNow) && isNum(limit) && ageNow > limit ? 'stale' : s.status;
   }
 
-  // ----- formatting -----
-  function compactNum(x) {
-    const a = Math.abs(x);
-    if (a >= 1e12) return (a / 1e12).toFixed(2) + 'T';
-    if (a >= 1e9) return (a / 1e9).toFixed(2) + 'B';
-    if (a >= 1e6) return (a / 1e6).toFixed(1) + 'M';
-    if (a >= 1e4) return (a / 1e3).toFixed(1) + 'K';
-    if (a >= 1e3) return Math.round(a).toLocaleString('en-US');
-    if (a >= 10 || a === 0) return a.toFixed(0);
-    return a.toFixed(2);
+  // ----- formatting (FINAL-SPEC §3.0; lib/paxos/format.js uses the same tiers) -----
+  function money(a) {
+    if (a >= 999.5e9) return (a / 1e12).toFixed(2) + 'T';
+    if (a >= 99.95e9) return (a / 1e9).toFixed(1) + 'B'; // $311.5B (two decimals only below $100B)
+    if (a >= 999.5e6) return (a / 1e9).toFixed(2) + 'B';
+    if (a >= 9.95e6) return (a / 1e6).toFixed(0) + 'M';
+    if (a >= 999.5e3) return (a / 1e6).toFixed(1) + 'M';
+    if (a >= 9.995e3) return (a / 1e3).toFixed(0) + 'K';
+    if (a >= 999.5) return (a / 1e3).toFixed(1) + 'K';
+    return a.toFixed(0);
   }
   const signOf = (x, signed) => (x < 0 ? MINUS : signed && x > 0 ? '+' : '');
-  const fmtUsd = (x, o = {}) => (isNum(x) ? signOf(x, o.signed) + '$' + compactNum(x) : 'n/a');
-  const fmtNum = (x, o = {}) => (isNum(x) ? signOf(x, o.signed) + compactNum(x) : 'n/a');
-  const fmtUnit = (x, unit, o = {}) => (unit === 'USD' || !unit ? fmtUsd(x, o) : isNum(x) ? `${fmtNum(x, o)} ${unit}` : 'n/a');
-  // pct is in percent units (-3.1 = -3.1%).
+  function fmtUsd(x, o = {}) {
+    if (!isNum(x)) return '—';
+    const m = money(Math.abs(x));
+    return (Number(m.replace(/[^0-9.]/g, '')) === 0 ? '' : signOf(x, o.signed)) + '$' + m;
+  }
+  // Percent change, pct in percent units: 2 decimals below 0.1%, 1 below 10%, else 0.
   function fmtPct(p, o = {}) {
-    if (!isNum(p)) return 'n/a';
-    const d = isNum(o.digits) ? o.digits : Math.abs(p) < 1 ? 2 : 1;
-    const s = Math.abs(p).toFixed(d);
-    return (Number(s) === 0 ? '' : signOf(p, o.signed)) + s + '%';
+    if (!isNum(p)) return '—';
+    const a = Math.abs(p);
+    let s = a.toFixed(isNum(o.digits) ? o.digits : a < 0.1 ? 2 : a < 9.95 ? 1 : 0);
+    if (!isNum(o.digits) && Number(s) >= 10 && s.includes('.')) s = a.toFixed(0);
+    return (Number(s) === 0 ? '' : signOf(p, o.signed !== false)) + s + '%';
   }
-  // share is a fraction (0.019 = 1.9%).
+  // Market share (a fraction): 2 significant digits below 1%, 2 decimals below 10%, else 1.
   function fmtShare(f) {
-    if (!isNum(f)) return 'n/a';
-    const p = f * 100;
-    return Math.abs(p).toFixed(Math.abs(p) < 0.1 ? 3 : Math.abs(p) < 10 ? 2 : 1) + '%';
+    if (!isNum(f)) return '—';
+    const p = Math.abs(f) * 100;
+    if (p === 0) return '0%';
+    return (p < 1 ? String(Number(p.toPrecision(2))) : p.toFixed(p < 10 ? 2 : 1)) + '%';
   }
-  function fmtBp(b, o = {}) {
-    if (!isNum(b)) return 'n/a';
-    const s = Math.abs(b).toFixed(Math.abs(b) < 10 ? 1 : 0);
-    return (Number(s) === 0 ? '' : signOf(b, o.signed !== false)) + s + ' bp';
+  // Part of a whole (a fraction): 0 decimals from 10%, 1 below, 2 significant digits below 1%.
+  function fmtPortion(f) {
+    if (!isNum(f)) return '—';
+    const p = Math.abs(f) * 100;
+    if (p === 0) return '0%';
+    return (p < 1 ? String(Number(p.toPrecision(2))) : p.toFixed(p < 9.95 ? 1 : 0)) + '%';
   }
-  const fmtCount = (n) => (isNum(n) ? Math.round(n).toLocaleString('en-US') : 'n/a');
-  function fmtP(p) {
-    if (!isNum(p)) return 'n/a';
-    if (p > 0 && p < 0.001) return p.toExponential(1).replace('e-', 'e' + MINUS);
-    return String(Number(p.toPrecision(2)));
+  const fmtPP = (x) => (isNum(x) ? Math.abs(x).toFixed(2) + ' pp' : '—');
+  // Peg: percent of $1 (a fraction in), 2 decimals; under 0.005% it reads "≈ $1".
+  function fmtPeg(frac, o = {}) {
+    if (!isNum(frac)) return '—';
+    const p = frac * 100;
+    if (Math.abs(p) < 0.005) return '≈ $1';
+    return (o.unsigned ? '' : signOf(p, true)) + Math.abs(p).toFixed(2) + '%';
   }
-  const fmtE = (e) => (isNum(e) ? String(Number(e.toPrecision(2))) : 'n/a');
-  function oneInN(p) {
-    if (!isNum(p) || p <= 0) return null;
-    return p >= 1 ? '1 in 1' : '1 in ' + Math.round(1 / p).toLocaleString('en-US');
+  const pegWords = (frac) => (!isNum(frac) ? '—' : Math.abs(frac) * 100 < 0.005 ? '≈ $1' : `${Math.abs(frac * 100).toFixed(2)}% ${frac < 0 ? 'below' : 'above'} $1`);
+  function fmtOz(x, o = {}) {
+    if (!isNum(x)) return '—';
+    const a = Math.abs(x);
+    const s = a >= 100 ? Math.round(a).toLocaleString('en-US') : a.toFixed(a >= 10 ? 0 : 1);
+    return (Number(s.replace(/,/g, '')) === 0 ? '' : signOf(x, o.signed)) + s + ' oz';
   }
-  function fmtDate(iso) {
-    if (!iso || typeof iso !== 'string' || iso.length < 10) return 'n/a';
-    return `${+iso.slice(8, 10)} ${MONTHS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}`;
+  const fmtCount = (n) => (isNum(n) ? Math.round(n).toLocaleString('en-US') : '—');
+  // "Sep 11" within the reference year, else "Mar 2023"; tables: "Jul 12, 2025".
+  function fmtMD(iso, refYear) {
+    if (typeof iso !== 'string' || iso.length < 10) return '—';
+    const m = MONTHS[+iso.slice(5, 7) - 1];
+    return refYear && iso.slice(0, 4) !== String(refYear) ? `${m} ${iso.slice(0, 4)}` : `${m} ${+iso.slice(8, 10)}`;
   }
-  function fmtDateTime(iso) {
+  const fmtDate = (iso) => (typeof iso === 'string' && iso.length >= 10 ? `${MONTHS[+iso.slice(5, 7) - 1]} ${+iso.slice(8, 10)}, ${iso.slice(0, 4)}` : '—');
+  const fmtMonthYear = (iso) => (typeof iso === 'string' && iso.length >= 7 ? `${MONTHS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}` : '—');
+  function fmtHM(iso) {
     const t = Date.parse(iso);
-    if (!isNum(t)) return 'n/a';
-    const d = new Date(t).toISOString();
-    return `${fmtDate(d)} ${d.slice(11, 16)} UTC`;
+    return isNum(t) ? new Date(t).toISOString().slice(11, 16) : '—';
   }
-  function fmtAgo(ms) {
-    if (!isNum(ms)) return 'n/a';
-    const m = Math.max(0, ms) / 60000;
-    if (m < 1) return 'just now';
-    if (m < 90) return `${Math.round(m)} min ago`;
-    if (m < 48 * 60) return `${(m / 60).toFixed(m < 600 ? 1 : 0)} h ago`;
-    return `${Math.round(m / 1440)} days ago`;
-  }
-  function fmtHours(h) {
-    if (!isNum(h)) return 'n/a';
-    if (h < 1) return `${Math.round(h * 60)} min`;
-    if (h < 48) return `${h.toFixed(h < 10 ? 1 : 0)} h`;
-    return `${(h / 24).toFixed(h < 240 ? 1 : 0)} d`;
-  }
-  function fmtBytes(b) {
-    if (!isNum(b)) return 'n/a';
-    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
-    if (b >= 1024) return (b / 1024).toFixed(0) + ' KB';
-    return b + ' B';
+  function fmtAge(hours) {
+    if (!isNum(hours)) return '—';
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+    if (hours < 48) return `${Math.round(hours)} h`;
+    return `${Math.round(hours / 24)} days`;
   }
   function fmtTick(label, spanDays) {
-    if (!label) return '';
-    const s = String(label);
+    const s = String(label || '');
+    if (!s) return '';
     const mon = MONTHS[+s.slice(5, 7) - 1];
-    if (spanDays <= 120) return `${+s.slice(8, 10)} ${mon}`;
+    if (spanDays <= 45) return `${mon} ${+s.slice(8, 10)}`;
+    if (spanDays <= 400) return mon;
     if (spanDays <= 900) return `${mon} ’${s.slice(2, 4)}`;
     return s.slice(0, 4);
   }
-  // Long date axes: label the first date of each calendar month (or year), every k-th one so at most
-  // maxTicks labels show. Returns the label indices; null for short spans (let the chart auto-skip).
+  // Long date axes: label month (or year) boundaries, every k-th so at most maxTicks show.
   function tickPlan(labels, spanDays, maxTicks) {
-    if (!Array.isArray(labels) || spanDays <= 120) return null;
+    if (!Array.isArray(labels) || spanDays <= 45) return null;
     const years = spanDays > 900;
     const key = (s) => String(s).slice(0, years ? 4 : 7);
     const marks = [];
@@ -353,14 +309,25 @@
     }
     return new Set(marks);
   }
-  const plural = (n, w) => `${fmtCount(n)} ${w}${n === 1 ? '' : 's'}`;
+  const plural = (n, w, ws) => `${fmtCount(n)} ${n === 1 ? w : ws || w + 's'}`;
+  const joinAnd = (xs) => (xs.length <= 1 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]);
 
-  function parseQuery(search) {
+  // ----- URL state: ?asset=&range=&lens=&legacy=1&focus=  #f=<insight id>; defaults omitted -----
+  function parseQuery(search, hash) {
     const q = new URLSearchParams(search || '');
-    const asset = (q.get('asset') || 'all').slice(0, 64);
-    return { asset: asset || 'all', range: rangeById(q.get('range')).id, legacy: q.get('legacy') === '1' };
+    const asset = (q.get('asset') || 'all').slice(0, 64) || 'all';
+    const l = String(q.get('lens') || '').toLowerCase();
+    const lens = LENSES.some((x) => x.id === l) ? l : LENS_ALIAS[l] || 'supply';
+    const focus = (q.get('focus') || '').slice(0, 64) || null;
+    const m = /(?:^#|&)f=([^&]+)/.exec(hash || '');
+    let fid = null;
+    try {
+      fid = m ? decodeURIComponent(m[1]).slice(0, 200) : null;
+    } catch {
+      fid = null;
+    }
+    return { asset, range: rangeById(q.get('range')).id, lens, legacy: q.get('legacy') === '1', focus, fid };
   }
-  // ?asset= is matched to a discovered key case-insensitively ('abc' -> 'ABC').
   function canonicalAsset(asset, keys) {
     if (!asset || asset.toLowerCase() === 'all') return 'all';
     const hit = (keys || []).find((k) => k === asset) || (keys || []).find((k) => String(k).toLowerCase() === asset.toLowerCase());
@@ -368,72 +335,132 @@
   }
   function buildQuery(s) {
     const q = new URLSearchParams();
-    q.set('asset', s.asset || 'all');
-    q.set('range', rangeById(s.range).id);
+    if (s.asset && s.asset !== 'all') q.set('asset', s.asset);
+    if (rangeById(s.range).id !== DEFAULT_RANGE) q.set('range', rangeById(s.range).id);
+    if (s.lens && s.lens !== 'supply') q.set('lens', s.lens);
     if (s.legacy) q.set('legacy', '1');
-    return '?' + q.toString();
+    if (s.focus) q.set('focus', s.focus);
+    const str = q.toString();
+    return str ? '?' + str : '';
   }
 
   // ----- insights -----
-  const insightMatches = (ins, key) => !key || key === 'all' || ins.asset === key || (Array.isArray(ins.drivers) && ins.drivers.some((d) => d && d.asset === key));
-  function ageText(n) {
-    if (!n || !isNum(n.ageDays)) return null;
-    if (n.ageDays === 0) return 'new today';
-    return `for ${n.ageDays} day${n.ageDays === 1 ? '' : 's'}`;
+  // An item about another subject (the total) belongs to an asset's scope when its title names the asset,
+  // or the asset is its largest driver by at least that asset's floor (lib/paxos/briefing.js drivenBy).
+  function drivenBy(ins, key, floors) {
+    const ds = (Array.isArray(ins.drivers) ? ins.drivers : []).filter((d) => d && isNum(d.usd));
+    if (!ds.some((d) => d.asset === key)) return false;
+    if (String(ins.title || '').split(/[^A-Za-z0-9_]+/).includes(key)) return true;
+    const top = ds.slice().sort((a, b) => Math.abs(b.usd) - Math.abs(a.usd))[0];
+    const fl = floors && isNum(floors[key]) ? floors[key] : null;
+    return top.asset === key && (fl === null || Math.abs(top.usd) >= fl);
   }
-  // Data-quality findings describe the sources, not the asset (decision 2): shown neutral and apart.
+  const insightMatches = (ins, key, floors) => !key || key === 'all' || ins.asset === key || drivenBy(ins, key, floors);
   const isDataQuality = (ins) => !!ins && (ins.dimension === 'data' || /^dq\./.test(String(ins.detector || '')));
-  function whyText(ins) {
-    const s = ins.surprise || {};
-    const parts = [`p = ${fmtP(s.p)}`];
-    const n = oneInN(s.p);
-    if (n) parts.push(n);
-    parts.push(`E = ${fmtE(s.E)} across ${plural(s.m || 1, 'check')}`);
-    if (s.underpowered) parts.push('underpowered');
-    return parts.join(' · ');
+  const roleOf = (i) => i.role || (isDataQuality(i) ? 'note' : i.detector === 'peg.deviation' && /:excess/.test(i.id) ? 'evidence' : ROLE_FALLBACK[i.detector] || 'headline');
+  // Older payloads have no title: the headline cut at the first ";" or ":" after 20 characters, 14 words.
+  function fallbackTitle(h) {
+    let s = String(h || '').trim();
+    const m = /[;:]/.exec(s.slice(20));
+    if (m) s = s.slice(0, 20 + m.index);
+    const w = s.split(/\s+/).filter(Boolean);
+    return w.length > 14 ? w.slice(0, 14).join(' ') + '…' : s;
+  }
+  const titleOf = (i) => (i && typeof i.title === 'string' && i.title ? i.title : fallbackTitle(i && i.headline));
+  // Evidence windows: 'since YYYY-MM-DD', 'A..B' or 'Nd' (ending at endIso).
+  function parseWindow(w, endIso) {
+    const s = String(w || '');
+    let m = /since (\d{4}-\d{2}-\d{2})/.exec(s);
+    if (m) return { from: m[1], to: endIso };
+    m = /(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})/.exec(s);
+    if (m) return { from: m[1], to: m[2] };
+    m = /^(\d+)d$/.exec(s.trim());
+    if (m && endIso) return { from: addDays(endIso, -(+m[1] - 1)), to: endIso };
+    return null;
   }
 
-  // ----- colour (OKLab interpolation for the diverging heatmap scale) -----
-  const s2l = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const l2s = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-  function hexToLab(hex) {
-    const [r, g, b] = [1, 3, 5].map((i) => s2l(parseInt(hex.slice(i, i + 2), 16) / 255));
-    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  // ----- models (pure: payload in, numbers out; the page and the checks share them) -----
+  // Where supply moved: top rows by |delta|, the rest (and every "Other chains" row) as Other, and an
+  // Unattributed row when the chain rows do not add up to the net (> 0.1% of gross).
+  function movesModel(w, asset, max = 6) {
+    if (!w || !Array.isArray(w.chains)) return null;
+    const assetRows = asset ? (w.assets || []).filter((x) => x.asset === asset) : w.assets || [];
+    if (asset && !assetRows.length) return null;
+    const all = w.chains.filter((x) => !asset || x.asset === asset);
+    const cand = all.filter((x) => x.chain !== OTHER && isNum(x.deltaUsd) && x.deltaUsd !== 0).sort((a, b) => Math.abs(b.deltaUsd) - Math.abs(a.deltaUsd));
+    const rows = cand.slice(0, max);
+    const other = all.filter((x) => !rows.includes(x)).reduce((s, x) => s + (x.deltaUsd || 0), 0);
+    const net = asset ? assetRows.reduce((s, x) => s + (x.deltaUsd || 0), 0) : isNum(w.totalDeltaUsd) ? w.totalDeltaUsd : assetRows.reduce((s, x) => s + (x.deltaUsd || 0), 0);
+    const sumAll = all.reduce((s, x) => s + (x.deltaUsd || 0), 0);
+    const gross = asset ? all.reduce((s, x) => s + Math.abs(x.deltaUsd || 0), 0) : w.grossUsd || 0;
+    const resid = net - sumAll;
+    const unattributed = Math.abs(resid) > 0.001 * (gross || Math.abs(net) || 1) ? resid : 0;
+    let inSum = all.reduce((s, x) => s + Math.max(0, x.deltaUsd || 0), 0);
+    let outSum = all.reduce((s, x) => s + Math.min(0, x.deltaUsd || 0), 0);
+    // The strip reconciles exactly: rounding and any unattributed residual land on their own sign.
+    const gap = net - (inSum + outSum);
+    if (gap > 0) inSum += gap;
+    else outSum += gap;
+    return { rows, other, unattributed, net, inSum, outSum, empty: !cand.length };
   }
-  function labToHex([L, A, B]) {
-    const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
-    const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
-    const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-    const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
-    return '#' + rgb.map((c) => Math.round(Math.max(0, Math.min(1, l2s(c))) * 255).toString(16).padStart(2, '0')).join('');
+  // Card / Peg-table peg: mean |price - 1| over the period's daily points (from, to], signed by the
+  // mean signed deviation; plus the widest day. from=null: every point.
+  function pegStats(c, from, to) {
+    if (!c || !Array.isArray(c.values)) return null;
+    let n = 0, sAbs = 0, sSig = 0, wide = null;
+    c.values.forEach((v, i) => {
+      if (!isNum(v)) return;
+      const d = addDays(c.start, i);
+      if ((from && d <= from) || (to && d > to)) return;
+      const g = v - 1;
+      n++;
+      sAbs += Math.abs(g);
+      sSig += g;
+      if (!wide || Math.abs(g) > Math.abs(wide.gap)) wide = { gap: g, date: d };
+    });
+    if (!n) return null;
+    return { avg: (sSig < 0 ? -1 : 1) * (sAbs / n), absAvg: sAbs / n, wide, n };
   }
-  function mixHex(a, b, t) {
-    const A = hexToLab(a);
-    const B = hexToLab(b);
-    return labToHex(A.map((v, i) => v + (B[i] - v) * t));
+  // Point change of a share series over (from, end]: last minus value at the period start, x100.
+  function shareChange(c, from, end) {
+    const last = end ? compactAt(c, end) : compactLast(c) && compactLast(c).value;
+    const first = from ? compactAt(c, from) : compactFirst(c) && compactFirst(c).value;
+    return isNum(last) && isNum(first) ? { s1: last, s0: first, pp: (last - first) * 100 } : null;
   }
-  function alpha(hex, a) {
-    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return hex;
-    return `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${a})`;
+  function ratioChange(c, from, end) {
+    const a = from ? compactAt(c, from) : compactFirst(c) && compactFirst(c).value;
+    const b = end ? compactAt(c, end) : compactLast(c) && compactLast(c).value;
+    return isNum(a) && isNum(b) && a > 0 ? (b / a - 1) * 100 : null;
   }
-  const safeUrl = (u) => {
-    try {
-      const x = new URL(String(u));
-      return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : null;
-    } catch {
-      return null;
+  // Gold price change over a window from the USD and ounce changes of the same asset.
+  const goldPriceChange = (chUsd, chOz) => (chUsd && chOz && isNum(chUsd.pct) && isNum(chOz.pct) ? ((1 + chUsd.pct / 100) / (1 + chOz.pct / 100) - 1) * 100 : null);
+  const POL_RANK = { negative: 0, positive: 1, neutral: 2 };
+  // Verdict for payloads without a briefing: notable health cells (data excluded) in scope.
+  function fallbackVerdict(p, rows, aggKey) {
+    const ins = p && p.insights;
+    if (!ins || !(ins.testsRun > 0)) return { level: 'unknown', items: [], text: 'Checks unavailable in this snapshot' };
+    const cells = (ins.health && ins.health.cells) || {};
+    const items = [];
+    for (const a of rows) for (const [dim, cell] of Object.entries(cells[a] || {})) {
+      if (dim === 'data' || !cell || !/^notable_/.test(String(cell.state))) continue;
+      items.push({ id: cell.evidence && cell.evidence.id, asset: a, chain: null, area: AREA[dim] || dim, lens: DIM_LENS[dim] || 'supply', tone: cell.state.replace('notable_', ''), since: null });
     }
-  };
+    items.sort((x, y) => POL_RANK[x.tone] - POL_RANK[y.tone]);
+    if (items.length) return { level: 'unusual', tone: items[0].tone, items, text: verdictText(items) };
+    if ((ins.errors || []).length) return { level: 'partial', items, text: `Partly checked · ${plural(ins.errors.length, 'check')} could not run` };
+    const one = rows.length === 1 && rows[0] !== aggKey ? rows[0] : null;
+    const checks = one ? Object.entries(cells[one] || {}).filter(([d]) => d !== 'data').reduce((s, [, c]) => s + ((c && c.tests) || 0), 0) : ins.testsRun;
+    return { level: 'clear', items, text: one ? `${one}: nothing unusual · ${fmtCount(checks)} checks` : `Nothing unusual · ${fmtCount(checks)} checks` };
+  }
+  const itemLabel = (it) => (it.chain ? `${it.asset} on ${it.chain}` : `${it.asset} ${it.area}`);
+  const verdictText = (items) => (items.length === 1 ? `Unusual: ${itemLabel(items[0])}` : `${items.length} unusual: ${items.slice(0, 2).map(itemLabel).join(', ')}${items.length > 2 ? ` +${items.length - 2} more` : ''}`);
 
   const helpers = {
-    RANGES, DEFAULT_RANGE, rangeById, tOf, isoOf, addDays, daysBetween,
-    compactEnd, compactAt, compactLast, compactFirst, sliceCompact, changeFromCompact, changeFor, pctFrom, normalizeChanges, peakOf, alignCompacts, bucketChanges, sumCompacts, quantile,
-    startsAtLaunch, netIssuance, coverageStart, evidenceUnit, fmtEvidence, snapshotAge, sourceAgeNow, sourceStatusNow, chainCount, tickPlan, canonicalAsset, isDataQuality,
-    fmtUsd, fmtNum, fmtUnit, fmtPct, fmtShare, fmtBp, fmtCount, fmtP, fmtE, oneInN, fmtDate, fmtDateTime, fmtAgo, fmtHours, fmtBytes, fmtTick,
-    parseQuery, buildQuery, insightMatches, ageText, whyText, mixHex, alpha, safeUrl,
+    RANGES, DEFAULT_RANGE, LENSES, rangeById, spanOf, tOf, isoOf, addDays, daysBetween,
+    compactEnd, compactAt, compactLast, compactFirst, sliceCompact, changeFromCompact, changeFor, pctFrom, normalizeChanges, peakOf, alignCompacts, sumCompacts, bucketChanges, quantile,
+    coverageStart, downsampleIdx, snapshotAge, sourceAgeNow, sourceStatusNow, canonicalAsset, isDataQuality, insightMatches, roleOf, titleOf, fallbackTitle, parseWindow,
+    fmtUsd, fmtPct, fmtShare, fmtPortion, fmtPP, fmtPeg, pegWords, fmtOz, fmtCount, fmtMD, fmtDate, fmtHM, fmtAge, fmtTick, tickPlan,
+    parseQuery, buildQuery, movesModel, pegStats, shareChange, ratioChange, goldPriceChange, fallbackVerdict, verdictText,
   };
   root.PaxosDashboard = helpers;
   if (typeof document === 'undefined' || !root.document) return;
@@ -441,8 +468,10 @@
   // ===== Browser =====
   const $ = (id) => document.getElementById(id);
   const hasChart = () => typeof root.Chart === 'function';
+  const reduced = () => !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const narrow = () => (root.innerWidth || 1280) < 760;
   const TOK = {};
-  const TOKEN_NAMES = ['page', 'surface', 'surface-2', 'raised', 'ink', 'ink-2', 'ink-muted', 'hair', 'axis', 'neutral', 'div-pos', 'div-neg', 'div-mid', 'good', 'warn', 'crit', 'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'];
+  const TOKEN_NAMES = ['page', 'surface', 'surface-2', 'raised', 'ink', 'ink-2', 'ink-muted', 'hair', 'axis', 'focus', 'neutral', 'div-pos', 'div-neg', 'good', 'warn', 'crit', 'c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'];
   function readTokens() {
     const cs = getComputedStyle(document.documentElement);
     for (const n of TOKEN_NAMES) TOK[n] = cs.getPropertyValue('--' + n).trim() || '#888888';
@@ -450,20 +479,9 @@
   }
 
   const state = {
-    payload: null,
-    error: null,
-    loading: false,
-    receivedAt: 0,
-    asset: 'all',
-    range: DEFAULT_RANGE,
-    legacy: false,
-    open: new Set(),
-    more: new Set(),
-    seenBefore: null,
-    notice: null,
-    retryFor: null,
-    retryPending: false,
-    sameSnapshot: false,
+    payload: null, error: null, loading: false, receivedAt: 0, loadStart: 0, fromSnapshot: false, sameSnapshot: false, retryFor: null, retryPending: false,
+    asset: 'all', range: DEFAULT_RANGE, lens: 'supply', legacy: false, focus: null, fid: null,
+    open: new Set(), more: new Set(), tables: new Set(), expanded: new Set(), autoOpened: new Set(), ftab: 'unusual', seenBefore: null, notice: null, fidMissing: false,
   };
   helpers.state = state;
 
@@ -484,69 +502,15 @@
   }
   const svgEl = (tag, attrs) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, String(v));
+    for (const [k, v] of Object.entries(attrs || {})) if (v !== null && v !== undefined) el.setAttribute(k, String(v));
     return el;
   };
-  function spark(values, color, { w = 120, h: ht = 28, zero = false } = {}) {
-    const svg = svgEl('svg', { viewBox: `0 0 ${w} ${ht}`, preserveAspectRatio: 'none', class: 'spark', 'aria-hidden': 'true', focusable: 'false' });
-    const vals = (values || []).map((v) => (isNum(v) ? v : null));
-    const fin = vals.filter(isNum);
-    if (fin.length < 2) return svg;
-    let lo = Math.min(...fin);
-    let hi = Math.max(...fin);
-    if (zero) {
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
-    }
-    if (hi === lo) {
-      hi += 1;
-      lo -= 1;
-    }
-    const x = (i) => 1 + (i / (vals.length - 1)) * (w - 2);
-    const y = (v) => ht - 2 - ((v - lo) / (hi - lo)) * (ht - 4);
-    if (zero) svg.append(svgEl('line', { x1: 0, x2: w, y1: y(0), y2: y(0), stroke: TOK.axis, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
-    let d = '';
-    let pen = false;
-    vals.forEach((v, i) => {
-      if (!isNum(v)) {
-        pen = false;
-        return;
-      }
-      d += `${pen ? 'L' : 'M'}${x(i).toFixed(2)} ${y(v).toFixed(2)}`;
-      pen = true;
-    });
-    svg.append(svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }));
-    return svg;
-  }
-  const swatch = (color, line, dash) => {
-    const el = h('span', { class: 'swatch' + (line ? ' line' : '') + (dash ? ' dash' : ''), 'aria-hidden': 'true' });
-    // A dashed line swatch draws its dashes in the series colour over a transparent background.
-    if (dash) el.style.color = color;
-    else el.style.background = color;
-    return el;
-  };
-  // Increase / decrease key for charts coloured by sign (the diverging pair is not an entity colour).
-  const signKey = () => h('div', { class: 'legend' }, h('span', null, swatch(TOK['div-pos']), 'increase'), h('span', null, swatch(TOK['div-neg']), 'decrease'));
-  const fold = (key, summary, body, cls = 'fold') => h('details', { class: cls, 'data-k': key, open: state.open.has(key) }, h('summary', null, summary), body);
-  // A long explanatory note sits above the scroll wrapper (a <caption> would be as wide as the table
-  // and run off-screen when the table scrolls sideways).
-  function table({ caption, note, head, rows, cls = '', wrap = '' }) {
-    const tw = tableCore({ caption, head, rows, cls, wrap });
-    return note ? h('div', null, h('p', { class: 'small muted tnote' }, note), tw) : tw;
-  }
-  function tableCore({ caption, head, rows, cls, wrap }) {
-    return h(
-      'div',
-      { class: 'tw ' + wrap },
-      h(
-        'table',
-        { class: cls },
-        caption ? h('caption', null, caption) : null,
-        h('thead', null, h('tr', null, head.map((c, i) => h('th', { scope: 'col', class: i && c.l ? 'l' : null }, typeof c === 'string' ? c : c.t)))),
-        h('tbody', null, rows.map((r) => h('tr', { class: r.sel ? 'sel' : null }, r.cells.map((c, i) => (i === 0 && !r.noTh ? h('th', { scope: 'row', class: 'l' }, c) : h('td', { class: head[i] && head[i].l ? 'l' : null }, c)))))),
-      ),
-    );
-  }
+  // replaceChildren() would print null/false as text; this drops them.
+  const put = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((x) => x !== null && x !== undefined && x !== false));
+  const swatch = (color) => h('span', { class: 'swatch', color, 'aria-hidden': 'true' });
+  const sr = (t) => h('span', { class: 'sr-only' }, t);
+  // Signed numbers never break after their sign.
+  const nw = (t) => h('span', { class: 'nowrap' }, t);
 
   // ----- payload accessors -----
   const P = () => state.payload;
@@ -558,77 +522,370 @@
     const list = ((p.discovery && p.discovery.assets) || []).map((d) => ({ ...d, data: assetData(d.key) }));
     for (const k of Object.keys(p.assets || {})) if (!list.some((d) => d.key === k)) list.push({ ...p.assets[k], data: p.assets[k] });
     const tier = (d) => (d.status === 'active' ? 0 : d.status === 'legacy' ? 1 : 2);
+    list.sort((a, b) => tier(a) - tier(b) || (isNum(a.colorIndex) ? a.colorIndex : 99) - (isNum(b.colorIndex) ? b.colorIndex : 99) || String(a.firstDate || '').localeCompare(String(b.firstDate || '')));
     discCache = { p, list };
-    return list.sort((a, b) => tier(a) - tier(b) || (isNum(a.colorIndex) ? a.colorIndex : 99) - (isNum(b.colorIndex) ? b.colorIndex : 99) || String(a.firstDate || '').localeCompare(String(b.firstDate || '')));
+    return list;
   }
   const meta = (k) => discovered().find((d) => d.key === k) || null;
-  const legacyCount = () => discovered().filter((d) => d.status !== 'active').length;
-  const visibleAssets = () => discovered().filter((d) => d.status === 'active' || state.legacy || d.key === state.asset);
-  const bySupply = (list) => list.slice().sort((a, b) => (a.status === 'active') !== (b.status === 'active') ? (a.status === 'active' ? -1 : 1) : ((b.data && b.data.current && b.data.current.supplyUsd) || 0) - ((a.data && a.data.current && a.data.current.supplyUsd) || 0));
-  const scopeAssets = () => (state.asset === 'all' ? bySupply(visibleAssets()) : discovered().filter((d) => d.key === state.asset));
+  const legacyList = () => discovered().filter((d) => d.status === 'legacy' && d.data);
+  const visibleAssets = () => discovered().filter((d) => d.data && (d.status === 'active' || (state.legacy && d.status === 'legacy') || d.key === state.asset));
+  const supplyUsdOf = (d) => (d && d.data && d.data.current && isNum(d.data.current.supplyUsd) ? d.data.current.supplyUsd : 0);
+  const bySupply = (list) => list.slice().sort((a, b) => (a.status === 'active') !== (b.status === 'active') ? (a.status === 'active' ? -1 : 1) : supplyUsdOf(b) - supplyUsdOf(a));
+  const scopeAssets = () => (state.asset === 'all' ? bySupply(visibleAssets()) : discovered().filter((d) => d.key === state.asset && d.data));
+  const isUsd = (d) => !!d && (d.unit === 'USD' || d.kind === 'usd-stablecoin');
+  const isGold = (d) => !!d && d.kind === 'gold';
+  const inScopeKey = (k) => state.asset === 'all' || k === state.asset;
   function colorOf(k) {
     const d = meta(k);
-    return d && isNum(d.colorIndex) && d.colorIndex >= 0 && d.colorIndex < TOK.palette.length ? TOK.palette[d.colorIndex] : TOK.neutral;
+    return d && d.status === 'active' && isNum(d.colorIndex) && d.colorIndex >= 0 && d.colorIndex < TOK.palette.length ? TOK.palette[d.colorIndex] : TOK.neutral;
   }
+  // Focus emphasis: every series other than the focused asset goes to --neutral.
+  const lensColor = (k) => (state.focus && k !== state.focus ? TOK.neutral : colorOf(k));
   const rng = () => rangeById(state.range);
+  const aggKey = () => (P().totals && P().totals.usd && typeof P().totals.usd.key === 'string' ? P().totals.usd.key : null);
+  // The issuer's name from the aggregate key ("{issuer} USD"); "the issuer" without one.
+  const issuer = () => String(aggKey() || '').replace(/\s*USD$/, '') || 'the issuer';
   function endIso() {
     const p = P();
-    return compactEnd(p.totals && p.totals.usd && p.totals.usd.supplyUsd) || (p.dataAsOf || p.generatedAt || '').slice(0, 10);
+    return compactEnd(p.totals && p.totals.usd && p.totals.usd.supplyUsd) || String((p.totals && p.totals.usd && p.totals.usd.supplyAsOf) || p.dataAsOf || p.generatedAt || '').slice(0, 10);
   }
-  function rangeStart(maxStart) {
+  const refYear = () => endIso().slice(0, 4);
+  const md = (iso) => fmtMD(iso, refYear());
+  const attrWin = (w) => (P().attribution && P().attribution.windows && P().attribution.windows[w]) || null;
+  // The selected period as dates: (from, to]. From the attribution window when present.
+  function period() {
     const r = rng();
-    const s = isNum(r.days) ? addDays(endIso(), -r.days) : maxStart || endIso();
-    return maxStart && s < maxStart ? maxStart : s;
+    const w = attrWin(r.win);
+    const to = (w && w.to) || endIso();
+    if (!isNum(r.days)) return { from: null, to, r };
+    return { from: (w && w.from) || addDays(to, -r.days), to, r };
   }
-  const isUsdKind = (d) => d && (d.unit === 'USD' || d.kind === 'usd-stablecoin');
-  const supplySeries = (d) => (d && d.data && d.data.series ? (isUsdKind(d) ? d.data.series.supplyUsd : d.data.series.supply || d.data.series.supplyUsd) : null);
-  const scopeLabel = () => (state.asset === 'all' ? 'all Paxos assets' : state.asset);
-  // The aggregate pseudo-asset (sum of active USD stablecoins) is shown under the payload's own label
-  // (totals.usd.label); its key is totals.usd.key when sent, else the one health row not discovered.
-  function aggKey() {
-    const p = P();
-    if (p.totals && p.totals.usd && typeof p.totals.usd.key === 'string') return p.totals.usd.key;
-    const hg = p.insights && p.insights.health;
-    const known = new Set(discovered().map((d) => d.key));
-    const extra = ((hg && hg.assets) || []).filter((a) => !known.has(a));
-    return extra.length === 1 ? extra[0] : null;
-  }
-  const labelOf = (k) => (k && k === aggKey() && P().totals.usd.label ? P().totals.usd.label : k);
+  // Span ladder start for time graphics (null = from the series start).
+  const spanStart = (end) => (spanOf(rng()) ? addDays(end || endIso(), -spanOf(rng())) : null);
   const floorOf = (k) => {
     const f = P().insights && P().insights.floorsUsd;
     return f && isNum(f[k]) ? f[k] : null;
   };
-  // Third-party contracts carrying an asset's name (role 'bridged' / 'unlisted') are listed in the
-  // registry for labelling only; the asset's own chains come from its issuer contracts.
-  const THIRD_PARTY = { bridged: 'bridged (third-party)', unlisted: 'not in issuer docs' };
-  const isIssuerAddress = (x) => x && !THIRD_PARTY[x.role];
-  const addressesOf = (k) => ((P().discovery && P().discovery.addresses) || []).filter((x) => x && x.asset === k && isIssuerAddress(x));
-  const roleText = (r) => THIRD_PARTY[r] || (r === 'unverified' ? 'issuer (no docs table to check)' : r === 'issuer' ? 'issuer' : 'n/a');
-  // Health-grid rows in scope: aggregate pseudo-assets (not discovered) plus the visible assets.
-  function healthRows() {
-    const hg = (P().insights || {}).health;
-    if (!hg || !hg.cells) return [];
-    const known = new Set(discovered().map((d) => d.key));
-    const vis = new Set(visibleAssets().map((d) => d.key));
-    return (hg.assets || Object.keys(hg.cells)).filter((a) => hg.cells[a] && (state.asset === 'all' ? !known.has(a) || vis.has(a) : a === state.asset));
-  }
-  const assetLabel = (k) => {
+  const floorsAll = () => (P().insights && P().insights.floorsUsd) || null;
+  const periodWords = () => rng().words;
+  const isActiveOrShown = (k) => {
+    if (k === aggKey()) return true;
     const d = meta(k);
-    return h('span', { class: 'asset-cell' }, swatch(colorOf(k)), k, d && d.status !== 'active' ? h('span', { class: 'badge' }, d.status) : null);
+    return !!d && (d.status === 'active' || (state.legacy && d.status === 'legacy'));
   };
-  let insightIndex = new Map();
-  function indexInsights() {
-    insightIndex = new Map();
-    const ins = P().insights || {};
-    const add = (i) => i && i.id && !insightIndex.has(i.id) && insightIndex.set(i.id, i);
-    for (const c of ins.feed || []) {
-      add(c.lead);
-      (c.related || []).forEach(add);
-    }
-    for (const k of ['standing', 'watch', 'context']) (ins[k] || []).forEach(add);
+  function sourcesNow() {
+    const p = P();
+    const now = Date.now();
+    return ((p && p.sources) || []).map((s) => {
+      const ageNow = sourceAgeNow(s, p, now);
+      return { s, ageNow, status: sourceStatusNow(s, ageNow) };
+    });
+  }
+  // Components that depend on a late or down source get a "◷" with the source and its age.
+  function lateMark(kinds) {
+    const bad = sourcesNow().filter((x) => kinds.includes(x.s.kind) && (x.status === 'stale' || x.status === 'error'));
+    if (!bad.length) return null;
+    const tip = bad.map((x) => `${x.s.label} is ${isNum(x.ageNow) ? fmtAge(x.ageNow) : 'not'} ${isNum(x.ageNow) ? 'old' : 'responding'}.`).join('\n');
+    return h('span', { class: 's-warn', 'data-tip': tip, 'aria-label': tip }, '◷');
   }
 
-  // ----- charts -----
+  // ----- insight index: every list, with list membership as the stage fallback -----
+  let IX = { byId: new Map(), units: [], watch: [], context: [] };
+  // Older payloads: standing items began over 30 days ago, which is what "Earlier" means.
+  const STAGE_FALLBACK = { feed: 'new', standing: 'past', watch: 'watch', context: 'context' };
+  const stageOf = (i) => i.stage || (IX.byId.get(i.id) || {}).list && STAGE_FALLBACK[IX.byId.get(i.id).list] || 'watch';
+  function indexInsights() {
+    const ins = P().insights || {};
+    const byId = new Map();
+    const units = [];
+    const add = (i, list, unit) => i && i.id && !byId.has(i.id) && byId.set(i.id, { i, list, unit });
+    for (const c of ins.feed || []) {
+      if (!c || !c.lead) continue;
+      const u = { lead: c.lead, related: (c.related || []).filter(Boolean), list: 'feed' };
+      units.push(u);
+      add(c.lead, 'feed', u);
+      u.related.forEach((r) => add(r, 'feed', u));
+    }
+    for (const i of ins.standing || []) {
+      // A standing item still holding joins the feed cluster about the same asset and area (one story,
+      // as the briefing's units: lib/paxos/briefing.js unitsOf).
+      const same = i && i.stage === 'ongoing' && i.dimension !== 'data' ? units.find((u) => u.list === 'feed' && [u.lead, ...u.related].some((m) => m.asset === i.asset && m.dimension === i.dimension)) : null;
+      if (same) {
+        same.related.push(i);
+        add(i, 'standing', same);
+        continue;
+      }
+      const u = { lead: i, related: [], list: 'standing' };
+      units.push(u);
+      add(i, 'standing', u);
+    }
+    const watch = (ins.watch || []).filter(Boolean);
+    watch.forEach((i) => add(i, 'watch', { lead: i, related: [], list: 'watch' }));
+    (ins.context || []).forEach((i) => add(i, 'context', null));
+    IX = { byId, units, watch, context: ins.context || [] };
+  }
+  const ins = (id) => (IX.byId.get(id) || {}).i || null;
+  const unitOf = (id) => (IX.byId.get(id) || {}).unit || null;
+  const lensOfIns = (i) => DIM_LENS[i.dimension] || null;
+  // The briefing bullet (current scope and period) that states a unit: finding lines elsewhere show its
+  // words and lead with its stating member, so the briefing, "Unusual here" and All findings agree.
+  function bulletFor(unit) {
+    const b = P() && briefingFor();
+    const fr = b && b.frames && b.frames[rng().frame];
+    if (!unit || !fr || !Array.isArray(fr.bullets)) return null;
+    const ids = new Set([unit.lead, ...(unit.related || [])].filter(Boolean).map((i) => i.id));
+    return fr.bullets.find((x) => x && x.kind === 'finding' && (x.refs || []).some((r) => ids.has(r))) || null;
+  }
+  function relead(u) {
+    const bl = bulletFor(u);
+    const id = bl && bl.link && bl.link.insight;
+    const m = id && u.related.find((i) => i.id === id);
+    return m ? { ...u, lead: m, related: [u.lead, ...u.related.filter((i) => i !== m)] } : u;
+  }
+  // The days a finding covers on charts: a restated peg finding's period (or since its start), else its
+  // evidence window.
+  function findingWindow(i) {
+    if (!i) return null;
+    const bl = bulletFor(unitOf(i.id) || { lead: i, related: [] });
+    if (bl && bl.values && isNum(bl.values.gap)) {
+      const fr = (briefingFor().frames || {})[rng().frame];
+      const since = / since /.test(bl.text) && bl.since ? bl.since : null;
+      return { from: since || addDays(fr.to, -((bl.values.days === 1 ? 1 : fr.days) - 1)), to: fr.to };
+    }
+    return i.evidence ? parseWindow(i.evidence.window, endIso()) : null;
+  }
+  const unitSince = (i) => {
+    const u = i && unitOf(i.id);
+    return [i, ...(u ? [u.lead, ...u.related] : [])].map((m) => m && m.novelty && m.novelty.since).filter(Boolean).sort()[0] || null;
+  };
+
+  // ----- verdict model (server briefing, or the health-cell fallback), with the view-time override -----
+  function briefingFor() {
+    const b = P().briefing;
+    if (!b || typeof b !== 'object') return null;
+    return state.asset === 'all' ? b : (b.byAsset && b.byAsset[state.asset]) || null;
+  }
+  function verdictModel() {
+    const p = P();
+    const b = briefingFor();
+    let v;
+    if (b && b.verdict && b.verdict.level) v = { ...b.verdict, items: (b.verdict.items || []).filter(Boolean) };
+    else {
+      const k = aggKey();
+      const rows = state.asset === 'all' ? [k, ...visibleAssets().filter((d) => d.status === 'active').map((d) => d.key)].filter(Boolean) : [state.asset];
+      v = fallbackVerdict(p, rows, k);
+    }
+    if (p.insights && (p.insights.errors || []).length && v.level === 'clear') v = { ...v, level: 'partial', text: `Partly checked · ${plural(p.insights.errors.length, 'check')} could not run` };
+    // Never "Nothing unusual" while a core source (supply or market) is late or down at view time.
+    if (v.level === 'clear' || v.level === 'minor') {
+      const late = sourcesNow().filter((x) => (x.s.kind === 'supply' || x.s.kind === 'market') && (x.status === 'stale' || x.status === 'error')).sort((a, b) => (a.s.kind === 'supply' ? 0 : 1) - (b.s.kind === 'supply' ? 0 : 1))[0];
+      if (late) v = { ...v, level: 'override', text: `Nothing ${v.level === 'minor' ? 'major' : 'unusual'} in available data · ${late.s.kind} data ${isNum(late.ageNow) ? fmtAge(late.ageNow) + ' old' : 'missing'}` };
+    }
+    return v;
+  }
+  const VERDICT_ICON = { minor: ['✓', 's-good'], clear: ['✓', 's-good'], partial: ['◆', 's-ink2'], override: ['◆', 's-ink2'], unknown: ['·', 's-muted'] };
+  const TONE_ICON = { negative: ['!', 't-negative', 'Unusual, negative'], positive: ['+', 't-positive', 'Unusual, positive'], neutral: ['◆', 't-neutral', 'Unusual'] };
+  const toneOf = (t) => (TONE_ICON[t] ? t : 'neutral');
+
+  // ===== Tooltip (one element; [data-tip] on hover/focus, tap on touch) =====
+  let tipEl = null;
+  function tip() {
+    if (!tipEl) {
+      tipEl = h('div', { class: 'tip', 'aria-hidden': 'true' });
+      tipEl.hidden = true;
+      document.body.append(tipEl);
+    }
+    return tipEl;
+  }
+  function showTip(content, x, y) {
+    const t = tip();
+    t.replaceChildren(...[content].flat());
+    t.hidden = false;
+    const w = t.offsetWidth || 240;
+    const vw = document.documentElement.clientWidth || root.innerWidth;
+    t.style.left = Math.max(8, Math.min(x + 12, vw - w - 8)) + 'px';
+    t.style.top = Math.max(8, y + 14) + 'px';
+  }
+  const hideTip = () => tipEl && (tipEl.hidden = true);
+
+  // ===== SVG mini charts (sparklines, small multiples, evidence) =====
+  // o: { n, series:[{ values, color, from? (index where the period starts; earlier drawn in --neutral), fill? }],
+  //      stacked, lo, hi, band:[i0,i1], focusBand:[i0,i1], peer:{ lo:[], hi:[] }, zero, dot, h, label }
+  function mini(o) {
+    const W = 300;
+    const H = o.h || 28;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'spark', focusable: 'false', 'data-graphic': o.graphic ? 'spark' : null });
+    if (o.label) {
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', o.label);
+    } else svg.setAttribute('aria-hidden', 'true');
+    const n = o.n;
+    if (!(n > 1)) return svg;
+    const x = (i) => 1 + (i / (n - 1)) * (W - 2);
+    const tops = o.stacked ? o.series.reduce((acc, s) => acc.map((v, i) => v + (isNum(s.values[i]) ? s.values[i] : 0)), new Array(n).fill(0)) : null;
+    const all = [...(tops || o.series.flatMap((s) => s.values)), ...(o.peer ? [...o.peer.lo, ...o.peer.hi] : []), ...(o.zero ? [0] : [])].filter(isNum);
+    if (!all.length) return svg;
+    let lo = isNum(o.lo) ? o.lo : Math.min(...all);
+    let hi = isNum(o.hi) ? o.hi : Math.max(...all);
+    if (o.stacked) lo = Math.min(0, lo);
+    if (hi === lo) {
+      hi += Math.abs(hi) * 0.01 || 1;
+      lo -= Math.abs(lo) * 0.01 || 1;
+    }
+    const y = (v) => H - 2 - ((v - lo) / (hi - lo)) * (H - 4);
+    const rect = (b, fill, op) => b && b[1] >= b[0] && svg.append(svgEl('rect', { x: x(Math.max(0, b[0])), y: 0, width: Math.max(1, x(Math.min(n - 1, b[1])) - x(Math.max(0, b[0]))), height: H, fill, 'fill-opacity': op }));
+    rect(o.band, TOK.raised, 1);
+    rect(o.focusBand, TOK.focus, 0.12);
+    if (o.peer) {
+      const up = [];
+      const dn = [];
+      for (let i = 0; i < n; i++) if (isNum(o.peer.lo[i]) && isNum(o.peer.hi[i])) {
+        up.push(`${x(i).toFixed(1)},${y(o.peer.hi[i]).toFixed(2)}`);
+        dn.unshift(`${x(i).toFixed(1)},${y(o.peer.lo[i]).toFixed(2)}`);
+      }
+      if (up.length > 1) svg.append(svgEl('polygon', { points: [...up, ...dn].join(' '), fill: TOK.neutral, 'fill-opacity': 0.15 }));
+    }
+    if (o.zero && lo < 0 && hi > 0) svg.append(svgEl('line', { x1: 0, x2: W, y1: y(0), y2: y(0), stroke: TOK.axis, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
+    const path = (vals, i0, i1) => {
+      let d = '';
+      let pen = false;
+      for (let i = i0; i <= i1; i++) {
+        if (!isNum(vals[i])) {
+          pen = false;
+          continue;
+        }
+        d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(vals[i]).toFixed(2)}`;
+        pen = true;
+      }
+      return d;
+    };
+    const stroke = (d, color) => d && svg.append(svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }));
+    if (o.stacked) {
+      let base = new Array(n).fill(0);
+      for (const s of o.series) {
+        const top = base.map((b, i) => b + (isNum(s.values[i]) ? s.values[i] : 0));
+        const pts = top.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(2)}`).concat(base.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(2)}`).reverse());
+        svg.append(svgEl('polygon', { points: pts.join(' '), fill: s.color, 'fill-opacity': 0.18 }));
+        stroke(path(top, 0, n - 1), s.color);
+        base = top;
+      }
+    } else {
+      for (const s of o.series) {
+        const f = isNum(s.from) ? Math.max(0, Math.min(n - 1, s.from)) : 0;
+        if (s.fill) {
+          const pts = s.values.map((v, i) => (isNum(v) ? `${x(i).toFixed(1)},${y(v).toFixed(2)}` : null)).filter(Boolean);
+          if (pts.length > 1) svg.append(svgEl('polygon', { points: [...pts, `${x(n - 1).toFixed(1)},${H}`, `${x(0).toFixed(1)},${H}`].join(' '), fill: s.color, 'fill-opacity': 0.1 }));
+        }
+        if (f > 0) stroke(path(s.values, 0, f), TOK.neutral);
+        stroke(path(s.values, f, n - 1), s.color);
+      }
+    }
+    if (o.dot) {
+      const s = o.series[o.series.length - 1];
+      for (let i = n - 1; i >= 0; i--) if (isNum(s.values[i])) {
+        svg.append(svgEl('circle', { cx: x(i), cy: y(s.values[i]), r: 2.5, fill: s.color }));
+        break;
+      }
+    }
+    const hair = svgEl('line', { x1: 0, x2: 0, y1: 0, y2: H, stroke: TOK['ink-2'], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', visibility: 'hidden' });
+    svg.append(hair);
+    svg._hair = (i) => {
+      if (i === null || i === undefined) return hair.setAttribute('visibility', 'hidden');
+      hair.setAttribute('x1', x(i));
+      hair.setAttribute('x2', x(i));
+      hair.setAttribute('visibility', 'visible');
+    };
+    return svg;
+  }
+  // A synced crosshair over several minis sharing one date axis (n points). Touch: press and hold.
+  function hoverGroup(n, onMove, onLeave) {
+    const svgs = [];
+    let holdTimer = null;
+    let holding = false;
+    const at = (svg, e) => {
+      const r = svg.getBoundingClientRect();
+      if (!r.width) return null;
+      return Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width) * (n - 1))));
+    };
+    const move = (svg, e) => {
+      const i = at(svg, e);
+      if (i === null) return;
+      svgs.forEach((s) => s._hair(i));
+      onMove(i, e);
+    };
+    const leave = () => {
+      svgs.forEach((s) => s._hair(null));
+      onLeave();
+    };
+    return {
+      attach(svg) {
+        svgs.push(svg);
+        svg.addEventListener('pointermove', (e) => (e.pointerType !== 'touch' || holding) && move(svg, e));
+        svg.addEventListener('pointerleave', (e) => e.pointerType !== 'touch' && leave());
+        svg.addEventListener('pointerdown', (e) => {
+          if (e.pointerType !== 'touch') return;
+          holdTimer = setTimeout(() => {
+            holding = true;
+            move(svg, e);
+          }, 350);
+        });
+        const end = () => {
+          clearTimeout(holdTimer);
+          if (holding) {
+            holding = false;
+            svg._suppressClick = true;
+            setTimeout(() => (svg._suppressClick = false), 400);
+            leave();
+          }
+        };
+        svg.addEventListener('pointerup', end);
+        svg.addEventListener('pointercancel', end);
+        return svg;
+      },
+    };
+  }
+  // Dates of a span for one or more compacts: span ladder start (or earliest start) to end.
+  function spanDates(compacts, end) {
+    const first = compacts.map((c) => compactFirst(c)).filter(Boolean).map((x) => x.date).sort()[0];
+    return datesBetween(spanStart(end) || first || end, end);
+  }
+  function thin(dates, rows, max) {
+    const tot = dates.map((_, i) => rows.reduce((s, r) => s + (isNum(r[i]) ? r[i] : 0), 0));
+    const idx = downsampleIdx(tot, max);
+    if (!idx) return { dates, rows };
+    return { dates: idx.map((i) => dates[i]), rows: rows.map((r) => idx.map((i) => r[i])) };
+  }
+  // Several series on one date axis (cards, chain cards): the union of each series' kept indices.
+  function thinShared(dates, rows, max) {
+    if (dates.length <= max) return { dates, rows };
+    const keep = new Set([0, dates.length - 1]);
+    for (const r of rows) (downsampleIdx(r, Math.max(8, Math.floor(max / Math.max(1, rows.length)))) || []).forEach((i) => keep.add(i));
+    const idx = [...keep].sort((a, b) => a - b);
+    return { dates: idx.map((i) => dates[i]), rows: rows.map((r) => idx.map((i) => r[i])) };
+  }
+  // Card sparklines on one shared axis, so the synced crosshair points at the same date on every card.
+  function cardSparks(series, end) {
+    const dates = spanDates(series.filter(Boolean), end);
+    const al = alignCompacts(series, dates[0], end);
+    const t = thinShared(al.dates, al.rows, 400);
+    const pr = period();
+    return { dates: t.dates, rows: t.rows, from: pr.from ? indexIn(t.dates, pr.from) : 0 };
+  }
+  const indexIn = (dates, iso) => {
+    if (!iso || !dates.length) return null;
+    if (iso <= dates[0]) return 0;
+    if (iso >= dates[dates.length - 1]) return dates.length - 1;
+    let i = dates.findIndex((d) => d >= iso);
+    if (i < 0) i = dates.length - 1;
+    return i;
+  };
+  // The finding window (from #f=) as a band on a date axis.
+  function focusBandOf(dates) {
+    const w = state.fid ? findingWindow(ins(state.fid)) : null;
+    return w ? [indexIn(dates, w.from), indexIn(dates, w.to)] : null;
+  }
+
+  // ===== Chart.js =====
   let io = null;
   const factories = new WeakMap();
   function createChart(canvas) {
@@ -638,9 +895,14 @@
       canvas._chart = new root.Chart(canvas, f());
     } catch (e) {
       console.error('chart failed', e);
-      const box = canvas.parentElement;
-      if (box) box.replaceChildren(h('p', { class: 'sec-error' }, 'Chart could not be drawn; the table below has the values.'));
+      const fig = canvas.closest('figure');
+      if (fig && fig._failed) fig._failed();
     }
+  }
+  function nearView(el) {
+    if (!el.isConnected || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect(), vh = root.innerHeight || 800;
+    return r.bottom > -300 && r.top < vh + 300 && (r.width > 0 || r.height > 0);
   }
   function destroyCharts(el) {
     for (const c of el.querySelectorAll('canvas')) {
@@ -662,1543 +924,1810 @@
     C.defaults.responsive = true;
     C.defaults.maintainAspectRatio = false;
     C.defaults.plugins.legend.display = false;
-    Object.assign(C.defaults.plugins.tooltip, {
-      backgroundColor: TOK['surface-2'],
-      borderColor: TOK.axis,
-      borderWidth: 1,
-      titleColor: TOK.ink,
-      bodyColor: TOK.ink,
-      footerColor: TOK['ink-muted'],
-      padding: 8,
-      usePointStyle: true,
-      boxWidth: 10,
-      boxHeight: 10,
-      boxPadding: 4,
-    });
+    Object.assign(C.defaults.plugins.tooltip, { backgroundColor: TOK['surface-2'], borderColor: TOK.axis, borderWidth: 1, titleColor: TOK.ink, bodyColor: TOK.ink, footerColor: TOK['ink-muted'], padding: 8, usePointStyle: true, boxWidth: 10, boxHeight: 10, boxPadding: 4 });
     if ('IntersectionObserver' in root) {
-      io = new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) if (e.isIntersecting) {
-            io.unobserve(e.target);
-            createChart(e.target);
-          }
-        },
-        { rootMargin: '400px 0px' },
-      );
+      io = new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) {
+          io.unobserve(e.target);
+          createChart(e.target);
+        }
+      }, { rootMargin: '300px 0px' });
     }
   }
-  // Vertical hairline at the hovered x (crosshair); tooltips run in index mode.
-  const crosshair = {
-    id: 'crosshair',
+  // Period band (and the finding window) behind the data; vertical crosshair on hover.
+  const bandPlugin = {
+    id: 'band',
+    beforeDatasetsDraw(chart, _a, o) {
+      if (!o || !o.bands) return;
+      const { top, bottom } = chart.chartArea;
+      const xs = chart.scales.x;
+      const ctx = chart.ctx;
+      for (const b of o.bands) {
+        if (!b || !isNum(b.i0) || !isNum(b.i1)) continue;
+        const x0 = xs.getPixelForValue(b.i0);
+        const x1 = Math.max(x0 + 2, xs.getPixelForValue(b.i1));
+        ctx.save();
+        ctx.fillStyle = b.color;
+        ctx.globalAlpha = b.alpha || 1;
+        ctx.fillRect(x0, top, x1 - x0, bottom - top);
+        ctx.globalAlpha = 1;
+        if (b.label) {
+          ctx.fillStyle = TOK['ink-muted'];
+          ctx.font = `10px ${root.Chart.defaults.font.family}`;
+          ctx.textBaseline = 'top';
+          ctx.fillText(b.label, x0 + 3, top + 2);
+        }
+        ctx.restore();
+      }
+    },
     afterDatasetsDraw(chart) {
       const act = chart.tooltip && chart.tooltip.getActiveElements();
-      if (!act || !act.length) return;
-      const x = act[0].element.x;
-      const { top, bottom } = chart.chartArea;
+      if (!act || !act.length || chart.config.type !== 'line') return;
+      const x = Math.round(act[0].element.x) + 0.5;
       const ctx = chart.ctx;
       ctx.save();
       ctx.strokeStyle = TOK.axis;
-      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(Math.round(x) + 0.5, top);
-      ctx.lineTo(Math.round(x) + 0.5, bottom);
+      ctx.moveTo(x, chart.chartArea.top);
+      ctx.lineTo(x, chart.chartArea.bottom);
       ctx.stroke();
       ctx.restore();
     },
   };
-  // Direct end labels for small line charts (<= 4 series); colliding labels are dropped, the legend stays.
+  // Direct end labels for small line charts; colliding labels are dropped (the legend stays).
+  // A stacked chart labels each band at its vertical middle with its own value ("{coin} $3.10B"), not at the
+  // stack top (where the top label would sit beside the total).
   const endLabels = {
     id: 'endLabels',
-    afterDatasetsDraw(chart, _args, opts) {
-      if (!opts || !opts.enabled) return;
+    afterDatasetsDraw(chart, _a, o) {
+      if (!o || !o.enabled) return;
       const ctx = chart.ctx;
       const items = [];
+      const stacked = !!(chart.options.scales && chart.options.scales.y && chart.options.scales.y.stacked);
+      let below = null;
       chart.data.datasets.forEach((ds, i) => {
-        const metaDs = chart.getDatasetMeta(i);
-        if (metaDs.hidden || !ds.label) return;
-        for (let j = metaDs.data.length - 1; j >= 0; j--) {
-          const v = ds.data[j];
-          if (isNum(typeof v === 'object' && v ? v.y : v)) {
-            items.push({ y: metaDs.data[j].y, label: ds.endLabel || ds.label, color: ds.borderColor });
-            break;
-          }
+        const m = chart.getDatasetMeta(i);
+        for (let j = m.data.length - 1; j >= 0; j--) if (isNum(ds.data[j])) {
+          const top = m.data[j].y;
+          const base = stacked ? (below === null ? chart.scales.y.getPixelForValue(0) : below) : top;
+          items.push({ y: stacked ? (top + base) / 2 : top, label: o.fmt ? `${ds.label} ${o.fmt(ds.data[j])}` : ds.label, color: ds.borderColor });
+          if (stacked) below = top;
+          break;
         }
       });
       items.sort((a, b) => a.y - b.y);
       ctx.save();
       ctx.font = `11px ${root.Chart.defaults.font.family}`;
       ctx.textBaseline = 'middle';
-      let lastY = -Infinity;
+      let last = -Infinity;
       const x = chart.chartArea.right + 6;
       for (const it of items) {
-        if (it.y - lastY < 13) continue;
-        ctx.strokeStyle = it.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, it.y);
-        ctx.lineTo(x + 8, it.y);
-        ctx.stroke();
+        if (it.y - last < 13) continue;
+        ctx.fillStyle = it.color;
+        ctx.fillRect(x, it.y - 1, 8, 2);
         ctx.fillStyle = TOK['ink-2'];
         ctx.fillText(it.label, x + 11, it.y);
-        lastY = it.y;
+        last = it.y;
       }
       ctx.restore();
     },
   };
-  function axisX(labels, spanDays, extra = {}) {
-    const max = root.innerWidth < 600 ? 4 : 7;
-    // Long spans: one label per calendar month or year boundary (never two "2024" ticks).
-    const plan = tickPlan(labels, spanDays, max);
-    return {
-      type: 'category',
-      labels,
-      grid: { display: false },
-      border: { color: TOK.axis },
-      ticks: {
-        autoSkip: !plan,
-        maxRotation: 0,
-        maxTicksLimit: plan ? undefined : max,
-        color: TOK['ink-muted'],
-        callback(v, i) {
-          if (plan && !plan.has(i)) return null;
-          return fmtTick(this.getLabelForValue(v), spanDays);
-        },
-      },
-      ...extra,
-    };
-  }
-  function axisY(fmt, extra = {}) {
-    return {
-      grid: { color: (c) => (c.tick && c.tick.value === 0 ? TOK.axis : TOK.hair), drawTicks: false },
-      border: { display: false },
-      ticks: { color: TOK['ink-muted'], maxTicksLimit: 5, padding: 6, callback: (v) => fmt(v) },
-      ...extra,
-    };
-  }
-  function tooltipDate(spanHours) {
-    return (items) => {
-      const l = items && items[0] ? String(items[0].label) : '';
-      return spanHours ? `${fmtDate(l)} ${l.slice(11, 16)} UTC` : fmtDate(l);
-    };
-  }
-  function lineDataset(label, data, color, extra = {}) {
-    return {
-      label,
-      data,
-      borderColor: color,
-      backgroundColor: color,
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      pointHoverBorderWidth: 2,
-      pointHoverBorderColor: TOK.surface,
-      pointStyle: 'line',
-      tension: 0,
-      borderJoinStyle: 'round',
-      borderCapStyle: 'round',
-      spanGaps: false,
-      ...extra,
-    };
-  }
-  // Filled level series: missing days are bridged with a dashed segment so a gap does not read as a
-  // drop to zero; the figure says how many days were bridged.
-  function bridged(extra = {}) {
-    return { spanGaps: true, segment: { borderDash: (ctx) => (ctx.p1DataIndex - ctx.p0DataIndex > 1 ? [4, 3] : undefined) }, ...extra };
-  }
-  function gapNote(values) {
-    let first = -1;
-    let last = -1;
-    values.forEach((v, i) => {
-      if (isNum(v)) {
-        if (first < 0) first = i;
-        last = i;
-      }
-    });
-    if (first < 0) return null;
-    const n = values.slice(first, last + 1).filter((v) => !isNum(v)).length;
-    return n ? `${plural(n, 'missing day')} bridged (dashed)` : null;
-  }
-  function lineConfig({ labels, datasets, yFmt, spanDays, hourly, stacked, endLabel, yExtra, tipFmt }) {
+  function lineConfig({ labels, datasets, yFmt, tipFmt, spanDays, stacked, endLabel, yExtra, band }) {
     const fmt = tipFmt || yFmt;
+    const max = narrow() ? 4 : 7;
+    const plan = tickPlan(labels, spanDays, max);
     return {
       type: 'line',
       data: { labels, datasets },
-      plugins: [crosshair, endLabels],
+      plugins: [bandPlugin, endLabels],
       options: {
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { right: endLabel ? 64 : 4, top: 4 } },
-        scales: { x: axisX(labels, spanDays), y: axisY(yFmt, { stacked: !!stacked, ...(yExtra || {}) }) },
+        layout: { padding: { right: endLabel && !narrow() ? (endLabel.fmt ? 116 : 56) : 4, top: 4 } },
+        scales: {
+          x: { type: 'category', grid: { display: false }, border: { color: TOK.axis }, ticks: { autoSkip: !plan, maxRotation: 0, maxTicksLimit: plan ? undefined : max, color: TOK['ink-muted'], callback(v, i) {
+            if (plan && !plan.has(i)) return null;
+            return fmtTick(this.getLabelForValue(v), spanDays);
+          } } },
+          y: { stacked: !!stacked, grid: { color: (c) => (c.tick && c.tick.value === 0 ? TOK.axis : TOK.hair), drawTicks: false }, border: { display: false }, ticks: { color: TOK['ink-muted'], maxTicksLimit: 5, padding: 6, callback: (v) => yFmt(v) }, ...(yExtra || {}) },
+        },
         plugins: {
-          endLabels: { enabled: !!endLabel },
-          tooltip: {
-            itemSort: (a, b) => b.datasetIndex - a.datasetIndex,
-            callbacks: {
-              title: tooltipDate(hourly),
-              label: (c) => ` ${fmt(c.parsed.y)}  ${c.dataset.label}`,
-              footer: stacked ? (items) => `Total ${fmt(items.reduce((s, i) => s + (isNum(i.parsed.y) ? i.parsed.y : 0), 0))}` : undefined,
-            },
-          },
+          band: { bands: band || [] },
+          endLabels: { enabled: !!endLabel && !narrow(), fmt: endLabel && endLabel.fmt },
+          tooltip: { itemSort: (a, b) => b.datasetIndex - a.datasetIndex, callbacks: {
+            title: (it) => (it && it[0] ? (String(it[0].label).length > 10 ? `${fmtDate(String(it[0].label))} ${String(it[0].label).slice(11, 16)} UTC` : fmtDate(String(it[0].label))) : ''),
+            label: (c) => ` ${isNum(c.parsed.y) ? fmt(c.parsed.y) : '—'}  ${c.dataset.label}`,
+            footer: stacked ? (items) => `Total ${fmt(items.reduce((s, i) => s + (isNum(i.parsed.y) ? i.parsed.y : 0), 0))}` : undefined,
+          } },
         },
       },
     };
   }
-  // A figure owns its title, the chart box (fixed height including the x-axis band) and a table-view twin.
-  function figure({ key, title, sub, size = '', label, config, tableView, legend, signed }) {
-    const fig = h('figure', { class: 'viz' });
-    fig.append(h('figcaption', null, title, sub ? h('span', { class: 'cap-sub' }, sub) : null));
-    if (legend && legend.length > 1) fig.append(h('div', { class: 'legend', 'aria-hidden': 'true' }, legend.map((l) => h('span', null, swatch(l.color, l.line, l.dash), l.label))));
-    if (signed) fig.append(signKey());
+  const lineDs = (label, data, color, extra = {}) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, pointStyle: 'line', tension: 0, spanGaps: true, ...extra });
+  const alpha = (hex, a) => (/^#[0-9a-f]{6}$/i.test(hex || '') ? `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${a})` : hex);
+  function periodBands(dates) {
+    const pr = period();
+    const out = [];
+    if (pr.from && dates.length) {
+      const i0 = indexIn(dates, addDays(pr.from, 1));
+      if (i0 > 1) out.push({ i0, i1: dates.length - 1, color: TOK.raised, label: pr.r.label });
+    }
+    const fb = focusBandOf(dates);
+    if (fb) out.push({ i0: fb[0], i1: fb[1], color: TOK.focus, alpha: 0.1 });
+    return out;
+  }
+
+  // ----- figure: title, chart (lazy canvas or HTML/SVG body), legend, Table toggle (table built on open) -----
+  // Source kinds each lens depends on (a late or down source puts a ◷ after the figure titles).
+  const LENS_SOURCES = { supply: ['supply'], chains: ['supply'], peg: ['price'], market: ['market'], usage: ['defi', 'usage', 'onchain'], income: ['economics'] };
+  function figure({ key, title, sub, label, config, body, legend, table, size }) {
+    const late = lateMark(LENS_SOURCES[state.lens] || []);
+    const fig = h('figure', { class: 'viz' }, h('figcaption', null, title, late ? [' ', late] : null, sub ? h('span', { class: 'cap-sub' }, sub) : null));
     const tkey = 'tv:' + key;
-    if (hasChart() && config) {
+    const holder = h('div', { class: 'tw-holder' });
+    let btn = null;
+    let built = false;
+    const setOpen = (open) => {
+      if (open && !built && table) {
+        built = true;
+        try {
+          holder.replaceChildren(table());
+        } catch (e) {
+          console.error('table failed', e);
+          holder.replaceChildren(h('p', { class: 'fail' }, 'Not in this snapshot.'));
+        }
+      }
+      holder.hidden = !open;
+      if (btn) {
+        btn.setAttribute('aria-pressed', String(open));
+        btn.textContent = open ? 'Hide table' : 'Table';
+      }
+      if (open) state.tables.add(tkey);
+      else state.tables.delete(tkey);
+    };
+    let chartEl = null;
+    if (config && hasChart()) {
       const canvas = h('canvas', { role: 'img', 'aria-label': label || title });
       factories.set(canvas, config);
-      fig.append(h('div', { class: 'chart-box ' + size }, canvas));
-      queueMicrotask(() => {
-        if (io) io.observe(canvas);
-        else createChart(canvas);
-      });
-    } else if (config) {
-      fig.append(h('p', { class: 'small muted' }, 'Charts are unavailable (the chart library did not load); the values are in the table.'));
-      state.open.add(tkey);
+      chartEl = h('div', { class: 'chart-box ' + (size || ''), 'data-graphic': 'chart' }, canvas);
+      // A chart already in (or next to) view is drawn now (a tab switch never shows an empty frame); the
+      // lazy observer handles those further down the page.
+      queueMicrotask(() => (!io || nearView(canvas) ? createChart(canvas) : io.observe(canvas)));
+    } else if (body) {
+      try {
+        chartEl = body();
+      } catch (e) {
+        console.error('figure body failed', e);
+        chartEl = null;
+        fig._bodyFailed = true;
+      }
     }
-    if (tableView) fig.append(fold(tkey, ['Table view', h('span', { class: 'sr-only' }, `: ${title}`)], tableView(), 'tv'));
+    if (chartEl) fig.append(chartEl);
+    else if (config || fig._bodyFailed) {
+      if (fig._bodyFailed) fig.append(h('p', { class: 'fail' }, 'This part couldn\'t be drawn. The table has the numbers.'));
+      state.tables.add(tkey);
+    }
+    if (legend && (legend.length > 1 || legend.force)) fig.append(h('div', { class: 'legend', 'aria-hidden': 'true' }, legend.map((l) => h('span', { 'data-tip': l.tip || null }, l.band ? h('span', { class: 'swatch band', color: l.color }) : swatch(l.color), l.label))));
+    fig._failed = () => {
+      if (chartEl) chartEl.replaceWith(h('p', { class: 'fail' }, 'This part couldn\'t be drawn. The table has the numbers.'));
+      setOpen(true);
+    };
+    if (table) {
+      btn = h('button', { type: 'button', class: 'linkbtn tv-btn', 'aria-pressed': 'false', 'data-tv': tkey, 'aria-label': null, onclick: () => setOpen(holder.hidden) }, 'Table');
+      fig.append(btn, holder);
+      holder.hidden = true;
+      if (state.tables.has(tkey)) setOpen(true);
+    }
     return fig;
   }
+  function table({ caption, head, rows, wrap }) {
+    return h('div', { class: 'tw ' + (wrap || '') }, h('table', null,
+      caption ? h('caption', null, caption) : null,
+      h('thead', null, h('tr', null, head.map((c) => h('th', { scope: 'col', class: c && c.l ? 'l' : null }, typeof c === 'string' ? c : c.t)))),
+      h('tbody', null, rows.map((r) => h('tr', { class: r.cls || null }, r.cells.map((c, i) => (i === 0 ? h('th', { scope: 'row', class: 'l' }, c) : h('td', { class: head[i] && head[i].l ? 'l' : null, 'data-tip': c && c.tip ? c.tip : null }, c && c.v !== undefined ? c.v : c))))))));
+  }
+  const dash = (why) => ({ v: '—', tip: why });
 
-  // ===== Sections =====
-
-  // Sources with their status re-judged at the current time (a cached snapshot keeps its ageHours).
-  function sourcesNow() {
+  // ===== Components =====
+  // 1. Freshness chip (§3.1)
+  function chipModel() {
     const p = P();
     const now = Date.now();
-    return ((p && p.sources) || []).map((s) => {
-      const ageNow = sourceAgeNow(s, p, now);
-      return { s, ageNow, status: sourceStatusNow(s, ageNow) };
-    });
+    if (!p) {
+      if (state.error) return { dot: 'crit', text: 'Data unavailable' }; // the error panel carries the line and Retry
+      return { dot: null, text: 'Loading…', extra: state.loading && now - state.loadStart >= 3000 ? 'Building a fresh snapshot; this can take up to 15 seconds.' : null };
+    }
+    const today = new Date(now).toISOString().slice(0, 10);
+    const gen = String(p.generatedAt || '');
+    const snap = `${gen.slice(0, 10) !== today ? md(gen.slice(0, 10)) + ' ' : ''}${fmtHM(gen)} UTC`;
+    if (root.navigator && root.navigator.onLine === false) return { dot: 'muted', text: `Offline · snapshot ${snap}` };
+    if (state.error) return { dot: 'warn', text: `Snapshot ${snap} · couldn't refresh`, extra: 'Showing the last saved data.', retry: true };
+    const fr = snapshotAge(p, now);
+    if (!fr.current || state.fromSnapshot) {
+      if (state.sameSnapshot && !state.loading && !state.retryPending) return { dot: 'warn', text: `Snapshot ${snap} · no newer data yet` };
+      return { dot: 'muted', text: `Snapshot ${snap} · updating` };
+    }
+    const prices = discovered().filter((d) => d.status === 'active' && d.data && d.data.current && d.data.current.priceAsOf).map((d) => d.data.current.priceAsOf).sort().pop();
+    const supplyTo = (p.totals.usd.supplyAsOf || p.dataAsOf || '').slice(0, 10);
+    let text = `Supply as of ${md(supplyTo)}${prices ? ` · prices ${fmtHM(prices)} UTC` : ''}`;
+    const now2 = sourcesNow();
+    const down = now2.filter((x) => x.status === 'error').length;
+    const late = now2.filter((x) => x.status === 'stale').length;
+    // A figure the build could not produce (a null section, an asset without a USD value) is missing even
+    // when its sources only answered in part (payload.status reasons of kind "section").
+    const missing = ((p.status && Array.isArray(p.status.reasons) && p.status.reasons) || []).filter((r) => r && r.kind === 'section').length;
+    if (down) text += ` · ${down} source${down === 1 ? '' : 's'} down`;
+    if (late) text += ` · ${late} source${late === 1 ? '' : 's'} late`;
+    if (missing) text += ` · ${missing} figure${missing === 1 ? '' : 's'} missing`;
+    return { dot: down || late || missing ? 'warn' : 'good', text };
   }
-  function statusParts() {
+  function renderChip() {
+    const m = chipModel();
+    const chip = $('chip');
     const p = P();
-    if (!p) return { ico: null, text: state.loading ? 'Loading the latest snapshot…' : state.error ? `The dashboard data could not be loaded (${state.error.message}).` : 'Loading the latest snapshot…' };
-    const fr = snapshotAge(p, Date.now());
-    const when = fmtDateTime(p.generatedAt);
-    const c = p.cache || {};
-    const pending = state.loading || state.retryPending;
-    let ico = '✓';
-    let cls = 's-good';
-    let text;
-    if (state.error) {
-      ico = '!';
-      cls = 's-warn';
-      text = `Refresh failed (${state.error.message}). Showing the snapshot from ${when}${fr.current ? '' : ', which is no longer current'}.`;
-    } else if (fr.current) {
-      text = pending ? 'Current snapshot; checking for a newer one…' : 'Current snapshot.';
-    } else {
-      ico = '!';
-      cls = 's-warn';
-      const beyond = isNum(c.sMaxAge) && isNum(c.staleWhileRevalidate) && fr.ageSec > c.sMaxAge + c.staleWhileRevalidate;
-      text = `Snapshot from ${when}${beyond ? ', older than its cache window' : ''}; ${pending ? 'refreshing…' : state.sameSnapshot ? 'no newer snapshot has been published yet (checking every minute).' : 'refreshing.'}`;
+    const sig = `${m.dot}|${m.text}`;
+    if (chip.dataset.sig !== sig) {
+      chip.dataset.sig = sig;
+      chip.replaceChildren(...[m.dot ? h('span', { class: 'dot dot-' + m.dot, 'aria-hidden': 'true' }) : null, h('span', null, m.text)].filter(Boolean));
     }
-    const bad = sourcesNow().filter((x) => x.status !== 'ok' && x.status !== 'skipped');
-    return { ico, cls, text, bad };
+    const supplyTo = p ? (p.totals.usd.supplyAsOf || p.dataAsOf || '').slice(0, 10) : null;
+    chip.dataset.tip = p ? `Supply is a daily snapshot (${md(supplyTo)} 00:00 UTC). Prices are hourly. Built ${fmtHM(p.generatedAt)} UTC.` : '';
+    chip.disabled = !p;
+    const live = $('chip-live');
+    if (live.textContent !== m.text) live.textContent = m.text;
+    const ex = $('chip-extra');
+    const exSig = `${m.extra || ''}|${!!m.retry}|${state.loading}`;
+    if (ex.dataset.sig !== exSig) {
+      ex.dataset.sig = exSig;
+      ex.replaceChildren(...[m.extra ? h('span', null, m.extra) : null, m.retry ? h('button', { type: 'button', class: 'btn', 'data-action': 'reload', 'aria-busy': String(!!state.loading) }, 'Retry') : null].filter(Boolean));
+      ex.hidden = !m.extra && !m.retry;
+    }
   }
-  function renderHeader() {
+
+  // 2. Scope bar (§3.2) and the mobile compact bar
+  function renderScope() {
     const p = P();
-    if (p) {
-      const age = Date.now() - Date.parse(p.generatedAt);
-      const asOf = (p.totals && p.totals.usd && p.totals.usd.supplyAsOf) || null;
-      $('head-meta').replaceChildren(
-        h('span', null, 'Generated ', h('time', { datetime: p.generatedAt }, fmtDateTime(p.generatedAt)), ` (${fmtAgo(age)})`),
-        asOf ? h('span', null, 'Supply snapshot ', h('time', { datetime: asOf }, fmtDateTime(asOf))) : p.dataAsOf ? h('span', null, 'Data as of ', h('time', { datetime: p.dataAsOf }, fmtDateTime(p.dataAsOf))) : null,
-      );
-      $('foot-src').textContent = 'Sources: ' + [...new Set((p.sources || []).map((s) => s.host))].join(', ');
+    const scope = $('scope');
+    scope.setAttribute('aria-disabled', String(!p));
+    if (!p) {
+      if (!$('f-range').childNodes.length) $('f-range').replaceChildren(...RANGES.map((r) => h('button', { type: 'button', 'data-range': r.id, 'aria-pressed': String(state.range === r.id), disabled: true }, r.label, sr(` (${r.text})`))));
+      return;
     }
-    // The live region only changes when its message does (no minute-by-minute announcements); the
-    // Refresh button lives outside it and is never rebuilt, so it keeps focus across refreshes.
-    const sp = statusParts();
-    const kids = [sp.ico ? h('span', { class: `ico ${sp.cls}`, 'aria-hidden': 'true' }, sp.ico) : null, h('span', null, sp.text)];
-    if (sp.bad && sp.bad.length) {
-      kids.push(h('span', null, `${plural(sp.bad.length, 'source')} degraded (${sp.bad.map((x) => `${x.s.label}: ${(SOURCE_STATUS[x.status] || {}).label || x.status}`).join('; ')}); sections that depend on ${sp.bad.length === 1 ? 'it' : 'them'} may be incomplete.`), h('a', { href: '#s-quality' }, 'Source details'));
+    const btns = [h('button', { type: 'button', 'data-asset': 'all', 'aria-pressed': String(state.asset === 'all') }, 'All')];
+    const active = bySupply(discovered().filter((d) => d.status === 'active' && d.data));
+    for (const d of active) btns.push(h('button', { type: 'button', 'data-asset': d.key, 'aria-pressed': String(state.asset === d.key), 'data-tip': d.name || null }, swatch(colorOf(d.key)), d.key));
+    const leg = legacyList();
+    if (state.legacy) for (const d of leg) btns.push(h('button', { type: 'button', 'data-asset': d.key, 'aria-pressed': String(state.asset === d.key), 'data-tip': d.name || null }, swatch(TOK.neutral), d.key, sr(' (legacy)')));
+    if (leg.length) btns.push(h('button', { type: 'button', class: 'legacy-toggle', 'data-action': 'legacy', 'data-legacy': '', 'aria-pressed': String(state.legacy), 'data-tip': `${joinAnd(leg.map((d) => d.key))}: no longer listed as issued by ${issuer()}; shown for the supply still out.` }, state.legacy ? 'Hide legacy' : `+${leg.length} legacy`));
+    const row = $('f-asset');
+    row.replaceChildren(...btns);
+    $('f-range').replaceChildren(...RANGES.map((r) => h('button', { type: 'button', 'data-range': r.id, 'aria-pressed': String(state.range === r.id) }, r.label, sr(` (${r.text})`))));
+    // Narrow screens scroll the asset row sideways: the pressed asset is scrolled into it (never under the
+    // edge fade), and the fade shows only while more buttons lie to the right.
+    const pressed = btns.find((b) => b.getAttribute('aria-pressed') === 'true' && b.dataset.asset !== 'all');
+    if (pressed && row.scrollWidth > row.clientWidth) {
+      const r0 = row.getBoundingClientRect(), r1 = pressed.getBoundingClientRect(), clear = r0.left + 0.8 * r0.width; // (the fade covers the last 15%)
+      if (r1.right > clear) row.scrollLeft += r1.right - clear + 8;
+      else if (r1.left < r0.left) row.scrollLeft -= r0.left - r1.left + 8;
     }
-    if (state.notice) kids.push(h('span', null, state.notice));
-    const st = $('status');
-    const sig = kids.filter(Boolean).map((k) => k.textContent).join('|');
-    if (st.dataset.sig !== sig) {
-      st.dataset.sig = sig;
-      st.replaceChildren(...kids.filter(Boolean));
-    }
-    const btn = $('refresh');
-    if (btn) {
-      btn.hidden = !p && !state.error;
-      btn.textContent = state.loading ? (p ? 'Refreshing…' : 'Retrying…') : state.error ? 'Retry' : 'Refresh';
-      btn.setAttribute('aria-busy', String(!!state.loading));
-    }
-    updateLiveAges();
+    fadeEnd(row);
   }
-  // Source ages and statuses in the Data quality section, updated in place on the minute tick.
-  function updateLiveAges() {
-    const byId = new Map(sourcesNow().map((x) => [x.s.id, x]));
-    for (const el of document.querySelectorAll('[data-src-age]')) {
-      const x = byId.get(el.dataset.srcAge);
-      if (x) el.textContent = sourceAgeText(x);
-    }
-    for (const el of document.querySelectorAll('[data-src-status]')) {
-      const x = byId.get(el.dataset.srcStatus);
-      if (x && el.dataset.st !== x.status) {
-        el.dataset.st = x.status;
-        el.className = `nowrap st-${x.status}`;
-        el.replaceChildren(...statusLabel(x));
-      }
-    }
-  }
-  const sourceAgeText = (x) => (isNum(x.ageNow) ? `${fmtHours(x.ageNow)}${isNum(x.s.cadenceHours) ? ` / ${fmtHours(x.s.cadenceHours)}` : ''}` : isNum(x.s.cadenceHours) ? `n/a / ${fmtHours(x.s.cadenceHours)}` : 'n/a');
-  function statusLabel(x) {
-    const st = SOURCE_STATUS[x.status] || SOURCE_STATUS.skipped;
-    return [h('span', { class: 'ico', 'aria-hidden': 'true' }, st.ico), ' ', st.label, x.status !== x.s.status ? h('span', { class: 'small muted' }, ` (was ${x.s.status} when generated)`) : null];
-  }
-  const SOURCE_STATUS = {
-    ok: { ico: '✓', label: 'ok' },
-    partial: { ico: '~', label: 'partial' },
-    stale: { ico: '!', label: 'stale' },
-    error: { ico: '✕', label: 'error' },
-    skipped: { ico: '–', label: 'skipped' },
-  };
-
-  function renderFilters() {
-    const btns = [h('button', { type: 'button', 'data-asset': 'all', 'aria-pressed': String(state.asset === 'all') }, 'All Paxos')];
-    for (const d of visibleAssets()) {
-      btns.push(h('button', { type: 'button', 'data-asset': d.key, 'aria-pressed': String(state.asset === d.key), title: `${d.name || d.key}${d.status !== 'active' ? ' (' + d.status + ')' : ''}` }, swatch(colorOf(d.key)), d.key, d.status !== 'active' ? h('span', { class: 'sr-only' }, ` (${d.status})`) : null));
-    }
-    $('f-asset').replaceChildren(...btns);
-    // The accessible name starts with the visible label (WCAG 2.5.3); the expansion is extra text.
-    $('f-range').replaceChildren(...RANGES.map((r) => h('button', { type: 'button', 'data-range': r.id, 'aria-pressed': String(state.range === r.id) }, r.label, h('span', { class: 'sr-only' }, ` (${r.text})`))));
-    const lg = $('f-legacy');
-    const n = legacyCount();
-    lg.hidden = !n;
-    lg.setAttribute('aria-pressed', String(state.legacy));
-    lg.textContent = `Show legacy (${n})`;
+  const fadeEnd = (row) => row.classList.toggle('at-end', row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
+  let compactShown = false;
+  function renderCompact(v) {
+    const el = $('compact');
+    const show = compactShown && narrow() && !!P();
+    el.hidden = !show;
+    if (!show) return;
+    put(el,
+      h('button', { type: 'button', 'data-action': 'to-scope' }, `${state.asset === 'all' ? 'All' : state.asset} · ${rng().label} ▾`),
+      h('button', { type: 'button', class: 'cv', 'data-action': 'to-brief' }, v && v.icon ? h('span', { class: 'ico ' + v.icon[1], 'aria-hidden': 'true' }, v.icon[0]) : null, ' ', v ? v.text : ''),
+    );
   }
 
-  // Supply change of an asset in its own unit: USD stablecoins use the payload's token-flow changes;
-  // other assets use current.changeNative when the payload has it, else their native-unit series.
-  const unitOfAsset = (d) => (isUsdKind(d) ? 'USD' : (d && d.unit) || 'token');
-  function assetChange(d, r, end) {
-    const a = d.data;
-    const c = (a && a.current) || {};
-    const s = supplySeries(d);
-    if (isUsdKind(d)) return changeFor(c.change, s, r, end);
-    return changeFor(c.nativeChange, s, r, end);
-  }
-  function assetChangeDays(d, n, w, end) {
-    const c = (d.data && d.data.current) || {};
-    const s = supplySeries(d);
-    const ch = isUsdKind(d) ? c.change : c.nativeChange;
-    return (ch && ch[w]) || changeFromCompact(s, n, end);
-  }
-  // Signed figures never break after their sign.
-  function deltaNode(ch, unit, withPct = true) {
-    if (!ch) return 'n/a';
-    const abs = fmtUnit(ch.abs, unit, { signed: true });
-    return withPct && isNum(ch.pct) ? h('span', null, h('span', { class: 'nowrap' }, fmtPct(ch.pct, { signed: true })), ' ', h('span', { class: 'nowrap' }, `(${abs})`)) : h('span', { class: 'nowrap' }, abs);
-  }
-  const asOfText = (iso, fallbackDate) => (iso ? `as of ${fmtDateTime(iso)}` : fallbackDate ? `as of ${fmtDate(fallbackDate)} (daily data)` : null);
-  // One-line verdict from the health grid: notable asset-health states (data quality counted apart).
-  function healthVerdict(rowKeys) {
-    const ins = P().insights || {};
-    const hg = ins.health;
-    if (!hg || !hg.cells) return null;
-    const groups = { notable_negative: [], notable_positive: [], notable_neutral: [] };
-    let pairs = 0, thin = 0;
-    for (const a of rowKeys) {
-      const row = hg.cells[a];
-      if (!row) continue;
-      for (const dim of hg.dimensions || Object.keys(row)) {
-        if (dim === 'data' || !row[dim] || !(row[dim].tests > 0)) continue;
-        pairs++;
-        if (groups[row[dim].state]) groups[row[dim].state].push(`${labelOf(a)}: ${dim}`);
-        else if (row[dim].state === 'insufficient_history') thin++;
-      }
-    }
-    if (!pairs) return null;
-    const dq = [...(ins.feed || []).flatMap((c) => [c.lead, ...(c.related || [])]), ...(ins.standing || [])].filter((i) => isDataQuality(i) && rowKeys.includes(i.asset)).length;
-    const part = (k, label) => (groups[k].length ? `${groups[k].length} ${label} (${groups[k].join(', ')})` : null);
-    const flagged = [part('notable_negative', 'unusual and negative'), part('notable_positive', 'unusual and positive'), part('notable_neutral', 'unusual, neutral')].filter(Boolean);
-    const n = flagged.length ? groups.notable_negative.length + groups.notable_positive.length + groups.notable_neutral.length : 0;
-    // The rest are within their own history, except cells with too little history to judge.
-    const normal = pairs - n - thin;
-    const rest = `${fmtCount(normal)} asset-dimension pair${normal === 1 ? ' is' : 's are'} within their own history${thin ? ` and ${fmtCount(thin)} ha${thin === 1 ? 's' : 've'} too little history to judge` : ''}`;
-    return `Health checks: ${flagged.length ? `${flagged.join('; ')}; of the others, ${rest}` : rest}.${dq ? ` Data quality: ${plural(dq, 'source note')} (shown apart from asset health).` : ''}`;
-  }
-  // The all-asset USD value: say what it includes and what it cannot value.
-  function allUsdRow(p) {
-    const x = p.totals && p.totals.allUsd;
-    if (!x) return null;
-    const missing = Array.isArray(x.missing) ? x.missing : [];
-    const included = discovered().filter((d) => d.status !== 'dead' && d.data && isNum(d.data.current && d.data.current.supplyUsd) && !missing.includes(d.key));
-    const value = isNum(x.current) ? fmtUsd(x.current) : isNum(x.coveredUsd) ? `≥ ${fmtUsd(x.coveredUsd)}` : 'n/a';
-    const sub = [included.length ? `incl. ${included.map((d) => d.key + (d.status !== 'active' ? ` (${d.status})` : '')).join(', ')}` : null, missing.length ? `excludes ${missing.join(', ')} (no USD value in this snapshot)` : null].filter(Boolean).join('; ');
-    return h('div', { class: 'row' }, h('span', null, x.label || 'All Paxos-issued value (USD)', sub ? h('span', { class: 'small muted' }, h('br'), sub) : null), h('span', { class: 'nowrap' }, value));
-  }
-  function chainsTile(d, tile) {
-    const a = d.data;
-    const cc = chainCount(a, floorOf(d.key), addressesOf(d.key));
-    const largest = (a.chains || []).find((c) => isNum(c.currentUsd) && c.currentUsd > 0);
-    const metaTxt = cc.basis === 'balances' ? `${cc.n === cc.of ? '' : `of ${cc.of} tracked; `}largest: ${largest ? `${largest.chain} ${fmtShare(largest.share)}` : 'n/a'}` : cc.basis === 'contracts' ? 'from discovered contracts; no per-chain balances' : 'no per-chain data';
-    return tile('Chains', isNum(cc.n) ? fmtCount(cc.n) : 'n/a', metaTxt);
+  // 3. Verdict (§3.3)
+  let lastVerdict = null;
+  function renderVerdict() {
+    const el = $('verdict');
+    const p = P();
+    let v;
+    if (!p) v = { level: 'loading', text: state.error ? 'Data unavailable' : 'Loading the latest snapshot…', items: [] };
+    else v = verdictModel();
+    const icon = v.level === 'unusual' ? TONE_ICON[toneOf(v.tone || (v.items[0] && v.items[0].tone))] : VERDICT_ICON[v.level] || null;
+    v.icon = icon;
+    lastVerdict = v;
+    const srPrefix = v.level === 'unusual' ? `${icon[2]}: ` : '';
+    const sig = `${v.level}|${v.text}`;
+    if (el.dataset.sig === sig) return v;
+    el.dataset.sig = sig;
+    if (!el.querySelector('.vtext')) el.replaceChildren(h('span', { class: 'ico', 'aria-hidden': 'true' }), h('span', { class: 'vtext', role: 'status', 'aria-live': 'polite' }));
+    const ico = el.querySelector('.ico');
+    ico.className = 'ico ' + (icon ? icon[1] : '');
+    ico.textContent = icon ? icon[0] : '';
+    el.querySelector('.vtext').replaceChildren(...[srPrefix ? sr(srPrefix.replace(/^Unusual(: )?$/, '')) : null, v.text].filter(Boolean));
+    const old = el.querySelector('.vmore');
+    if (old) old.remove();
+    if (v.level === 'unusual' || v.level === 'minor') el.append(h('button', { type: 'button', class: 'vmore', 'aria-controls': 'brief-list', 'aria-label': 'Show the findings', 'data-action': 'verdict-more' }, h('span', { class: 'vmore-l', 'aria-hidden': 'true' }, 'Details '), '›'));
+    return v;
   }
 
-  // 2. Hero + KPI row
+  // 4. Hero (§3.4)
+  function deltaLine(ch, unit, r, extraFrom) {
+    if (!ch || !isNum(ch.abs)) return { node: null, sr: '', value: null };
+    const fmtAbs = (x) => (unit === 'oz' ? fmtOz(x) : fmtUsd(x));
+    const zero = Math.abs(ch.abs) < (unit === 'oz' ? 0.05 : 0.5);
+    const arrow = zero ? '' : ch.abs > 0 ? '▲ ' : '▼ ';
+    const when = r.win === 'all' ? `since ${fmtMonthYear(ch.from || extraFrom)}` : r.label;
+    const parts = zero ? ['flat'] : [`${arrow}${fmtAbs(Math.abs(ch.abs))}`, isNum(ch.pct) && r.win !== 'all' ? fmtPct(ch.pct) : null];
+    const node = h('span', null, ...parts.filter(Boolean).map((t, i) => [i ? ' · ' : '', nw(t)]), h('span', { class: 'per' }, ` · ${when}`));
+    const srText = zero ? `flat over ${periodWords()}` : `${ch.abs > 0 ? 'up' : 'down'} ${fmtAbs(Math.abs(ch.abs))}${isNum(ch.pct) ? `, ${fmtPct(ch.pct)}` : ''}, over ${r.win === 'all' ? 'the full history' : periodWords()}`;
+    return { node, sr: srText, value: ch.abs };
+  }
+  // Hero / card sparkline: span ladder dates, period in colour, earlier days in --neutral.
+  function sparkFor(c, color, end, h2, shade) {
+    const dates = spanDates([c], end);
+    const al = alignCompacts([c], dates[0], end);
+    let vals = al.rows[0];
+    let ds = al.dates;
+    const t = thin(ds, [vals], 600);
+    ds = t.dates;
+    vals = t.rows[0];
+    const pr = period();
+    const from = pr.from ? indexIn(ds, pr.from) : 0;
+    return { dates: ds, vals, svg: mini({ n: ds.length, series: [{ values: vals, color, from }], band: shade && pr.from ? [from, ds.length - 1] : null, h: h2 || 28 }) };
+  }
   function renderHero() {
     const p = P();
     const r = rng();
+    const pr = period();
     const end = endIso();
-    const wrap = [];
+    const el = $('hero');
+    const subs = [];
+    let label;
+    let value;
+    let delta;
+    let series;
+    const sparkColor = TOK.ink;
+    const supplyLate = lateMark(['supply']);
     if (state.asset === 'all') {
       const t = p.totals.usd;
-      const golds = visibleAssets().filter((d) => !isUsdKind(d) && d.status !== 'dead' && d.data);
-      const notIn = (p.discovery.assets || []).filter((d) => d.kind === 'usd-stablecoin' && d.status !== 'active' && !(t.assets || []).includes(d.key) && p.assets[d.key] && isNum(p.assets[d.key].current.supplyUsd));
-      const verdict = healthVerdict(healthRows());
-      wrap.push(
-        h(
-          'div',
-          { class: 'hero' },
-          h(
-            'div',
-            null,
-            h('div', { class: 'k' }, `${t.label || 'Active Paxos USD stablecoins'}, total supply`),
-            h('div', { class: 'fig' }, fmtUsd(t.current)),
-            h('div', { class: 'deltas' }, ['d1', 'd7', 'd30'].map((w) => h('span', null, `${w.slice(1)}d `, h('b', null, deltaNode(t.change && t.change[w], 'USD'))))),
-            h('div', { class: 'k' }, [`Sum of ${(t.assets || []).join(', ')}`, asOfText(t.supplyAsOf, compactEnd(t.supplyUsd))].filter(Boolean).join(', ')),
-            notIn.length ? h('div', { class: 'k' }, `Not included: ${notIn.map((d) => `${d.key} (${d.status}, ${fmtUsd(p.assets[d.key].current.supplyUsd)})`).join(', ')}`) : null,
-          ),
-          h(
-            'div',
-            { class: 'side' },
-            h('div', { class: 'row' }, h('span', null, 'Share of USD stablecoin market'), h('span', null, fmtShare(t.shareCurrent))),
-            isNum(t.rankEquivalent) ? h('div', { class: 'row' }, h('span', null, 'Rank if it were one stablecoin'), h('span', null, `#${t.rankEquivalent}`)) : null,
-            t.ath ? h('div', { class: 'row' }, h('span', null, 'Below peak'), h('span', null, `${fmtPct(t.drawdownPct)} (peak ${fmtUsd(t.ath.value)}, ${fmtDate(t.ath.date)})`)) : null,
-            golds.map((g) => h('div', { class: 'row' }, h('span', null, `${g.key} (${g.name || g.kind})`), h('span', null, `${fmtUsd(g.data.current.supplyUsd)} · ${fmtUnit(g.data.current.supply, g.unit)}`))),
-            allUsdRow(p),
-          ),
-        ),
-      );
-      if (verdict) wrap.push(h('p', { class: 'verdict' }, verdict));
-      const tiles = bySupply(visibleAssets())
-        .filter((d) => d.data)
-        .map((d) => {
-          const a = d.data;
-          const s = supplySeries(d);
-          const ch = assetChange(d, r, end);
-          return h(
-            'button',
-            { type: 'button', class: 'tile', 'data-asset': d.key },
-            h('span', { class: 'label' }, swatch(colorOf(d.key)), d.key, d.status !== 'active' ? h('span', { class: 'badge' }, d.status) : null),
-            h('span', { class: 'value' }, fmtUsd(a.current.supplyUsd)),
-            h('span', { class: 'meta' }, `${ch && ch.from && r.win === 'all' ? 'since ' + fmtDate(ch.from) : r.label} `, deltaNode(ch, unitOfAsset(d))),
-            h('span', { class: 'meta' }, d.kind === 'gold' ? `XAU premium ${fmtBp(a.current.pegDevBp)}` : `Peg ${fmtBp(a.current.pegDevBp)}`),
-            spark((sliceCompact(s, r.days, end) || { values: [] }).values, colorOf(d.key)),
-            h('span', { class: 'sr-only' }, `. Show only ${d.key}`),
-          );
-        });
-      wrap.push(h('div', { class: 'tiles', role: 'group', 'aria-label': 'Per-asset supply; select one to filter the page' }, tiles));
-      return wrap;
+      label = [`${t.key || 'Total'} stablecoins · ${md((t.supplyAsOf || end).slice(0, 10))}`];
+      value = fmtUsd(t.current);
+      delta = deltaLine(changeFor(t.change, t.supplyUsd, r, end), 'usd', r);
+      series = t.supplyUsd;
+      // Over the full history the share and market comparisons span different eras: shown per window only.
+      const sc = t.marketShare && pr.from ? shareChange(t.marketShare, pr.from, end) : null;
+      const mk = p.market && p.market.usdTotal && pr.from ? ratioChange(p.market.usdTotal, pr.from, end) : null;
+      // The share's move is always stated ("(flat)" rather than dropped) and the market is named in full,
+      // so "+1.0%" beside the hero's own +1.0% cannot read as Paxos's.
+      if (isNum(t.shareCurrent)) subs.push([[`${fmtShare(t.shareCurrent)} of USD stablecoins`, sc ? (Math.abs(sc.pp) < 0.005 ? ' (flat)' : [' ', nw(`${sc.pp > 0 ? '▲' : '▼'} ${fmtPP(sc.pp)}`)]) : null], isNum(mk) ? nw(`all USD stablecoins ${fmtPct(mk)}`) : null]);
+      const all = p.totals.allUsd;
+      const miss = all && (all.missing || []).length ? ` (${joinAnd(all.missing)} missing)` : '';
+      const allTxt = all ? (isNum(all.current) ? `${fmtUsd(all.current)} with gold and legacy` : isNum(all.coveredUsd) ? h('span', { 'data-tip': `Excludes ${(all.missing || []).join(', ')}: no USD value.` }, `≥ ${fmtUsd(all.coveredUsd)} with gold and legacy${miss}`) : null) : null;
+      subs.push([peakText(t.ath, t.drawdownPct, fmtUsd, end), allTxt]);
+    } else {
+      const d = meta(state.asset);
+      const c = d.data.current || {};
+      label = [`${d.key} · ${d.name || d.key} · ${md((c.supplyAsOf || end).slice(0, 10))}`, d.status !== 'active' ? h('span', { class: 'badge' }, d.status) : null];
+      if (isGold(d)) {
+        value = isNum(c.supply) ? fmtOz(c.supply) : null;
+        series = d.data.series && d.data.series.supply;
+        const chOz = changeFor(c.nativeChange, series, r, end);
+        delta = deltaLine(chOz, 'oz', r);
+        const gp = r.win !== 'all' ? goldPriceChange(c.change && c.change[r.win], c.nativeChange && c.nativeChange[r.win]) : null;
+        subs.push([isNum(c.supplyUsd) ? `worth ${fmtUsd(c.supplyUsd)}` : null, isNum(gp) ? nw(`gold price ${fmtPct(gp)}`) : null]);
+        subs.push([peakText(c.nativeAth, c.nativeDrawdownPct, (x) => fmtOz(x), end, true)]);
+      } else {
+        value = isNum(c.supplyUsd) ? fmtUsd(c.supplyUsd) : null;
+        series = d.data.series && d.data.series.supplyUsd;
+        delta = deltaLine(changeFor(c.change, series, r, end), 'usd', r);
+        const mk = p.market && p.market.usdTotal;
+        const share = mk && series ? { start: series.start, values: series.values.map((v, i) => { const m = compactAt(mk, addDays(series.start, i)); return isNum(v) && m ? v / m : null; }) } : null;
+        const sc = share && pr.from ? shareChange(share, pr.from, end) : null;
+        if (isNum(c.marketShare)) subs.push([[`${fmtShare(c.marketShare)} of USD stablecoins`, sc ? (Math.abs(sc.pp) < 0.005 ? ' (flat)' : [' ', nw(`${sc.pp > 0 ? '▲' : '▼'} ${fmtPP(sc.pp)}`)]) : null], isNum(c.rank) ? nw(`#${c.rank}${isNum(c.rankOf) ? ` of ${fmtCount(c.rankOf)}` : ''}`) : null]);
+        subs.push([peakText(c.ath, c.drawdownPct, fmtUsd, end)]);
+      }
     }
-    const d = meta(state.asset);
-    const a = d && d.data;
-    if (!a) return h('p', { class: 'placeholder' }, `No data for ${state.asset} in this snapshot.`);
-    const usd = isUsdKind(d);
-    const s = supplySeries(d);
-    const c = a.current;
-    const verdict = healthVerdict([d.key]);
-    wrap.push(
-      h(
-        'div',
-        { class: 'hero' },
-        h(
-          'div',
-          null,
-          h('div', { class: 'k' }, swatch(colorOf(d.key)), ` ${d.key} · ${d.name || ''}${d.status !== 'active' ? ' (' + d.status + ')' : ''}`),
-          h('div', { class: 'fig' }, fmtUsd(c.supplyUsd)),
-          !usd ? h('div', { class: 'k' }, `${fmtUnit(c.supply, d.unit)} in circulation`) : null,
-          h('div', { class: 'deltas' }, [['d1', 1], ['d7', 7], ['d30', 30]].map(([w, n]) => h('span', null, `${n}d `, h('b', null, deltaNode(assetChangeDays(d, n, w, end), unitOfAsset(d)))))),
-          h('div', { class: 'k' }, [usd ? 'Supply' : `Supply in ${d.unit}`, asOfText(c.supplyAsOf, compactEnd(s))].join(', ')),
-        ),
-        h(
-          'div',
-          { class: 'side' },
-          isNum(c.marketShare) ? h('div', { class: 'row' }, h('span', null, 'Share of USD stablecoin market'), h('span', null, fmtShare(c.marketShare))) : null,
-          isNum(c.rank) ? h('div', { class: 'row' }, h('span', null, 'Rank by supply'), h('span', null, `#${c.rank}${isNum(c.rankOf) ? ' of ' + fmtCount(c.rankOf) : ''}`)) : null,
-          h('div', { class: 'row' }, h('span', null, 'Price'), h('span', null, `${isNum(c.price) ? '$' + c.price.toLocaleString('en-US', { maximumSignificantDigits: 6 }) : 'n/a'} (${d.kind === 'gold' ? 'XAU premium' : 'peg'} ${fmtBp(c.pegDevBp)})`)),
-          usd && c.ath ? h('div', { class: 'row' }, h('span', null, 'Below peak'), h('span', null, `${fmtPct(c.drawdownPct)} (peak ${fmtUsd(c.ath.value)}, ${fmtDate(c.ath.date)})`)) : null,
-          !usd && c.nativeAth ? h('div', { class: 'row' }, h('span', null, 'Supply below peak'), h('span', null, `${fmtPct(c.nativeDrawdownPct)} (peak ${fmtUnit(c.nativeAth.value, c.nativeAthUnit || d.unit)}, ${fmtDate(c.nativeAth.date)})`)) : null,
-          // USD market value of a non-USD asset moves with its reference price: a value change, not issuance.
-          !usd && c.change && c.change.d30 ? h('div', { class: 'row' }, h('span', null, 'Value change, 30d (USD, incl. price)'), h('span', null, deltaNode(c.change.d30, 'USD'))) : null,
-        ),
-      ),
+    const sp = series ? sparkFor(series, sparkColor, end, 40, true) : null;
+    el.setAttribute('data-hero', '');
+    // The sparkline's span and the shaded period, named under it (decorative: the numbers are above).
+    const cap = sp && pr.from ? h('div', { class: 'spark-cap', 'aria-hidden': 'true' }, h('span', null, spanText()), h('span', null, r.label)) : null;
+    const missing = value === null ? h('p', { class: 'h-sub muted', 'data-tip': missingWhy(state.asset) }, 'No supply figure in this snapshot') : null;
+    put(el,
+      h('div', { class: 'h-label' }, label, supplyLate),
+      h('div', { class: 'h-fig' + (value === null ? ' empty' : '') }, value === null ? '—' : value),
+      missing,
+      h('div', { class: 'h-delta', 'data-hero-delta': '', 'data-value': delta.value }, delta.node || ''),
+      sp ? h('div', { class: 'spark-wrap', 'data-graphic': 'spark' }, sp.svg, cap) : null,
+      ...subs.map((parts) => parts.filter(Boolean)).filter((parts) => parts.length).map((parts) => h('p', { class: 'h-sub' }, parts.map((x, i) => [i ? ' · ' : '', x]))),
+      sr(`${(typeof label[0] === 'string' ? label[0] : '')}: ${value === null ? 'no supply figure' : value}${delta.sr ? `, ${delta.sr}` : ''}.`),
     );
-    if (verdict) wrap.push(h('p', { class: 'verdict' }, verdict));
-    const ch = assetChange(d, r, end);
-    const tile = (label, value, metaTxt, sp) => h('div', { class: 'tile' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, value), metaTxt ? h('span', { class: 'meta' }, metaTxt) : null, sp || null);
-    wrap.push(
-      h(
-        'div',
-        { class: 'tiles' },
-        tile(`Supply change, ${r.text}`, ch ? h('span', { class: 'nowrap' }, fmtUnit(ch.abs, unitOfAsset(d), { signed: true })) : 'n/a', ch && isNum(ch.pct) ? fmtPct(ch.pct, { signed: true }) : ch && ch.from ? `since ${fmtDate(ch.from)}` : null, spark((sliceCompact(s, r.days, end) || { values: [] }).values, colorOf(d.key))),
-        tile(d.kind === 'gold' ? 'Premium vs XAU' : 'Peg deviation', fmtBp(c.pegDevBp), c.pegAsOf ? `price as of ${fmtDateTime(c.pegAsOf)}` : 'latest price'),
-        tile('24h turnover', isNum(c.turnover24h) ? fmtShare(c.turnover24h) : 'n/a', isNum(c.volume24hUsd) ? `${fmtUsd(c.volume24hUsd)} volume` : null),
-        chainsTile(d, tile),
-        a.defi ? tile('DeFi footprint', fmtUsd(a.defi.footprintUsd), `${fmtShare(a.defi.footprintShare)} of supply (upper bound)`) : null,
-      ),
-    );
-    return wrap;
+  }
+  // Why an asset has no supply figure: the price and supply sources that did not fully answer.
+  function missingWhy(k) {
+    const bad = sourcesNow().filter((x) => (x.s.kind === 'price' || x.s.kind === 'supply') && x.status !== 'ok' && x.status !== 'skipped');
+    return bad.length ? bad.map((x) => `${x.s.label}: ${humanMsg(x.s.message) || SRC_STATUS[x.status][2]}`).join('\n') : `No supply or price for ${k} in this snapshot.`;
+  }
+  function peakText(ath, ddPct, fmt, end, oz) {
+    if (!ath || !ath.date) return null;
+    if (ath.date >= end) return 'Record high today';
+    if (!isNum(ddPct)) return null;
+    return `${Math.abs(ddPct).toFixed(1)}% below ${md(ath.date)} peak${oz ? ` (${fmtOz(ath.value)})` : ''}`;
   }
 
-  // 3. What's unusual
-  const POLARITY = { positive: { ico: '+', label: 'Positive' }, negative: { ico: '!', label: 'Negative' }, neutral: { ico: '◆', label: 'Neutral' } };
-  const DQ_CHIP = { ico: 'i', label: 'Data quality' };
-  function chips(ins, { age = true } = {}) {
-    const dq = isDataQuality(ins);
-    const pol = dq ? DQ_CHIP : POLARITY[ins.polarity] || POLARITY.neutral;
-    const isNewToYou = state.seenBefore && !state.seenBefore.has(ins.id);
-    const at = age ? ageText(ins.novelty) : null;
-    return h(
-      'div',
-      { class: 'chips' },
-      h('span', { class: `chip ${dq ? 'pol-dq' : 'pol-' + (POLARITY[ins.polarity] ? ins.polarity : 'neutral')}` }, h('span', { class: 'ico', 'aria-hidden': 'true' }, pol.ico), pol.label),
-      dq ? null : h('span', { class: 'badge' }, ins.dimension),
-      h('span', { class: 'badge' }, meta(ins.asset) ? swatch(colorOf(ins.asset)) : null, meta(ins.asset) ? ' ' : null, labelOf(ins.asset) + (ins.chain ? ` · ${ins.chain}` : '')),
-      at ? h('span', { class: 'badge' }, at) : null,
-      isNewToYou ? h('span', { class: 'badge new-you' }, 'new to you') : null,
-    );
-  }
-  function evidenceBlock(ins) {
-    const e = ins.evidence || {};
-    const unit = evidenceUnit(e);
-    const rows = [
-      ['Metric', e.metric],
-      ['Value', fmtEvidence(e.value, unit)],
-      ['Baseline', fmtEvidence(e.baseline, unit)],
-      ['Window', e.window],
-      ['Statistic', e.stat],
-      ['Sample', isNum(e.n) || isNum(e.nEff) ? `n = ${fmtCount(e.n)}${isNum(e.nEff) ? `, effective ${fmtCount(e.nEff)}` : ''}` : null],
-      ['Other windows', (e.otherWindows || []).length ? e.otherWindows.map((o) => `${o.window} p=${fmtP(o.p)}`).join(', ') : null],
-      ['Materiality', isNum(ins.materialityUsd) ? `${fmtUsd(ins.materialityUsd)}${isNum(ins.materialityFloorUsd) ? ` (floor ${fmtUsd(ins.materialityFloorUsd)})` : ''}${isNum(ins.materialityShare) ? `, ${fmtShare(ins.materialityShare)} of Paxos supply` : ''}` : null],
-      ['As of', ins.asOf ? fmtDateTime(ins.asOf) : null],
-    ].filter((r) => r[1] !== null && r[1] !== undefined && r[1] !== '');
-    const ser = e.series && Array.isArray(e.series.values) ? e.series : null;
-    return fold(
-      'ev:' + ins.id,
-      'Evidence',
-      h(
-        'div',
-        null,
-        ins.detail ? h('p', { class: 'small' }, ins.detail) : null,
-        h('dl', null, rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)])),
-        ser && ser.values.filter(isNum).length > 1 ? h('div', null, h('span', { class: 'small muted' }, `Tested series from ${fmtDate(ser.start)} (${plural(ser.values.length, 'day')})`), spark(ser.values, colorOf(ins.asset), { w: 240, h: 40 })) : null,
-      ),
-      '',
-    );
-  }
-  const cardLabel = (ins) => (isDataQuality(ins) ? `Data-quality note for ${labelOf(ins.asset)} (about the data sources, not the asset's health)` : `${(POLARITY[ins.polarity] || POLARITY.neutral).label} ${ins.dimension} finding for ${labelOf(ins.asset)}`);
-  function insightCard(ins, related, level = 3) {
-    const H = level === 3 ? 'h3' : 'h4';
-    const card = h('article', { class: 'card ins' + (isDataQuality(ins) ? ' dq' : ''), 'aria-label': cardLabel(ins) }, chips(ins), h(H, null, ins.headline), h('p', { class: 'why' }, 'Why flagged: ', whyText(ins)), evidenceBlock(ins));
-    if (related && related.length) {
-      card.append(fold('rel:' + ins.id, `${plural(related.length, 'related finding')}`, h('ul', { class: 'related' }, related.map((r) => h('li', { class: isDataQuality(r) ? 'dq' : null }, chips(r), h('h4', null, r.headline), h('p', { class: 'why' }, 'Why flagged: ', whyText(r)), evidenceBlock(r)))), ''));
-    }
-    return card;
-  }
-  function renderUnusual() {
-    const ins = P().insights || {};
-    const feed = ins.feed || [];
-    const key = state.asset;
-    const shown = feed.filter((c) => [c.lead, ...(c.related || [])].some((i) => i && insightMatches(i, key)));
-    // Asset health first; data-quality notes (sources, coverage) follow in their own group.
-    const health = shown.filter((c) => !isDataQuality(c.lead));
-    const dq = shown.filter((c) => isDataQuality(c.lead));
-    const checks = `${fmtCount(ins.testsRun)} checks run${isNum(ins.groups) ? ` in ${fmtCount(ins.groups)} groups` : ''}`;
-    // The rule allows fewer than one chance finding per health dimension per load (#64): say how many.
-    const fam = ins.family && isNum(ins.family.dimensions) && ins.family.dimensions > 0 ? ins.family : null;
-    const chance = fam ? ` Up to about ${plural(fam.dimensions, 'finding')} per load can be chance (fewer than one per health dimension).` : '';
-    $('sub-unusual').textContent = `Findings that are rare for the asset's own history or its peers, after allowing for the number of checks run, ranked by surprise, materiality and recency without weights. They describe the latest data; the range filter does not apply. ${checks}.${chance}`;
+  // 5. Briefing (§3.5) and the finding line + evidence panel (§3.9)
+  // Generated text: the first figure in <b> (a day of the month after a month name is a date, not a
+  // figure: "since Jul 7, $690M" bolds $690M); every signed figure kept on one line with its sign.
+  const MONTH_BEFORE = new RegExp(`\\b(?:${MONTHS.join('|')})\\s$`);
+  function boldFirstNumber(text, bold = true) {
     const out = [];
-    if (!health.length) {
-      out.push(h('div', { class: 'card empty' }, h('p', null, h('strong', null, key === 'all' ? 'Nothing statistically unusual today' : `Nothing statistically unusual for ${key} today`)), h('p', { class: 'small muted' }, `${checks}${key !== 'all' && feed.length > shown.length ? `; ${plural(feed.length - shown.length, 'finding')} concern${feed.length - shown.length === 1 ? 's' : ''} other assets` : ''}.`)));
-    } else {
-      const limit = 6;
-      const more = state.more.has('feed');
-      out.push(h('div', { class: 'feed' }, (more ? health : health.slice(0, limit)).map((c) => insightCard(c.lead, c.related || []))));
-      if (health.length > limit) out.push(h('button', { type: 'button', class: 'btn', 'data-more': 'feed', 'aria-expanded': String(more) }, more ? `Show the top ${limit}` : `Show all ${health.length} findings`));
+    const re = /[−+-]?\$?\d[\d.,]*(?:[%KMBT]|\s?(?:oz|pp)\b)?/g;
+    let last = 0;
+    let m;
+    let first = bold;
+    while ((m = re.exec(text))) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const date = MONTH_BEFORE.test(text.slice(Math.max(0, m.index - 4), m.index));
+      out.push(first && !date ? h('b', { class: 'nowrap' }, m[0]) : nw(m[0]));
+      if (!date) first = false;
+      last = m.index + m[0].length;
     }
-    if (dq.length) {
-      out.push(
-        h('h3', { class: 'dq-head' }, `Data-quality notes (${dq.length})`),
-        h('p', { class: 'small muted' }, 'About the data sources (coverage, freshness, disagreement between sources), not about the assets themselves.'),
-        h('div', { class: 'feed' }, dq.map((c) => insightCard(c.lead, c.related || []))),
-      );
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  }
+  const seenDot = (id) => (id && state.seenBefore && !state.seenBefore.has(id) ? h('span', { class: 'seen-dot', title: null }, sr('new since your last visit')) : null);
+  const lensLabel = (id) => (LENSES.find((l) => l.id === id) || {}).short || (LENSES.find((l) => l.id === id) || {}).label || 'Supply';
+  const lensLink = (lens, focus, fid) => h('a', { class: 'lens-link', href: hrefFor({ lens, focus, fid }), 'data-lens': lens, 'data-focus': focus || '', 'data-f': fid || '' }, `${lensLabel(lens)} ›`);
+  // Link targets always carry lens= (the URL bar omits the default; a link states where it goes).
+  function hrefFor({ lens, focus, fid }) {
+    const q = buildQuery({ ...state, lens: lens || state.lens, focus: focus || null });
+    const l = lens || state.lens;
+    const withLens = /[?&]lens=/.test(q) ? q : `${q ? q + '&' : '?'}lens=${l}`;
+    return root.location.pathname + withLens + (fid ? '#f=' + encodeURIComponent(fid) : '');
+  }
+  // Steady lines: ✓ only when the line says steady (tone positive); a peg line naming a coin outside the
+  // peers' range is a plain line. Fillers (another period, for context) are muted.
+  const BULLET_ICON = { event: ['★', 's-ink2', 'Event'], mover: ['→', 's-ink2', 'Move'], filler: ['·', 's-muted', 'For context'] };
+  function bulletIcon(b) {
+    if (b.kind === 'finding') return b.tier === 'minor' ? ['·', 's-muted', 'Smaller finding'] : TONE_ICON[toneOf(b.tone)];
+    if (b.kind === 'steady') return b.tone === 'positive' ? ['✓', 's-good', 'Steady'] : ['·', 's-muted', b.link && b.link.lens === 'peg' ? 'Peg' : 'Supply'];
+    return BULLET_ICON[b.kind] || ['→', 's-ink2', 'Move'];
+  }
+  // A "since" badge that the text already states ("… since Sep 11", "first tracked Jul 7") is left out.
+  const sinceBadge = (since, text) => (since && !String(text || '').includes(md(since)) ? h('span', { class: 'since' }, `since ${md(since)}`) : null);
+  function renderBrief() {
+    const el = $('brief');
+    const b = briefingFor();
+    if (!b || !b.frames) {
+      el.hidden = true;
+      el.replaceChildren();
+      return;
+    }
+    el.hidden = false;
+    const fr = b.frames[rng().frame];
+    if (!fr || !Array.isArray(fr.bullets)) {
+      el.replaceChildren(h('p', { class: 'note-line' }, 'No summary for this period.'));
+      return;
+    }
+    const bullets = fr.bullets.filter((x) => x && x.kind !== 'state' && x.text);
+    if (!bullets.length) {
+      el.replaceChildren();
+      return;
+    }
+    // The full-history period has no summary of its own: the longest one is shown and says so.
+    el.replaceChildren(
+      h('p', { class: 'eyebrow' }, `${fr.label || ''}${rng().win === 'all' ? ' (longest summary)' : ''}`),
+      h('ul', { class: 'blist', id: 'brief-list' }, bullets.map((x, i) => briefRow(x, i))),
+    );
+  }
+  function briefRow(b, i) {
+    const key = `b:${rng().frame}:${state.asset}:${i}`;
+    const open = state.expanded.has(key);
+    const [ic, cls, srw] = bulletIcon(b);
+    const link = b.link || {};
+    const id = link.insight || (b.refs || [])[0] || null;
+    const detailId = 'bd-' + i;
+    const li = h('li', { 'data-kind': b.kind });
+    const badge = sinceBadge(b.since, b.text);
+    const dot = b.kind === 'finding' ? seenDot(id) : null;
+    const meta = h('span', { class: 'bmeta' }, badge, dot, link.lens ? lensLink(link.lens, link.focus, link.insight) : null);
+    // (narrow screens: the meta sits at the end of the text's last line; --mw reserves its width there)
+    const mw = (badge ? badge.textContent.length + 2 : 0) + (link.lens ? lensLabel(link.lens).length + 3 : 0) + (dot ? 2 : 0);
+    const btn = h('button', { type: 'button', class: 'btext', 'aria-expanded': String(open), 'aria-controls': detailId, 'data-exp': key }, srw === 'Steady' && /^Steady:/.test(b.text) ? null : sr(srw + ': '), boldFirstNumber(b.text));
+    btn.style.setProperty('--mw', mw + 'ch');
+    li.append(h('span', { class: 'ico ' + cls, 'aria-hidden': 'true' }, ic), h('div', { class: 'bmain' }, btn, meta));
+    const det = h('div', { class: 'bdetail', id: detailId });
+    det.hidden = !open;
+    if (open) {
+      const ref0 = (b.refs || [])[0] || id;
+      const i0 = b.kind === 'finding' && ref0 ? ins(ref0) : null;
+      const restated = !!(b.values && isNum(b.values.gap));
+      // (a restated peg finding's figures are its evidence facts row; the line is not repeated above it)
+      if (b.detail && !(i0 && restated)) det.append(h('p', null, b.detail));
+      if (i0) det.append(evidencePanel(i0, unitOf(ref0), { skipWhy: b.detail, bullet: b }));
+    }
+    li.append(det);
+    return li;
+  }
+  // Finding line (briefing excluded): icon, swatch, title button, since badge, seen dot, lens link.
+  // Status colour means "the verdict of this scope names it" (§1 principle 2, §3.7 badges): a line is major
+  // when its unit is a verdict item, so the verdict, tab badges and lens lists agree in every scope (an
+  // all-coins tier alone would colour lens-only units the verdict never names, and miss asset-scope items).
+  function namedIds() {
+    const out = new Set();
+    for (const it of (lastVerdict && lastVerdict.items) || []) {
+      if (!it || !it.id) continue;
+      out.add(it.id);
+      const u = unitOf(it.id);
+      if (u) for (const m of [u.lead, ...u.related]) out.add(m.id);
     }
     return out;
   }
+  const isMajor = (i, named) => !!i && (named || namedIds()).has(i.id);
+  function findingIcon(i) {
+    if (roleOf(i) === 'note') return ['i', 'note', 'Data note'];
+    const st = stageOf(i);
+    if (st === 'watch') return ['○', 's-muted', 'Watching'];
+    if (st === 'past') return ['·', 's-muted', 'Earlier'];
+    if (isMajor(i)) return TONE_ICON[toneOf(i.polarity)];
+    return ['·', 's-muted', 'Smaller finding'];
+  }
+  function findingLine(unit, ctx = {}) {
+    const i = unit.lead;
+    const key = `f:${ctx.where || ''}:${i.id}`;
+    if (state.fid === i.id && ctx.autoOpen && !state.autoOpened.has(key)) {
+      state.autoOpened.add(key);
+      state.expanded.add(key);
+    }
+    const open = state.expanded.has(key);
+    const [ic, cls, srw] = findingIcon(i);
+    const st = stageOf(i);
+    // A unit the briefing states (this scope and period) reads as its bullet: same words, same "since".
+    const bl = ctx.where !== 'about' && (st === 'new' || st === 'ongoing') ? bulletFor(unit) : null;
+    const title = bl ? bl.text : titleOf(i);
+    const since = bl ? bl.since : (i.novelty && i.novelty.since) || null;
+    let badge = st === 'past' ? (since ? fmtMonthYear(since) : null) : st === 'watch' || st === 'context' ? null : since ? `since ${md(since)}` : null;
+    if (badge && title.includes(badge.replace(/^since /, ''))) badge = null; // the title already states its window
+    const lens = lensOfIns(i);
+    const li = h('li', { 'data-f': i.id });
+    const evId = 'ev-' + (ctx.where || '') + '-' + Math.abs(hashStr(i.id));
+    li.append(h('div', { class: 'fline' },
+      h('span', { class: 'ico ' + cls, 'aria-hidden': 'true' }, ic),
+      h('span', { class: 'ftitle' }, meta(i.asset) ? swatch(colorOf(i.asset)) : null, h('button', { type: 'button', class: 'btext', 'aria-expanded': String(open), 'aria-controls': evId, 'data-exp': key, 'data-f': i.id }, sr(srw + ': '), boldFirstNumber(title, false))),
+      h('span', { class: 'fmeta' }, badge ? h('span', { class: 'since' }, badge) : null, seenDot(i.id), lens && lens !== ctx.lens && roleOf(i) !== 'note' ? lensLink(lens, meta(i.asset) ? i.asset : null, i.id) : null),
+      (() => {
+        const ev = h('div', { class: 'ev', id: evId });
+        ev.hidden = !open;
+        if (open) ev.append(evidencePanel(i, unit, { bullet: bl, noOpen: !!lens && lens === ctx.lens }));
+        return ev;
+      })(),
+    ));
+    return li;
+  }
+  function hashStr(s) {
+    let x = 0;
+    for (let k = 0; k < s.length; k++) x = (x * 31 + s.charCodeAt(k)) | 0;
+    return x;
+  }
+  function fmtUnitValue(v, unit) {
+    if (!isNum(v)) return '—';
+    if (unit === 'usd') return fmtUsd(v, { signed: v < 0 });
+    if (unit === 'usdPerDay') return fmtUsd(v) + ' a day';
+    if (unit === 'fraction') return `${(v * 100).toFixed(Math.abs(v) < 0.01 ? 2 : 1)}%`;
+    if (unit === 'oz') return fmtOz(v);
+    if (unit === 'count') return fmtCount(v);
+    return String(Number(v.toPrecision(3)));
+  }
+  function evidencePanel(i, unit, o = {}) {
+    const e = i.evidence || {};
+    const out = [];
+    const ser = e.series && Array.isArray(e.series.values) ? e.series : null;
+    const evUnit = e.unit || null;
+    // A peg finding the briefing restates on the period: its figures replace the detector's own window
+    // (which stays in Method), so one number per period appears (review: 0.40 / 0.37 / 0.25 … for one story).
+    const bl = o.bullet && o.bullet.values && isNum(o.bullet.values.gap) ? o.bullet : null;
+    const fw = bl ? findingWindow(i) : null;
+    const members = unit ? [unit.lead, ...(unit.related || [])].filter(Boolean) : [i];
+    const split = bl ? members.find((m) => m.detector === 'peg.regime' && m.facts && m.facts.since) : null;
+    if (ser && ser.values.filter(isNum).length > 1) {
+      const vals = ser.values.slice(-120);
+      const start = addDays(ser.start, ser.values.length - vals.length);
+      const dates = datesBetween(start, addDays(start, vals.length - 1));
+      const w = fw || parseWindow(e.window, dates[dates.length - 1]);
+      const band = w ? [indexIn(dates, w.from), indexIn(dates, w.to)] : null;
+      out.push(mini({ n: vals.length, series: [{ values: vals, color: colorOf(i.asset) }], band, dot: true, h: 48, label: bl ? bl.text : titleOf(i), graphic: true }));
+      out.push(figTable('ev:' + i.id, () => table({ wrap: 'tall', head: ['Date', 'Value'], rows: dates.map((d, k) => ({ cells: [fmtDate(d), fmtUnitValue(vals[k], evUnit)] })).reverse() })));
+    }
+    if (bl) {
+      const v = bl.values;
+      const fr = (briefingFor().frames || {})[rng().frame] || {};
+      const label = v.days === 1 ? 'Yesterday' : / since /.test(bl.text) && bl.since ? `Since ${md(bl.since)}` : fr.days === 365 ? 'Last 12 months' : `Last ${fr.days} days`;
+      out.push(h('p', null, [`${label}: ${fmtPeg(Math.abs(v.gap), { unsigned: true })}`, isNum(v.before) && split ? `Before ${md(split.facts.since)}: ${fmtPeg(v.before, { unsigned: true })}` : null, isNum(v.peerGap) ? `Peers: ≤${fmtPeg(Math.ceil(v.peerGap * 1e4 - 0.1) / 1e4, { unsigned: true })}` : null].filter(Boolean).join(' · ')));
+    } else {
+      if (e.valueLabel && e.valueText) out.push(h('p', null, `${e.valueLabel}: ${e.valueText}${e.baselineLabel && e.baselineText ? ` · ${e.baselineLabel}: ${e.baselineText}` : ''}`));
+      if (i.why && i.why !== o.skipWhy) out.push(h('p', null, i.why));
+    }
+    const s = i.surprise || {};
+    if (isNum(s.p) && s.p > 0) {
+      const tail = s.underpowered ? 'Too little history to be sure.' : s.notable ? `It still stands out after ${fmtCount(s.m || 1)} similar checks.` : `Not rare enough to flag after ${fmtCount(s.m || 1)} similar checks.`;
+      out.push(h('p', null, `A result this clear happens by chance about 1 in ${fmtCount(Math.max(1, Math.round(1 / s.p)))} times. ${tail}`));
+    }
+    // A USD coin's peg finding concerns every coin in circulation: "Covers all $26M of {coin}" (its share of
+    // the total would print a second 0.4x% figure beside the peg gap).
+    const pegUsd = i.dimension === 'peg' && isUsd(meta(i.asset)) && isNum(i.materialityUsd);
+    if (pegUsd) out.push(h('p', null, `Covers all ${fmtUsd(i.materialityUsd)} of ${i.asset}.`));
+    else if (isNum(i.materialityUsd)) out.push(h('p', null, `Involves ${fmtUsd(i.materialityUsd)}${isNum(i.materialityShare) ? ` (${fmtPortion(i.materialityShare)} of ${aggKey() || 'the total'})` : ''}.`));
+    let rel = unit && unit.related ? unit.related.filter((r) => r.id !== i.id) : [];
+    if (unit && unit.lead && unit.lead.id !== i.id) rel.unshift(unit.lead);
+    if (bl) rel = rel.filter((r) => r.dimension !== 'peg'); // (their gaps are the facts row)
+    for (const r of rel.slice(0, 3)) out.push(h('p', null, `Also: ${titleOf(r)}`));
+    const lens = lensOfIns(i);
+    out.push(h('div', { class: 'acts' },
+      lens && !o.noOpen ? h('a', { class: 'btn', href: hrefFor({ lens, focus: meta(i.asset) ? i.asset : null, fid: i.id }), 'data-lens': lens, 'data-focus': meta(i.asset) ? i.asset : '', 'data-f': i.id }, `Open ${lensLabel(lens)} ›`) : null,
+      h('button', { type: 'button', class: 'btn', 'data-action': 'copy', 'data-f': i.id }, 'Copy link'),
+    ));
+    out.push(methodBlock(i));
+    return h('div', null, out);
+  }
+  function figTable(key, build) {
+    const holder = h('div');
+    holder.hidden = true;
+    let built = false;
+    const btn = h('button', { type: 'button', class: 'linkbtn', 'aria-pressed': 'false', onclick: () => {
+      if (!built) {
+        built = true;
+        holder.append(build());
+      }
+      holder.hidden = !holder.hidden;
+      btn.setAttribute('aria-pressed', String(!holder.hidden));
+      btn.textContent = holder.hidden ? 'Table' : 'Hide table';
+    } }, 'Table');
+    return h('div', null, btn, holder);
+  }
+  function methodBlock(i) {
+    const e = i.evidence || {};
+    const s = i.surprise || {};
+    const rows = [
+      ['Full finding', i.headline],
+      ['How it was tested', [i.detail, e.stat].filter(Boolean).join(' ')],
+      ['Chance in its own history', isNum(s.p) ? `${Number((s.p * 100).toPrecision(2))}%` : null],
+      [`Expected by chance across ${fmtCount(s.m || 1)} checks`, isNum(s.E) ? `${Number(s.E.toPrecision(2))} (flagged when under 1)` : null],
+      ['Compared with', isNum(e.n) ? `${fmtCount(e.n)} periods${isNum(e.nEff) ? `, ${fmtCount(e.nEff)} independent` : ''}` : null],
+      ['Other windows tested', (e.otherWindows || []).length ? e.otherWindows.map((w) => `${w.window}: ${isNum(w.p) ? Number((w.p * 100).toPrecision(2)) + '%' : '—'}`).join(', ') : null],
+      ['Counts if over', isNum(i.materialityFloorUsd) ? fmtUsd(i.materialityFloorUsd) : null],
+      ['As of', i.asOf ? fmtDate(String(i.asOf).slice(0, 10)) : null],
+    ].filter((r) => r[1]);
+    return h('details', null, h('summary', null, 'Method'), h('dl', null, rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)])));
+  }
 
-  // 4. What changed
-  function waterfallFigure(key, title, sub, rows, net, unitNote) {
-    let cum = 0;
-    const bars = rows.map((r) => {
-      const s = cum;
-      cum += r.delta;
-      return [s, cum];
+  // 6. Cards (§3.6)
+  const dataNoteFor = (k) => {
+    const floor = floorOf(k);
+    for (const [, x] of IX.byId) {
+      const i = x.i;
+      if (i.asset !== k || roleOf(i) !== 'note') continue;
+      const st = stageOf(i);
+      if (i.detector === 'dq.cross_source' && isNum(i.materialityUsd) && isNum(floor) && i.materialityUsd >= floor) return i;
+      if (/^dq\.(freshness|price_sanity|frozen)$/.test(i.detector) && (st === 'new' || st === 'ongoing')) return i;
+    }
+    return null;
+  };
+  function mainDriver(k, w) {
+    const rows = ((attrWin(w) || {}).chains || []).filter((x) => x.asset === k && x.chain !== OTHER && isNum(x.deltaUsd) && x.deltaUsd !== 0);
+    rows.sort((a, b) => Math.abs(b.deltaUsd) - Math.abs(a.deltaUsd));
+    return rows[0] || null;
+  }
+  function pegFor(d) {
+    const pr = period();
+    return pegStats(d.data.series && d.data.series.price, pr.from, pr.to);
+  }
+  function renderCards() {
+    const el = $('cards');
+    const end = endIso();
+    const v = lastVerdict || { items: [] };
+    const cards = [];
+    let group = null;
+    const sparks = [];
+    if (state.asset === 'all') {
+      const list = bySupply(visibleAssets()).filter((d) => d.status !== 'dead' && d.data);
+      const cs = cardSparks(list.map((d) => (isGold(d) ? d.data.series.supply : d.data.series.supplyUsd) || null), end);
+      list.forEach((d, k) => cards.push(assetCard(d, v, cs, k, sparks)));
+      const dates = cs.dates;
+      const leg = legacyList();
+      if (!state.legacy && leg.length) cards.push(h('div', { class: 'acard ghost legacy-ghost' }, h('button', { type: 'button', class: 'acard-body', 'data-action': 'legacy' }, h('span', { class: 'c-head' }, `+${leg.length} legacy`), leg.map((d) => h('span', { class: 'c-f' }, `${d.key} ${fmtUsd(supplyUsdOf(d))}`)))));
+      group = { dates, sparks };
+    } else {
+      const d = meta(state.asset);
+      const cc = chainCards(d, sparks);
+      cards.push(...cc.cards);
+      group = cc.dates ? { dates: cc.dates, sparks } : null;
+    }
+    el.replaceChildren(...cards);
+    // Synced crosshair: each card's value at the hovered day, the day in place of the (period) delta line.
+    if (group && group.sparks.length) {
+      const n = group.dates.length;
+      const hg = hoverGroup(n, (i) => {
+        for (const s of group.sparks) {
+          if (s.valEl) s.valEl.textContent = s.fmt(s.vals[i]);
+          if (s.deltaEl) {
+            s.deltaEl.classList.add('hovering');
+            s.deltaEl.replaceChildren(md(group.dates[i]));
+          }
+        }
+      }, () => {
+        for (const s of group.sparks) {
+          if (s.valEl) s.valEl.textContent = s.text;
+          if (s.deltaEl) {
+            s.deltaEl.classList.remove('hovering');
+            s.deltaEl.replaceChildren(...s.deltaKids);
+          }
+        }
+      });
+      group.sparks.forEach((s) => hg.attach(s.svg));
+    }
+  }
+  function assetCard(d, v, cs, k, sparks) {
+    const r = rng();
+    const c = d.data.current || {};
+    const gold = isGold(d);
+    const series = gold ? d.data.series.supply : d.data.series.supplyUsd;
+    const ch = gold ? changeFor(c.nativeChange, series, r, endIso()) : changeFor(c.change, series, r, endIso());
+    const dl = deltaLine(ch, gold ? 'oz' : 'usd', r);
+    const has = gold ? isNum(c.supply) : isNum(c.supplyUsd);
+    const valueText = gold ? fmtOz(c.supply) : fmtUsd(c.supplyUsd);
+    if (!has) {
+      // No figure in this snapshot: one muted line that says so (and why, in its tooltip), not "— / — / —".
+      return h('div', { class: 'acard', role: 'group', 'aria-label': d.key, 'data-card': d.key },
+        h('button', { type: 'button', class: 'acard-body', 'data-asset': d.key, 'data-tip': missingWhy(d.key), 'aria-label': `${d.key}: no supply figure in this snapshot. Show only ${d.key}.` },
+          h('span', { class: 'c-head' }, swatch(colorOf(d.key)), d.key, d.status !== 'active' ? h('span', { class: 'badge' }, 'legacy') : null),
+          h('span', { class: 'c-f muted c-none' }, 'No supply figure in this snapshot')));
+    }
+    const svg = series ? mini({ n: cs.dates.length, series: [{ values: cs.rows[k], color: colorOf(d.key), from: cs.from }], graphic: true }) : null;
+    const valEl = h('span', { class: 'c-val' }, valueText);
+    const deltaEl = h('span', { class: 'c-delta' }, dl.node || '—');
+    if (svg) sparks.push({ svg, vals: cs.rows[k], valEl, deltaEl, deltaKids: [...deltaEl.childNodes], text: valueText, fmt: gold ? (x) => fmtOz(x) : (x) => fmtUsd(x) });
+    let f1 = null;
+    let f2 = null;
+    let srExtra = '';
+    if (gold) {
+      f1 = isNum(c.supplyUsd) ? `worth ${fmtUsd(c.supplyUsd)}` : null;
+      const gp = r.win !== 'all' ? goldPriceChange(c.change && c.change[r.win], c.nativeChange && c.nativeChange[r.win]) : null;
+      f2 = isNum(gp) ? (narrow() ? `gold ${fmtPct(gp)}` : `gold price ${fmtPct(gp)}`) : null;
+    } else {
+      const md0 = mainDriver(d.key, r.win);
+      if (md0) {
+        f1 = `${md0.chain} ${fmtUsd(md0.deltaUsd, { signed: true })}`;
+        srExtra += `; most moved on ${md0.chain}`;
+      }
+      const pg = pegFor(d);
+      if (pg) {
+        f2 = h('span', { 'data-peg': '', 'data-value': pg.avg, 'data-tip': `Average distance from $1 over ${periodWords()}, daily prices. Latest quote ${isNum(c.price) ? c.price.toFixed(5) : '—'} at ${fmtHM(c.pegAsOf)} UTC.` }, `peg ${fmtPeg(pg.avg)}`);
+        srExtra += `; peg ${pegWords(pg.avg)}`;
+      }
+    }
+    const items = (v.items || []).filter((it) => it.asset === d.key);
+    const note = dataNoteFor(d.key);
+    const tools = [];
+    if (items.length) {
+      const top = items[0];
+      const [ic] = TONE_ICON[toneOf(top.tone)];
+      tools.push(h('button', { type: 'button', class: 'flag t-' + toneOf(top.tone), 'data-flag': '', 'data-lens': top.lens, 'data-focus': d.key, 'data-f': top.id || '', 'aria-label': `${TONE_ICON[toneOf(top.tone)][2]}: ${d.key} ${top.area}` }, `${ic} ${top.area}${items.length > 1 ? ` +${items.length - 1}` : ''}`));
+    }
+    if (note) tools.push(h('button', { type: 'button', class: 'note-btn', 'data-action': 'notes', 'data-tip': titleOf(note), 'aria-label': `Data note: ${titleOf(note)}` }, h('span', { 'aria-hidden': 'true' }, 'i')));
+    const lateM = lateMark(['supply']);
+    return h('div', { class: 'acard', role: 'group', 'aria-label': d.key, 'data-card': d.key },
+      h('button', { type: 'button', class: 'acard-body', 'data-asset': d.key, 'data-tip': d.name || null, 'aria-label': `${d.key}: ${valueText}${dl.sr ? `, ${dl.sr}` : ''}${srExtra}. Show only ${d.key}.` },
+        h('span', { class: 'c-head' }, swatch(colorOf(d.key)), d.key, d.status !== 'active' ? h('span', { class: 'badge' }, 'legacy') : null, lateM),
+        valEl,
+        deltaEl,
+        svg,
+        f1 ? h('span', { class: 'c-f' }, f1) : null,
+        f2 ? h('span', { class: 'c-f' }, f2) : null),
+      tools.length ? h('div', { class: 'acard-tools' }, tools) : null);
+  }
+  // Holders compactly on cards ("21.5K holders"; the tables keep the exact count).
+  const fmtCountShort = (n) => (!isNum(n) ? '—' : n >= 9995 ? `${(n / 1e3).toFixed(n >= 99950 ? 0 : 1)}K` : fmtCount(n));
+  function chainChange(c, r, end) {
+    if (r.win !== 'all' && c.change && c.change[r.win]) return c.change[r.win];
+    return changeFromCompact(c.series, r.days, end);
+  }
+  function chainCards(d, sparks) {
+    const r = rng();
+    const end = endIso();
+    const a = d.data;
+    const pr = period();
+    const holders = new Map((a.onchain || []).filter((x) => x && isNum(x.holders)).map((x) => [x.chain, x.holders]));
+    const chains = (a.chains || []).filter((c) => isNum(c.currentUsd) && c.currentUsd > 0).sort((x, y) => y.currentUsd - x.currentUsd);
+    if (chains.length && !isGold(d)) {
+      // Chains under the coin's floor (a typical day's flow; $1K without one) fold into "Other n chains".
+      const fl = isNum(floorOf(d.key)) ? floorOf(d.key) : 1000;
+      const big = chains.filter((c) => c.currentUsd >= fl);
+      const top = (big.length ? big : chains).slice(0, 4);
+      const rest = chains.filter((c) => !top.includes(c));
+      const cs = cardSparks(top.map((c) => c.series || null), end);
+      const out = top.map((c, k) => {
+        const ch = chainChange(c, r, end);
+        const dl = deltaLine(ch, 'usd', r);
+        const svg = c.series ? mini({ n: cs.dates.length, series: [{ values: cs.rows[k], color: colorOf(d.key), from: cs.from }], graphic: true }) : null;
+        const valEl = h('span', { class: 'c-val' }, fmtUsd(c.currentUsd));
+        const deltaEl = h('span', { class: 'c-delta' }, dl.node || '—');
+        if (svg) sparks.push({ svg, vals: cs.rows[k], valEl, deltaEl, deltaKids: [...deltaEl.childNodes], text: fmtUsd(c.currentUsd), fmt: (x) => fmtUsd(x) });
+        const isNew = c.first && pr.from && c.first > pr.from;
+        const tag = c.status === 'tracking_ended' ? 'tracking ended' : isNew ? 'new' : null;
+        const foot = `${fmtPortion(c.share)} of ${d.key}${holders.has(c.chain) ? ` · ${fmtCountShort(holders.get(c.chain))} holders` : ''}`;
+        return h('div', { class: 'acard', role: 'group', 'aria-label': c.chain, 'data-card': c.chain },
+          h('button', { type: 'button', class: 'acard-body', 'data-lens': 'chains', 'data-focus': d.key, 'aria-label': `${c.chain}: ${fmtUsd(c.currentUsd)}${dl.sr ? `, ${dl.sr}` : ''}. Open Chains.` },
+            h('span', { class: 'c-head' }, c.chain, tag ? h('span', { class: 'badge' }, tag) : null),
+            valEl, deltaEl, svg,
+            h('span', { class: 'c-f wrap', 'data-tip': `${fmtPortion(c.share)} of ${d.key}${holders.has(c.chain) ? ` · ${fmtCount(holders.get(c.chain))} holders` : ''}` }, foot)));
+      });
+      if (rest.length) out.push(h('div', { class: 'acard ghost', role: 'group', 'aria-label': `Other ${rest.length} chains` }, h('button', { type: 'button', class: 'acard-body', 'data-lens': 'chains', 'data-focus': d.key }, h('span', { class: 'c-head' }, `Other ${rest.length} chains`), h('span', { class: 'c-val' }, fmtUsd(rest.reduce((s, c) => s + c.currentUsd, 0))))));
+      return { cards: out, dates: cs.dates };
+    }
+    const oc = (a.onchain || []).filter((x) => x && isNum(x.totalSupply));
+    if (oc.length) {
+      return { cards: oc.sort((x, y) => y.totalSupply - x.totalSupply).map((x) => h('div', { class: 'acard', role: 'group', 'aria-label': x.chain, 'data-card': x.chain },
+        h('button', { type: 'button', class: 'acard-body', 'data-lens': 'chains', 'data-focus': d.key },
+          h('span', { class: 'c-head' }, x.chain),
+          h('span', { class: 'c-val' }, isGold(d) ? fmtOz(x.totalSupply) : fmtUsd(x.totalSupply)),
+          isNum(x.holders) ? h('span', { class: 'c-f' }, `${fmtCountShort(x.holders)} holders`) : null,
+          h('span', { class: 'c-f muted', 'data-tip': 'Current on-chain read; no daily history for this chain.' }, 'no history yet')))) };
+    }
+    return { cards: [h('p', { class: 'note-line wide' }, `No per-chain data for ${d.key}.`)] };
+  }
+
+  // 7. Lens tabs (§3.7) and the "Unusual here" list
+  function lensDisabled(id) {
+    if (state.asset === 'all') return null;
+    const d = meta(state.asset);
+    if (id === 'market' && !isUsd(d)) return `No USD stablecoin market for ${state.asset}`;
+    if (id === 'income' && !econAssets().includes(state.asset)) return `Not modelled for ${state.asset}`;
+    return null;
+  }
+  function econAssets() {
+    const e = P().economics;
+    if (e && Array.isArray(e.assets)) return e.assets;
+    const tier = ((P().discovery && P().discovery.tiers) || []).find((t) => /fee/i.test(String(t.id || '')));
+    return (tier && tier.found) || [];
+  }
+  // Eligible units for a lens: new/ongoing, placed in lenses, in scope, about a shown asset.
+  function lensUnits(lens) {
+    const out = [];
+    for (const u of IX.units) {
+      const members = [u.lead, ...u.related].filter((i) => {
+        const st = stageOf(i);
+        return (st === 'new' || st === 'ongoing') && ['headline', 'evidence', 'lens'].includes(roleOf(i)) && lensOfIns(i) === lens && insightMatches(i, state.asset, floorsAll()) && isActiveOrShown(i.asset);
+      });
+      if (!members.length) continue;
+      const ru = relead({ lead: members[0], related: [u.lead, ...u.related].filter((i) => i !== members[0]), list: u.list });
+      out.push(ru.lead === members[0] || members.includes(ru.lead) ? ru : { lead: members[0], related: [u.lead, ...u.related].filter((i) => i !== members[0]), list: u.list });
+    }
+    const named = namedIds();
+    const major = (u) => (isMajor(u.lead, named) ? 0 : 1);
+    return out.map((u, k) => ({ u, k })).sort((a, b) => major(a.u) - major(b.u) || a.k - b.k).map((x) => x.u);
+  }
+  function renderTabs() {
+    const v = lastVerdict || { items: [] };
+    if (lensDisabled(state.lens)) {
+      state.lens = 'supply';
+      syncUrl();
+    }
+    const tabs = LENSES.map((l) => {
+      const dis = lensDisabled(l.id);
+      const its = (v.items || []).filter((it) => it.lens === l.id);
+      const worst = its.slice().sort((a, b) => POL_RANK[toneOf(a.tone)] - POL_RANK[toneOf(b.tone)])[0];
+      const minor = !worst ? lensUnits(l.id).filter((u) => !isMajor(u.lead)).length : 0;
+      const sel = state.lens === l.id;
+      return h('button', { type: 'button', role: 'tab', class: 'tab', id: 'tab-' + l.id, 'aria-selected': String(sel), 'aria-controls': 'panel', tabindex: sel ? '0' : '-1', 'data-lens': l.id, 'data-tab': '1', 'aria-disabled': dis ? 'true' : null, 'data-tip': dis },
+        l.label,
+        worst ? h('span', { class: 'tb t-' + toneOf(worst.tone), 'aria-hidden': 'true' }, TONE_ICON[toneOf(worst.tone)][0]) : minor ? h('span', { class: 'tb s-muted', 'aria-hidden': 'true' }, '•') : null,
+        worst ? sr(`, ${its.length} unusual`) : minor ? sr(`, ${plural(minor, 'smaller finding')}`) : null);
     });
-    const labels = [...rows.map((r) => r.label), 'Net change'];
-    const data = [...bars, [0, net]];
-    const colors = [...rows.map((r) => (r.delta >= 0 ? TOK['div-pos'] : TOK['div-neg'])), TOK['ink-2']];
-    const truncate = (s) => (s.length > 22 ? s.slice(0, 21) + '…' : s);
-    const height = Math.max(140, labels.length * 28 + 50);
-    const fig = figure({
-      key,
+    $('tabs').replaceChildren(...tabs);
+    $('panel').setAttribute('aria-labelledby', 'tab-' + state.lens);
+  }
+  function unusualHere(lens) {
+    const units = lensUnits(lens);
+    if (!units.length) return null;
+    const key = 'uh:' + lens;
+    const more = state.more.has(key);
+    const shown = more ? units : units.slice(0, 3);
+    // "Unusual here" only over a finding the verdict names; otherwise the list is of smaller findings.
+    const named = namedIds();
+    return h('div', { class: 'unusual-here' }, h('h3', null, shown.some((u) => isMajor(u.lead, named)) ? 'Unusual here' : 'Smaller findings'),
+      h('ul', { class: 'flist' }, shown.map((u) => findingLine(u, { where: 'lens', lens, autoOpen: true }))),
+      units.length > 3 ? h('button', { type: 'button', class: 'linkbtn more-btn', 'data-more': key, 'aria-expanded': String(more) }, more ? 'Show fewer' : `Show ${units.length - 3} more`) : null);
+  }
+  function renderPanel() {
+    const panel = $('panel');
+    destroyCharts(panel);
+    const lens = state.lens;
+    const kids = [];
+    if (state.focus && meta(state.focus)) {
+      const i = state.fid ? ins(state.fid) : null;
+      const since = i ? unitSince(i) : null;
+      kids.push(h('div', { class: 'focus-chip' }, swatch(colorOf(state.focus)), `Showing ${state.focus}${since ? ` since ${md(since)}` : ''}`, h('button', { type: 'button', 'data-action': 'clear-focus', 'aria-label': 'Clear highlight' }, '✕')));
+    }
+    kids.push(h('h2', { class: 'sr-only lens-h', id: 'lens-h', tabindex: '-1' }, lensLabel(lens)));
+    if (!hasChart()) kids.push(h('p', { class: 'note-line' }, 'Charts unavailable; showing tables.'));
+    let body;
+    try {
+      body = LENS_RENDER[lens]();
+    } catch (e) {
+      console.error(`lens ${lens} failed`, e);
+      body = h('p', { class: 'fail' }, 'Not in this snapshot.');
+    }
+    kids.push(body);
+    try {
+      kids.push(unusualHere(lens));
+    } catch (e) {
+      console.error('unusual here failed', e);
+    }
+    panel.replaceChildren(...[kids].flat(Infinity).filter(Boolean));
+  }
+  const grid2 = (...figs) => { const f = figs.filter(Boolean); return h('div', { class: 'lens-grid' + (f.length === 1 ? ' one' : '') }, f); };
+  const notIn = () => h('p', { class: 'fail' }, 'Not in this snapshot.');
+
+  // ----- Supply lens -----
+  function movesBars(m, asset, keyLabel) {
+    const vals = [...m.rows.map((x) => x.deltaUsd), m.other, m.unattributed, m.net].filter(isNum);
+    const max = Math.max(1, ...vals.map(Math.abs));
+    const bar = (v, cls) => {
+      const tr = h('span', { class: 'track' }, h('span', { class: 'axis0' }));
+      tr.firstChild.style.left = '50%';
+      const f = h('span', { class: 'fill ' + (cls || (v >= 0 ? 'pos' : 'neg')) });
+      const w = (Math.abs(v) / max) * 50;
+      f.style.width = w + '%';
+      f.style.left = v >= 0 ? '50%' : 50 - w + '%';
+      if (cls === 'net') f.style.borderRadius = v >= 0 ? '0 4px 4px 0' : '4px 0 0 4px';
+      tr.append(f);
+      return tr;
+    };
+    const rows = m.rows.map((x) => {
+      const pct = x.prevUsd > 0 ? fmtPct((100 * x.deltaUsd) / x.prevUsd) : null;
+      const tipText = `${x.asset} on ${x.chain}: ${fmtUsd(x.prevUsd)} → ${fmtUsd(x.currUsd)} (${fmtUsd(x.deltaUsd, { signed: true })}${pct ? `, ${pct}` : ''})`;
+      return h('button', { type: 'button', class: 'brow', 'data-move': 'row', 'data-usd': x.deltaUsd, 'data-lens': 'chains', 'data-focus': x.asset, 'data-tip': tipText, 'aria-label': tipText },
+        h('span', { class: 'bl' }, asset ? null : swatch(lensColor(x.asset)), h('span', null, asset ? x.chain : `${x.asset} · ${x.chain}`)), bar(x.deltaUsd), h('span', { class: 'bv' }, fmtUsd(x.deltaUsd, { signed: true })));
+    });
+    if (Math.round(m.other) !== 0) rows.push(h('div', { class: 'brow', 'data-move': 'other', 'data-usd': m.other }, h('span', { class: 'bl' }, h('span', null, 'Other')), bar(m.other), h('span', { class: 'bv' }, fmtUsd(m.other, { signed: true }))));
+    if (m.unattributed) rows.push(h('div', { class: 'brow', 'data-move': 'unattributed', 'data-usd': m.unattributed }, h('span', { class: 'bl' }, h('span', null, 'Unattributed')), bar(m.unattributed), h('span', { class: 'bv' }, fmtUsd(m.unattributed, { signed: true }))));
+    rows.push(h('div', { class: 'brow net', 'data-move': 'net', 'data-usd': m.net }, h('span', { class: 'bl' }, h('span', null, 'Net')), bar(m.net, 'net'), h('span', { class: 'bv' }, fmtUsd(m.net, { signed: true }))));
+    void keyLabel;
+    return h('div', { class: 'bars', 'data-graphic': 'moves' }, rows);
+  }
+  function movesTitle(m, subject, asset) {
+    const pw = periodWords();
+    if (Math.round(m.net) === 0) return `${subject} unchanged over ${pw}`;
+    const top = m.rows[0];
+    const where = top ? (asset ? top.chain : `${top.asset} on ${top.chain}`) : null;
+    if (!top) return `${subject} ${fmtUsd(m.net, { signed: true })} over ${pw}`;
+    return Math.sign(top.deltaUsd) === Math.sign(m.net) ? `${subject} ${fmtUsd(m.net, { signed: true })} over ${pw}, led by ${where} (${fmtUsd(top.deltaUsd, { signed: true })})` : `${subject} ${fmtUsd(m.net, { signed: true })} over ${pw}; largest move ${where} (${fmtUsd(top.deltaUsd, { signed: true })})`;
+  }
+  function movesFigure(asset) {
+    const r = rng();
+    const w = attrWin(r.win);
+    const subject = asset || aggKey() || 'Total';
+    if (!P().attribution) return figure({ key: 'moves', title: 'Where supply moved', body: () => notIn() });
+    if (!w) return figure({ key: 'moves', title: 'Where supply moved', body: () => h('p', { class: 'note-line' }, 'No chain breakdown for this period.') });
+    const m = movesModel(w, asset);
+    if (!m) return figure({ key: 'moves', title: 'Where supply moved', body: () => h('p', { class: 'note-line' }, 'No chain breakdown for this period.') });
+    // A leg under $1K prints as "<$1K" (never "In +$1" beside "Out −$2.0M").
+    const leg = (x) => (x !== 0 && Math.abs(x) < 1000 ? '<$1K' : fmtUsd(x, { signed: true }));
+    const strip = h('p', { class: 'strip', 'data-strip': '', 'data-in': m.inSum, 'data-out': m.outSum, 'data-net': m.net }, 'In ', h('b', null, nw(leg(m.inSum))), ' · Out ', h('b', null, nw(leg(m.outSum))), ' · Net ', h('b', null, nw(leg(m.net))));
+    const tableA = () => {
+      const rows = [];
+      const assets = (w.assets || []).filter((x) => !asset || x.asset === asset);
+      for (const a of assets) {
+        for (const x of w.chains.filter((c) => c.asset === a.asset)) rows.push({ cells: [x.asset, x.chain, fmtUsd(x.prevUsd), fmtUsd(x.currUsd), fmtUsd(x.deltaUsd, { signed: true }), x.prevUsd > 0 ? fmtPct((100 * x.deltaUsd) / x.prevUsd) : '—'] });
+        rows.push({ cls: 'sub', cells: [a.asset, 'All chains', fmtUsd(a.prevUsd), fmtUsd(a.currUsd), fmtUsd(a.deltaUsd, { signed: true }), a.prevUsd > 0 ? fmtPct((100 * a.deltaUsd) / a.prevUsd) : '—'] });
+      }
+      rows.push({ cls: 'tot', cells: ['Net', '', '', '', fmtUsd(m.net, { signed: true }), ''] });
+      return h('div', null, table({ wrap: 'tall', caption: `${fmtDate(w.from)} to ${fmtDate(w.to)}`, head: ['Asset', { t: 'Chain', l: true }, 'Start', 'End', 'Change', '%'], rows }), !asset ? h('p', { class: 'note-line' }, `Chain moves cover ${aggKey() || 'USD'} stablecoins.`) : null);
+    };
+    return figure({
+      key: 'moves',
+      title: movesTitle(m, subject, asset),
+      table: tableA,
+      body: () => (m.empty && Math.round(m.net) === 0 ? h('p', { class: 'note-line' }, `Nothing moved between chains over ${periodWords()}.`) : h('div', null, strip, movesBars(m, asset))),
+    });
+  }
+  function supplyAreaFigure(keys, title, single) {
+    const end = endIso();
+    const sers = keys.map((k) => assetData(k).series.supplyUsd);
+    const first = sers.map((c) => compactFirst(c)).filter(Boolean).map((x) => x.date).sort()[0];
+    const start = spanStart(end) || first || end;
+    let al = alignCompacts(sers, start, end, single ? null : 0);
+    const full = al;
+    if (!spanOf(rng())) al = thin(al.dates, al.rows, Math.max(400, Math.min(1100, root.innerWidth || 1100)));
+    const labels = al.dates;
+    const spanDays = daysBetween(labels[0], end);
+    const datasets = keys.map((k, i) => lineDs(k, al.rows[i], lensColor(k), { fill: single ? 'origin' : i ? '-1' : 'origin', backgroundColor: alpha(lensColor(k), single ? 0.12 : 0.1), pointStyle: 'rect' }));
+    const ath = single ? (assetData(keys[0]).current || {}).ath : null;
+    const sub = ath && ath.date >= labels[0] ? `Peak ${fmtUsd(ath.value)} · ${md(ath.date)}` : null;
+    const tableB = () => {
+      const weekly = full.dates.length > 92;
+      const idx = full.dates.map((_, i) => full.dates.length - 1 - i).filter((i, j) => !weekly || j % 7 === 0);
+      const tot = (i) => full.rows.reduce((s, r) => s + (isNum(r[i]) ? r[i] : 0), 0);
+      const step = weekly ? 7 : 1;
+      return table({ wrap: 'tall', caption: weekly ? 'Weekly, newest first.' : 'Newest first.', head: ['Date', ...(single ? ['Supply'] : keys), ...(single ? [] : ['Total']), weekly ? 'Weekly change' : 'Daily change'],
+        rows: idx.map((i) => ({ cells: [fmtDate(full.dates[i]), ...(single ? [fmtUsd(full.rows[0][i])] : full.rows.map((r) => fmtUsd(r[i]))), ...(single ? [] : [fmtUsd(tot(i))]), i - step >= 0 ? fmtUsd(tot(i) - tot(i - step), { signed: true }) : '—'] })) });
+    };
+    return figure({
+      key: 'supply-area',
       title,
       sub,
-      signed: true,
-      label: `${title}: ${labels.map((l, i) => `${l} ${fmtUsd(i < rows.length ? rows[i].delta : net, { signed: true })}`).join(', ')}`,
-      config: () => ({
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Change', data, backgroundColor: colors, borderRadius: 4, borderSkipped: false, maxBarThickness: 20, categoryPercentage: 0.82, barPercentage: 0.9 }] },
-        options: {
-          indexAxis: 'y',
-          interaction: { mode: 'nearest', axis: 'y', intersect: false },
-          scales: {
-            x: axisY((v) => fmtUsd(v, { signed: true }), { grid: { color: (c) => (c.tick && c.tick.value === 0 ? TOK.axis : TOK.hair), drawTicks: false } }),
-            y: { grid: { display: false }, border: { color: TOK.axis }, ticks: { color: TOK['ink-2'], autoSkip: false, callback(v) {
-              return truncate(String(this.getLabelForValue(v)));
-            } } },
-          },
-          plugins: {
-            tooltip: {
-              usePointStyle: false,
-              callbacks: {
-                title: (it) => it[0].label,
-                label: (c) => {
-                  const r = rows[c.dataIndex];
-                  if (!r) return ` ${fmtUsd(net, { signed: true })} net`;
-                  return [` ${fmtUsd(r.delta, { signed: true })}`, ...(r.prev !== undefined ? [` ${fmtUsd(r.prev)} → ${fmtUsd(r.curr)}`] : [])];
-                },
-              },
-            },
-          },
-        },
-      }),
-      tableView: () => table({ head: ['Contributor', 'Before', 'After', 'Change'], rows: [...rows.map((r) => ({ cells: [r.label, r.prev !== undefined ? fmtUsd(r.prev) : '', r.curr !== undefined ? fmtUsd(r.curr) : '', fmtUsd(r.delta, { signed: true })] })), { cells: ['Net change', '', '', fmtUsd(net, { signed: true })] }] }),
+      label: `${title}: ${keys.join(', ')}`,
+      legend: keys.length > 1 ? keys.map((k) => ({ label: k, color: lensColor(k) })) : null,
+      config: () => lineConfig({ labels, datasets, yFmt: (v) => fmtUsd(v), spanDays, stacked: !single, endLabel: keys.length > 1 ? { fmt: (v) => fmtUsd(v) } : false, yExtra: { beginAtZero: true }, band: periodBands(labels) }),
+      table: tableB,
     });
-    const box = fig.querySelector('.chart-box');
-    if (box) box.style.height = height + 'px';
-    if (unitNote) fig.append(h('p', { class: 'small muted' }, unitNote));
-    return fig;
   }
-  // Top contributors by |delta| until the display budget, the rest folded into "Other".
-  function topRows(rows, max) {
-    const s = rows.slice().sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-    if (s.length <= max) return s;
-    const keep = s.slice(0, max - 1);
-    const rest = s.slice(max - 1);
-    keep.push({ label: `Other (${rest.length})`, delta: rest.reduce((t, r) => t + r.delta, 0), prev: rest.reduce((t, r) => t + (r.prev || 0), 0), curr: rest.reduce((t, r) => t + (r.curr || 0), 0) });
-    return keep;
+  function goldLineFigure(d, key, title, c, fmt, sub) {
+    const end = endIso();
+    const first = compactFirst(c);
+    const start = spanStart(end) || (first && first.date) || end;
+    let al = alignCompacts([c], start, end);
+    const full = al;
+    if (!spanOf(rng())) al = thin(al.dates, al.rows, 900);
+    return figure({
+      key, title, sub,
+      config: () => lineConfig({ labels: al.dates, datasets: [lineDs(d.key, al.rows[0], colorOf(d.key), { fill: 'origin', backgroundColor: alpha(colorOf(d.key), 0.1) })], yFmt: fmt, spanDays: daysBetween(al.dates[0], end), band: periodBands(al.dates) }),
+      table: () => table({ wrap: 'tall', head: ['Date', title.split(' · ')[0]], rows: full.dates.map((dt, i) => ({ cells: [fmtDate(dt), fmt(full.rows[0][i])] })).reverse().filter((_, j) => full.dates.length <= 92 || j % 7 === 0) }),
+    });
   }
-  function renderChanged() {
+  const spanText = () => (spanOf(rng()) ? `${spanOf(rng()) === 365 ? '12 months' : spanOf(rng()) + ' days'}` : 'all time');
+  function lensSupply() {
     const p = P();
-    const r = rng();
-    const w = p.attribution && p.attribution.windows ? p.attribution.windows[r.win] : null;
-    const flows = Object.values(p.assets || {}).some((a) => a && a.current && a.current.changeBasis === 'token-flow');
-    $('sub-changed').textContent = `Change in the supply of active Paxos USD stablecoins over ${r.text}, split by asset and by chain${flows ? ' (token flows at today\'s price, so a peg wobble is not a supply change)' : ''}. Bars run from the previous running total; the last bar is the net change.`;
-    const max = root.innerWidth < 600 ? 6 : 9;
-    const out = [];
-    if (!w) {
-      out.push(h('p', { class: 'placeholder' }, `Attribution for ${r.text} is not in this snapshot.`));
-      return out;
-    }
-    const period = `${fmtDate(w.from)} to ${fmtDate(w.to)}`;
     if (state.asset === 'all') {
-      const stat = (label, v, m) => h('div', { class: 'tile' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, v), m ? h('span', { class: 'meta' }, m) : null);
-      out.push(
-        h(
-          'div',
-          { class: 'tiles' },
-          stat('Net change', fmtUsd(w.totalDeltaUsd, { signed: true }), period),
-          stat('Gross movement', fmtUsd(w.grossUsd), 'sum of absolute changes by asset and chain'),
-          stat('Rotation', fmtUsd(w.rotationUsd), 'moved between chains or assets without changing the total'),
-        ),
-      );
-      const aRows = (w.assets || []).map((x) => ({ label: x.asset, delta: x.deltaUsd, prev: x.prevUsd, curr: x.currUsd }));
-      const cRows = (w.chains || []).map((x) => ({ label: `${x.asset} · ${x.chain}`, delta: x.deltaUsd, prev: x.prevUsd, curr: x.currUsd }));
-      const net = isNum(w.totalDeltaUsd) ? w.totalDeltaUsd : aRows.reduce((s, x) => s + x.delta, 0);
-      const chainTop = topRows(cRows, max);
-      const resid = net - cRows.reduce((s, x) => s + x.delta, 0);
-      if (cRows.length && Math.abs(resid) > 0.001 * (w.grossUsd || Math.abs(net) || 1)) chainTop.push({ label: 'Unattributed', delta: resid });
-      out.push(h('div', { class: 'grid g2' }, h('div', { class: 'card' }, waterfallFigure('wf-assets', 'By asset', period, topRows(aRows, max), net)), h('div', { class: 'card' }, cRows.length ? waterfallFigure('wf-chains', 'By chain', period, chainTop, net) : h('p', { class: 'placeholder' }, 'No per-chain balances in this window.'))));
-      return out;
+      // Card order (largest first): the largest coin is the bottom band, and the legend reads as the cards.
+      const order = bySupply(discovered().filter((d) => d.data)).map((d) => d.key);
+      const keys = (p.totals.usd.assets || []).filter((k) => assetData(k) && assetData(k).series && assetData(k).series.supplyUsd);
+      keys.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      return grid2(movesFigure(null), keys.length ? supplyAreaFigure(keys, `Supply by coin · ${spanText()}`, false) : null);
     }
     const d = meta(state.asset);
-    const ar = (w.assets || []).find((x) => x.asset === state.asset);
-    if (!ar) {
-      const ch = d && d.data ? assetChange(d, r, endIso()) : null;
-      out.push(h('div', { class: 'card' }, h('p', null, `${state.asset} is not part of the USD attribution. Supply change over ${r.text}: `, h('strong', null, ch ? deltaNode(ch, unitOfAsset(d)) : 'n/a'), '.'), h('p', { class: 'small muted' }, (d && d.data && (d.data.chains || []).length) ? '' : 'No per-chain balances are available for this asset.')));
-      return out;
-    }
-    const cRows = (w.chains || []).filter((x) => x.asset === state.asset).map((x) => ({ label: x.chain, delta: x.deltaUsd, prev: x.prevUsd, curr: x.currUsd }));
-    const gross = cRows.reduce((s, x) => s + Math.abs(x.delta), 0);
-    const net = ar.deltaUsd;
-    const stat = (label, v, m) => h('div', { class: 'tile' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, v), m ? h('span', { class: 'meta' }, m) : null);
-    out.push(
-      h(
-        'div',
-        { class: 'tiles' },
-        stat('Net change', fmtUsd(net, { signed: true }), `${fmtUsd(ar.prevUsd)} → ${fmtUsd(ar.currUsd)}`),
-        cRows.length ? stat('Gross chain movement', fmtUsd(gross), period) : null,
-        cRows.length ? stat('Chain rotation', fmtUsd(Math.max(0, (gross - Math.abs(cRows.reduce((s, x) => s + x.delta, 0))) / 2)), 'moved between chains without changing the total') : null,
-      ),
-    );
-    if (!cRows.length) {
-      out.push(h('p', { class: 'placeholder' }, `No per-chain balances for ${state.asset}; only the asset total is attributed.`));
-      return out;
-    }
-    const top = topRows(cRows, max);
-    const resid = net - cRows.reduce((s, x) => s + x.delta, 0);
-    if (Math.abs(resid) > 0.001 * (gross || Math.abs(net) || 1)) top.push({ label: 'Unattributed', delta: resid });
-    out.push(h('div', { class: 'card' }, waterfallFigure('wf-chain-one', `${state.asset} by chain`, period, top, net, Math.abs(resid) > 0.001 * (gross || 1) ? 'Chain balances and the asset total come from different DefiLlama endpoints; the difference is shown as "Unattributed".' : null)));
-    return out;
-  }
-
-  // 5. Health grid
-  const STATES = {
-    notable_negative: { ico: '!', label: 'Negative', long: 'unusual and negative' },
-    notable_positive: { ico: '+', label: 'Positive', long: 'unusual and positive' },
-    notable_neutral: { ico: '◆', label: 'Neutral', long: 'unusual, neither good nor bad' },
-    within_own_history: { ico: '○', label: 'Normal', long: 'within its own history' },
-    insufficient_history: { ico: '?', label: 'Thin data', long: 'too little history to judge' },
-    no_data: { ico: '–', label: 'No data', long: 'no checks ran' },
-  };
-  // The data dimension judges the sources, not the asset: its notable cells are data-quality notes.
-  const DQ_STATE = { ico: 'i', label: 'Source note', long: 'data-quality note about the sources, not the asset' };
-  const isNotable = (st) => /^notable_/.test(String(st || ''));
-  const cellState = (dim, cell) => (dim === 'data' && isNotable(cell.state) ? { ...DQ_STATE, cls: 'st-dq' } : { ...(STATES[cell.state] || STATES.no_data), cls: `st-${cell.state}` });
-  // The server sends a cell's evidence as { id, headline, polarity, p, E } or null.
-  function cellEvidence(cell) {
-    return cell && cell.evidence && typeof cell.evidence === 'object' ? cell.evidence : null;
-  }
-  function healthDetail(a, dim, cell) {
-    const st = cellState(dim, cell);
-    const ev = cellEvidence(cell);
-    const evText = ev && ev.headline ? ev.headline : null;
-    return [h('strong', null, `${labelOf(a)} · ${dim === 'data' ? 'data quality' : dim}: `), `${st.long[0].toUpperCase()}${st.long.slice(1)}. ${plural(cell.tests || 0, 'check')}, ${fmtCount(cell.notable || 0)} notable.`, evText ? [h('br'), 'Evidence: ', evText] : null];
-  }
-  function renderHealth() {
-    const hg = (P().insights || {}).health;
-    if (!hg || !Array.isArray(hg.dimensions) || !hg.cells) return h('p', { class: 'placeholder' }, 'The health grid is not in this snapshot.');
-    const known = new Set(discovered().map((d) => d.key));
-    const rows = healthRows();
-    if (!rows.length) return h('p', { class: 'placeholder' }, `No health checks for ${state.asset} in this snapshot.`);
-    const detail = h('div', { class: 'hc-detail', 'aria-live': 'polite' }, 'Select a cell to see its strongest evidence.');
-    const show = (btn) => {
-      const [a, dim] = [btn.dataset.a, btn.dataset.d];
-      for (const b of tbl.querySelectorAll('.hc[aria-pressed="true"]')) b.setAttribute('aria-pressed', 'false');
-      btn.setAttribute('aria-pressed', 'true');
-      detail.replaceChildren(...healthDetail(a, dim, hg.cells[a][dim]).flat().filter(Boolean));
-    };
-    const key = h('p', { class: 'hg-key' }, 'States: ! unusual and negative · + unusual and positive · ◆ unusual, neutral · ○ within own history · ? too little history · – no checks ran. The data-quality column judges the sources (i = source note), not the asset.');
-    const tbl = table({
-      cls: 'hg',
-      caption: `Health by asset and dimension (${plural(rows.length, 'row')})`,
-      head: ['Asset', ...hg.dimensions.map((dim) => (dim === 'data' ? 'data quality' : dim))],
-      rows: rows.map((a) => ({
-        cells: [
-          known.has(a) ? assetLabel(a) : h('span', { class: 'asset-cell' }, labelOf(a), h('span', { class: 'badge' }, 'aggregate')),
-          ...hg.dimensions.map((dim) => {
-            const cell = hg.cells[a][dim] || { state: 'no_data', tests: 0 };
-            const st = cellState(dim, cell);
-            return h('button', { type: 'button', class: `hc ${st.cls}`, 'data-a': a, 'data-d': dim, 'aria-pressed': 'false', 'aria-label': `${labelOf(a)} ${dim === 'data' ? 'data quality' : dim}: ${st.label}, ${st.long}. ${plural(cell.tests || 0, 'check')}.` }, h('span', { class: 'ico', 'aria-hidden': 'true' }, st.ico), h('span', null, st.label));
-          }),
-        ],
-      })),
-    });
-    tbl.addEventListener('click', (e) => {
-      const b = e.target.closest('.hc');
-      if (b) show(b);
-    });
-    tbl.addEventListener('focusin', (e) => {
-      const b = e.target.closest('.hc');
-      if (b) show(b);
-    });
-    const summaries = h(
-      'ul',
-      { class: 'summaries' },
-      rows.map((a) => {
-        const entries = Object.entries(hg.cells[a] || {});
-        const cells = entries.filter(([dim]) => dim !== 'data').map(([, c]) => c);
-        const dataCell = (hg.cells[a] || {}).data;
-        const n = cells.reduce((s, c) => s + (c.tests || 0), 0);
-        const k = cells.filter((c) => (c.tests || 0) > 0).length;
-        const count = (s) => cells.filter((c) => c.state === s).length;
-        const dq = dataCell && isNotable(dataCell.state) ? `; data quality: ${plural(dataCell.notable || 1, 'source note')}` : '';
-        return h('li', null, h('strong', null, labelOf(a)), `: ${plural(n, 'check')} in ${plural(k, 'dimension')} → ${count('notable_negative')} notable negative, ${count('notable_positive')} positive, ${count('notable_neutral')} neutral, ${count('within_own_history')} within own history${count('insufficient_history') ? `, ${count('insufficient_history')} with too little history` : ''}${dq}.`);
-      }),
-    );
-    return [key, tbl, detail, summaries];
-  }
-
-  // 6. Asset table
-  function chainCell(d) {
-    const cc = chainCount(d.data, floorOf(d.key), addressesOf(d.key));
-    if (!isNum(cc.n)) return h('span', { title: 'No per-chain data or contracts in this snapshot' }, 'n/a');
-    const note = cc.basis === 'contracts' ? 'contracts' : cc.n !== cc.of ? `of ${fmtCount(cc.of)} tracked` : null;
-    const title = cc.basis === 'contracts' ? 'Chains with a discovered contract or an on-chain reading; DefiLlama has no per-chain balances for this asset' : `Chains holding at least the asset's materiality floor${isNum(floorOf(d.key)) ? ` (${fmtUsd(floorOf(d.key))})` : ''}; ${fmtCount(cc.of)} chains are tracked in all`;
-    return h('span', { title }, fmtCount(cc.n), note ? h('div', { class: 'small muted nowrap' }, note) : null);
-  }
-  function renderAssets() {
-    const r = rng();
-    const end = endIso();
-    const list = bySupply(visibleAssets()).filter((d) => d.data);
-    const head = ['Asset', 'Supply', '1d', '7d', '30d', '90d', 'From peak', { t: 'Peg (bp)' }, 'Rank', 'Mkt share', '24h turnover', 'Chains', `Trend (${r.label})`];
-    // Percent change with the amount underneath (visible, not a hover-only title).
-    const pct = (ch, unit) => (ch && (isNum(ch.pct) || isNum(ch.abs)) ? h('span', null, h('span', { class: 'nowrap' }, isNum(ch.pct) ? fmtPct(ch.pct, { signed: true }) : 'n/a'), h('div', { class: 'small muted nowrap' }, fmtUnit(ch.abs, unit, { signed: true }))) : 'n/a');
-    const rows = list.map((d) => {
-      const a = d.data;
-      const c = a.current || {};
-      const s = supplySeries(d);
-      const usd = isUsdKind(d);
-      const dd = usd ? c.drawdownPct : c.nativeDrawdownPct;
-      return {
-        sel: state.asset === d.key,
-        cells: [
-          h('span', { class: 'asset-cell' }, swatch(colorOf(d.key)), h('button', { type: 'button', class: 'btn-link', 'data-asset': d.key }, d.key, h('span', { class: 'sr-only' }, ': show only this asset')), d.status !== 'active' ? h('span', { class: 'badge' }, d.status) : null),
-          h('span', { class: 'nowrap' }, fmtUsd(c.supplyUsd), !usd ? h('div', { class: 'small muted' }, fmtUnit(c.supply, d.unit)) : null),
-          ...[[1, 'd1'], [7, 'd7'], [30, 'd30'], [90, 'd90']].map(([n, w]) => pct(assetChangeDays(d, n, w, end), unitOfAsset(d))),
-          isNum(dd) ? fmtPct(dd) : 'n/a',
-          h('span', { title: d.kind === 'gold' ? 'Premium of the price in XAU over 1 oz' : 'Deviation of the price from $1' }, fmtBp(c.pegDevBp)),
-          isNum(c.rank) ? `#${c.rank}` : 'n/a',
-          isNum(c.marketShare) ? fmtShare(c.marketShare) : 'n/a',
-          isNum(c.turnover24h) ? fmtShare(c.turnover24h) : 'n/a',
-          chainCell(d),
-          spark((sliceCompact(s, r.days, end) || { values: [] }).values, colorOf(d.key), { w: 90, h: 22 }),
-        ],
-      };
-    });
-    const leg = legacyCount();
-    const units = list.filter((d) => !isUsdKind(d)).map((d) => `${d.key} in ${d.unit}`);
-    const asOfs = [...new Set(list.map((d) => d.data.current && d.data.current.supplyAsOf).filter(Boolean))];
-    const asOf = asOfs.length === 1 ? `Supply as of ${fmtDateTime(asOfs[0])}. ` : asOfs.length > 1 ? `Supply as of ${asOfs.map(fmtDateTime).join(' / ')} (per asset). ` : `Supply as of ${fmtDate(endIso())} (daily data). `;
-    return [
-      table({ note: `${asOf}Changes are percentage changes of supply with the amount below (USD stablecoins in USD${units.length ? `; ${units.join(', ')}, not their USD value` : ''}). From peak: supply below its highest level. Chains: chains holding at least the asset's typical daily flow. Rank and share are among live USD stablecoins.`, head, rows }),
-      leg && !state.legacy ? h('p', { class: 'small muted' }, `${plural(leg, 'legacy or dead asset')} hidden. Use "Show legacy" above to include them.`) : null,
-    ];
-  }
-
-  // 7. Supply over time
-  // Where a series starts later than its asset existed, say so (its opening balance is not issuance).
-  function lateStarts(keys, pick) {
-    return keys
-      .map((k) => {
-        const d = meta(k);
-        const f = compactFirst(pick(k));
-        return d && f && !startsAtLaunch(pick(k), d.firstDate) && d.firstDate ? `${k} from ${fmtDate(f.date)} (first seen ${fmtDate(d.firstDate)})` : null;
-      })
-      .filter(Boolean);
-  }
-  // Start of the market-share line: the server's coverage date when it sends one, else the same rule
-  // computed here from the market total (see coverageStart).
-  function marketCoverage() {
-    const p = P();
-    const mk = p.market && p.market.usdTotal;
-    const from = (p.market && typeof p.market.coverageFrom === 'string' && p.market.coverageFrom) || coverageStart(mk, { week: 7, horizon: rangeById('1y').days });
-    if (!from || !mk) return null;
-    const prev = compactAt(mk, addDays(from, -1));
-    const at = compactAt(mk, from);
-    return { from, rise: isNum(prev) && prev > 0 && isNum(at) ? (100 * (at - prev)) / prev : null };
-  }
-  function renderSupply() {
-    const p = P();
-    const r = rng();
-    const end = endIso();
-    const span = (start) => daysBetween(start, end);
-    const out = [];
-    const isAll = state.asset === 'all';
-    const d1 = isAll ? null : meta(state.asset);
-    const usdSer = (k) => (assetData(k) && assetData(k).series && assetData(k).series.supplyUsd) || null;
-    const grid = h('div', { class: 'grid' });
-    const goldGrid = h('div', { class: 'grid g2' });
-    const notes = [];
-    let net = null; // { members:[{key,c,launch}], unit, label }
-    let shareSeries = null;
-    const nonUsd = (isAll ? visibleAssets() : [d1]).filter((d) => d && d.data && !isUsdKind(d) && d.status !== 'dead');
-    if (isAll || isUsdKind(d1)) {
-      if (isAll) {
-        const keys = (p.totals.usd.assets || []).filter(usdSer);
-        // Legacy / dead USD assets join the stack (in gray, on top) only when "Show legacy" is on.
-        const extra = state.legacy ? visibleAssets().filter((d) => isUsdKind(d) && d.status !== 'active' && !keys.includes(d.key) && usdSer(d.key)).map((d) => d.key) : [];
-        if (!keys.length) grid.append(h('p', { class: 'placeholder' }, 'No supply history in this snapshot.'));
-        const active = keys.slice().sort((a, b) => (isNum((meta(a) || {}).colorIndex) ? meta(a).colorIndex : 99) - (isNum((meta(b) || {}).colorIndex) ? meta(b).colorIndex : 99));
-        const first = [...keys, ...extra].map((k) => compactFirst(usdSer(k))).filter(Boolean).map((x) => x.date).sort()[0];
-        const start = rangeStart(first);
-        const groups = [...active.map((k) => ({ label: k, color: colorOf(k), list: [usdSer(k)] })), extra.length ? { label: extra.length === 1 ? `${extra[0]} (${meta(extra[0]).status})` : `Legacy (${extra.join(', ')})`, color: TOK.neutral, list: extra.map(usdSer) } : null].filter(Boolean);
-        const al = alignCompacts(groups.map((g) => sumCompacts(g.list, start, end)), start, end, 0);
-        const labels = al.dates;
-        const datasets = groups.map((g, i) => lineDataset(g.label, al.rows[i], g.color, { fill: i ? '-1' : 'origin', backgroundColor: alpha(g.color, 0.22), pointStyle: 'rect', spanGaps: true }));
-        const table0 = () => table({ wrap: 'tall', head: ['Date', ...groups.map((g) => g.label), extra.length ? 'Total incl. legacy' : 'Total'], rows: labels.map((_, i) => labels.length - 1 - i).filter((i, j) => j % Math.max(1, Math.round(labels.length / 120)) === 0).map((i) => ({ cells: [labels[i], ...al.rows.map((row) => fmtUsd(row[i])), fmtUsd(al.rows.reduce((s, row) => s + (row[i] || 0), 0))] })) });
-        const late = lateStarts([...keys, ...extra], usdSer).filter((x, i, xs) => xs.indexOf(x) === i);
-        if (late.length) notes.push(`DefiLlama supply history starts late for ${late.join('; ')}; totals before then leave it out.`);
-        $('sub-supply').textContent = `Active Paxos USD stablecoins stacked by asset over ${r.text}${extra.length ? `; legacy and dead assets (${extra.join(', ')}) are stacked on top in gray` : ''}.${nonUsd.length ? ` ${nonUsd.map((d) => d.key).join(', ')} ${nonUsd.length === 1 ? 'is' : 'are'} shown separately in ${[...new Set(nonUsd.map((d) => d.unit))].join(', ')} and USD.` : ''}`;
-        net = { members: keys.map((k) => ({ key: k, c: usdSer(k), launch: startsAtLaunch(usdSer(k), (meta(k) || {}).firstDate) })), unit: 'USD', label: 'All active Paxos USD stablecoins' };
-        shareSeries = p.totals.usd.marketShare;
-        if (keys.length) grid.append(
-          h('div', { class: 'card' }, figure({ key: 'supply-stack', title: 'USD stablecoin supply by asset', sub: `${fmtDate(start)} to ${fmtDate(end)}`, label: `Stacked supply of ${groups.map((g) => g.label).join(', ')}`, legend: groups.map((g) => ({ label: g.label, color: g.color })), config: () => lineConfig({ labels, datasets, yFmt: (v) => fmtUsd(v), spanDays: span(start), stacked: true }), tableView: table0 })),
-        );
-      } else if (!usdSer(d1.key)) {
-        $('sub-supply').textContent = `${d1.key} supply over ${r.text}.`;
-        grid.append(h('p', { class: 'placeholder' }, `No supply history for ${d1.key} in this snapshot.`));
-      } else {
-        $('sub-supply').textContent = `${d1.key} supply over ${r.text}.`;
-        const s = usdSer(d1.key);
-        const first = compactFirst(s);
-        const start = rangeStart(first && first.date);
-        const sl = alignCompacts([s], start, end);
-        const labels = sl.dates;
-        const gaps = gapNote(sl.rows[0]);
-        const datasets = [lineDataset(d1.key, sl.rows[0], colorOf(d1.key), bridged({ fill: 'origin', backgroundColor: alpha(colorOf(d1.key), 0.1) }))];
-        const late = lateStarts([d1.key], usdSer);
-        if (late.length) notes.push(`DefiLlama supply history starts late: ${late[0]}.`);
-        net = { members: [{ key: d1.key, c: s, launch: startsAtLaunch(s, d1.firstDate) }], unit: 'USD', label: d1.key };
-        const mk = p.market && p.market.usdTotal;
-        shareSeries = mk ? { start: s.start, values: s.values.map((v, i) => {
-          const m = compactAt(mk, addDays(s.start, i));
-          return isNum(v) && m ? v / m : null;
-        }) } : null;
-        grid.append(h('div', { class: 'card' }, figure({ key: 'supply-one', title: `${d1.key} supply (USD)`, sub: [`${fmtDate(start)} to ${fmtDate(end)}`, gaps].filter(Boolean).join('; '), config: () => lineConfig({ labels, datasets, yFmt: (v) => fmtUsd(v), spanDays: span(start), yExtra: { beginAtZero: true } }), tableView: () => seriesTable(labels, [{ label: d1.key, values: sl.rows[0], fmt: (v) => fmtUsd(v) }]) })));
-      }
-    } else if (d1) {
-      $('sub-supply').textContent = `${d1.key} supply over ${r.text}, in ${d1.unit} and in USD.`;
-    }
-    for (const g of nonUsd) {
-      const sN = (g.data.series || {}).supply;
-      const sU = (g.data.series || {}).supplyUsd;
-      if (!sN && !sU) continue;
-      const first = compactFirst(sN || sU);
-      const start = rangeStart(first && first.date);
-      const al = alignCompacts([sN, sU], start, end);
-      const mk = (key, title, vals, fmt) => {
-        const gaps = gapNote(vals);
-        return h('div', { class: 'card' }, figure({ key, title, sub: [`${fmtDate(start)} to ${fmtDate(end)}`, gaps].filter(Boolean).join('; '), size: isAll ? 'sm' : '', config: () => lineConfig({ labels: al.dates, datasets: [lineDataset(g.key, vals, colorOf(g.key), bridged({ fill: 'origin', backgroundColor: alpha(colorOf(g.key), 0.1) }))], yFmt: fmt, spanDays: span(start), yExtra: { beginAtZero: true } }), tableView: () => seriesTable(al.dates, [{ label: title, values: vals, fmt }]) }));
-      };
-      if (sN) goldGrid.append(mk('gold-n-' + g.key, `${g.key} supply (${g.unit})`, al.rows[0], (v) => fmtUnit(v, g.unit)));
-      if (sU) goldGrid.append(mk('gold-u-' + g.key, `${g.key} value (USD)`, al.rows[1], (v) => fmtUsd(v)));
-      if (!isAll) {
-        const c = sN || sU;
-        net = { members: [{ key: g.key, c, launch: startsAtLaunch(c, g.firstDate) }], unit: sN ? g.unit : 'USD', label: g.key };
-        const late = lateStarts([g.key], () => c);
-        if (late.length) notes.push(`Supply history starts late: ${late[0]}.`);
-      }
-    }
-    out.push(grid);
-    if (goldGrid.childNodes.length) out.push(goldGrid);
-    if (notes.length) out.push(h('p', { class: 'small muted' }, notes.join(' ')));
-    // Net issuance (diverging bars) and share of the USD stablecoin market.
-    const grid2 = h('div', { class: 'grid g2' });
-    if (net && net.members.length) {
-      const first = net.members.map((m) => compactFirst(m.c)).filter(Boolean).map((x) => x.date).sort()[0];
-      const start = rangeStart(first);
-      const days = daysBetween(start, end);
-      const mode = days <= 120 ? 'day' : days <= 400 ? 'week' : 'month';
-      const all = netIssuance(net.members, start, end, mode).filter((x) => x.to > start);
-      // Leading buckets with nothing measurable (before or at a series' opening) are dropped.
-      const i0 = all.findIndex((x) => isNum(x.value));
-      const b = i0 < 0 ? [] : all.slice(i0);
-      const fmt = (v) => fmtUnit(v, net.unit, { signed: true });
-      const per = { day: 'day', week: '7 days', month: 'calendar month' }[mode];
-      const partial = b.filter((x) => x.excluded.length && isNum(x.value));
-      const openNote = all.some((x) => x.excluded.length) ? `opening balances of late-starting series are not counted as issuance${partial.length ? ` (${partial.map((x) => `${x.excluded.join(', ')} in ${mode === 'day' ? fmtDate(x.to) : `the period to ${fmtDate(x.to)}`}`).join('; ')})` : ''}` : null;
-      if (b.length) {
-        grid2.append(
-          h(
-            'div',
-            { class: 'card' },
-            figure({
-              key: 'net-issuance',
-              title: `Net issuance per ${per} (${net.unit})`,
-              sub: [`${net.label}; change in supply, not gross mint and burn`, openNote].filter(Boolean).join('; '),
-              label: `Net issuance per ${per}`,
-              signed: true,
-              config: () => ({
-                type: 'bar',
-                data: { labels: b.map((x) => x.to), datasets: [{ label: 'Net issuance', data: b.map((x) => x.value), backgroundColor: b.map((x) => (x.value >= 0 ? TOK['div-pos'] : TOK['div-neg'])), borderRadius: 4, maxBarThickness: 24, categoryPercentage: 0.9, barPercentage: 0.9 }] },
-                options: {
-                  interaction: { mode: 'index', intersect: false },
-                  scales: { x: axisX(b.map((x) => x.to), days), y: axisY((v) => fmt(v)) },
-                  plugins: { tooltip: { usePointStyle: false, callbacks: { title: (it) => (mode === 'day' ? fmtDate(it[0].label) : mode === 'month' ? `${MONTHS[+String(it[0].label).slice(5, 7) - 1]} ${String(it[0].label).slice(0, 4)}` : `${fmtDate(b[it[0].dataIndex].from)} to ${fmtDate(b[it[0].dataIndex].to)}`), label: (c) => ` ${fmt(c.parsed.y)}`, footer: (it) => (b[it[0].dataIndex].excluded.length ? `excludes ${b[it[0].dataIndex].excluded.join(', ')} (series opens)` : '') } } },
-                },
-              }),
-              tableView: () => table({ wrap: 'tall', head: ['Period end', 'Net issuance', { t: 'Note', l: true }], rows: b.slice().reverse().map((x) => ({ cells: [x.to, fmt(x.value), x.excluded.length ? `excludes ${x.excluded.join(', ')} (series opens)` : ''] })) }),
-            }),
-          ),
-        );
-      }
-    }
-    if (shareSeries) {
-      const cov = marketCoverage();
-      // Judge the clip against where the scope's supply data begins: the server may already start the
-      // share series at the coverage date, and the note must still say why earlier years are missing.
-      const first = compactFirst(isAll ? p.totals.usd.supplyUsd : usdSer(state.asset)) || compactFirst(shareSeries);
-      let start = rangeStart(first && first.date);
-      const clipped = cov && cov.from > start;
-      if (clipped) start = cov.from;
-      const al = alignCompacts([shareSeries], start, end);
-      const vals = al.rows[0].map((v) => (isNum(v) ? v * 100 : null));
-      const covText = clipped ? `Shown from ${fmtDate(cov.from)}: that day DefiLlama's USD total rose ${isNum(cov.rise) ? fmtPct(cov.rise) + ' ' : ''}at once, more than it moves in any later week, so coins were still being added to its history and earlier shares would be overstated` : null;
-      grid2.append(h('div', { class: 'card' }, figure({ key: 'share', title: 'Share of the USD stablecoin market', sub: [`${isAll ? 'Active Paxos USD stablecoins' : state.asset} / all USD-pegged stablecoins (DefiLlama)`, covText].filter(Boolean).join('. '), config: () => lineConfig({ labels: al.dates, datasets: [lineDataset('Share', vals, isAll ? TOK['ink-2'] : colorOf(state.asset))], yFmt: (v) => fmtPct(v, { digits: 2 }), spanDays: daysBetween(start, end) }), tableView: () => seriesTable(al.dates, [{ label: 'Share', values: vals, fmt: (v) => fmtPct(v, { digits: 3 }) }]) })));
-    }
-    out.push(grid2);
-    if (!shareSeries && !isAll) out.push(h('p', { class: 'small muted' }, `Market share applies to USD stablecoins; ${state.asset} is not one.`));
-    return out;
-  }
-  function seriesTable(labels, cols) {
-    const step = Math.max(1, Math.round(labels.length / 150));
-    const idx = labels.map((_, i) => labels.length - 1 - i).filter((_, j) => j % step === 0);
-    return table({ wrap: 'tall', caption: step > 1 ? `Every ${step}th day, newest first.` : 'Newest first.', head: ['Date', ...cols.map((c) => c.label)], rows: idx.map((i) => ({ cells: [labels[i], ...cols.map((c) => c.fmt(c.values[i]))] })) });
-  }
-
-  // 8. Peers
-  function renderPeers() {
-    const p = P();
-    const r = rng();
-    const pe = p.peers;
-    if (!pe || !Array.isArray(pe.rows) || !pe.rows.length) return h('p', { class: 'placeholder' }, 'Peer data is not in this snapshot.');
-    const avail = ['d30', 'd7', 'd1'].filter((w) => pe.rows.some((x) => x.change && x.change[w]));
-    // The list carries 1, 7 and 30-day comparisons only; the longest available one is shown.
-    const win = avail[0];
-    if (!win) return h('p', { class: 'placeholder' }, 'Peer growth windows are not in this snapshot.');
-    const wDays = { d1: 1, d7: 7, d30: 30 }[win];
-    // The list is DefiLlama's hourly snapshot (pe.asOf), fresher than the daily supply snapshot in the hero.
-    $('sub-peers').textContent = `Supply growth over ${wDays} days for the largest live USD stablecoins (DefiLlama list${pe.asOf ? ` as of ${fmtDateTime(pe.asOf)}` : ''}${r.win !== win ? `; the list only carries 1, 7 and 30-day comparisons, so ${r.text} is shown as ${wDays} days` : ''}). Its figures can differ slightly from the daily supply snapshot used above. Paxos assets are coloured and labelled in bold; other stablecoins are gray.${state.asset !== 'all' && !isUsdKind(meta(state.asset)) ? ` ${state.asset} is not a USD stablecoin, so it has no place in this peer set.` : ''}`;
-    const sorted = pe.rows.slice().sort((a, b) => (b.supplyUsd || 0) - (a.supplyUsd || 0));
-    const nTop = root.innerWidth < 600 ? 12 : 20;
-    const pick = sorted.filter((x, i) => i < nTop || x.isPaxos).filter((x) => x.change && x.change[win] && isNum(x.change[win].pct));
-    const t = p.totals.usd;
-    const aggLabel = 'Active Paxos USD (total)';
-    const aggregate = t.change && t.change[win] && isNum(t.change[win].pct) ? { symbol: aggLabel, name: t.label, supplyUsd: t.current, change: { [win]: t.change[win] }, isPaxos: true, aggregate: true } : null;
-    const rows = [...pick, aggregate].filter(Boolean).sort((a, b) => b.change[win].pct - a.change[win].pct);
-    const colorRow = (x) => (x.aggregate ? TOK['ink-2'] : x.isPaxos && x.assetKey ? colorOf(x.assetKey) : TOK.neutral);
-    const height = rows.length * 22 + 50;
-    const fig = figure({
-      key: 'peers',
-      title: `${wDays}-day supply growth, Paxos vs peers`,
-      sub: `${rows.length} of ${fmtCount(pe.count)} live USD stablecoins`,
-      label: `Growth ranking: ${rows.map((x) => `${x.symbol} ${fmtPct(x.change[win].pct, { signed: true })}`).join(', ')}`,
-      legend: [...rows.filter((x) => x.isPaxos && !x.aggregate && isNum((meta(x.assetKey) || {}).colorIndex)).map((x) => ({ label: x.symbol, color: colorRow(x) })), { label: aggLabel, color: TOK['ink-2'] }, { label: 'Other stablecoins', color: TOK.neutral }],
-      config: () => ({
-        type: 'bar',
-        data: { labels: rows.map((x) => x.symbol), datasets: [{ label: 'Growth', data: rows.map((x) => x.change[win].pct), backgroundColor: rows.map(colorRow), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 16, categoryPercentage: 0.85, barPercentage: 0.9 }] },
-        options: {
-          indexAxis: 'y',
-          interaction: { mode: 'nearest', axis: 'y', intersect: false },
-          scales: {
-            x: axisY((v) => fmtPct(v, { signed: true, digits: 0 }), { grid: { color: (c) => (c.tick && c.tick.value === 0 ? TOK.axis : TOK.hair), drawTicks: false } }),
-            // Paxos rows also get bold, brighter labels so identity is not carried by colour alone.
-            y: { grid: { display: false }, border: { color: TOK.axis }, ticks: { autoSkip: false, color: (c) => (rows[c.index] && rows[c.index].isPaxos ? TOK.ink : TOK['ink-muted']), font: (c) => ({ weight: rows[c.index] && rows[c.index].isPaxos ? 'bold' : 'normal' }), callback(v) {
-              const s = String(this.getLabelForValue(v));
-              return s.length > 18 ? s.slice(0, 17) + '…' : s;
-            } } },
-          },
-          plugins: { tooltip: { usePointStyle: false, callbacks: { label: (c) => {
-            const x = rows[c.dataIndex];
-            return [` ${fmtPct(x.change[win].pct, { signed: true })} (${fmtUsd(x.change[win].abs, { signed: true })})`, ` supply ${fmtUsd(x.supplyUsd)}${x.isPaxos ? ' · Paxos' : ''}`];
-          } } } },
-        },
-      }),
-      tableView: () => table({ wrap: 'tall', caption: pe.asOf ? `DefiLlama list as of ${fmtDateTime(pe.asOf)}.` : null, head: ['Stablecoin', 'Supply', '1d', '7d', '30d', 'Paxos'], rows: sorted.map((x) => ({ cells: [x.symbol + (x.name && x.name !== x.symbol ? ` (${x.name})` : ''), fmtUsd(x.supplyUsd), ...['d1', 'd7', 'd30'].map((w) => (x.change && x.change[w] ? `${fmtPct(x.change[w].pct, { signed: true })} (${fmtUsd(x.change[w].abs, { signed: true })})` : 'n/a')), x.isPaxos ? 'yes' : ''] })) }),
-    });
-    const box = fig.querySelector('.chart-box');
-    if (box) box.style.height = height + 'px';
-    const out = [h('div', { class: 'card' }, fig)];
-    if ((pe.excluded || []).length) out.push(h('p', { class: 'small muted' }, `Excluded from peer rankings after failing list-vs-chart reconciliation: ${pe.excluded.map((x) => x.symbol).join(', ')}.`));
-    return out;
-  }
-
-  // 9. Chains
-  function renderChains() {
-    const r = rng();
-    const end = endIso();
-    const scope = scopeAssets().filter((d) => d.data && (d.data.chains || []).length);
-    $('sub-chains').textContent = `Weekly net change in supply per chain over ${r.text} (chain history covers the last 400 days at most). No chain colours: blue is net inflow, red net outflow, gray no change, hatched no data.`;
-    if (!scope.length) return h('p', { class: 'placeholder' }, state.asset === 'all' ? 'No per-chain balances in this snapshot.' : `No per-chain balances are available for ${state.asset}.`);
-    const byChain = new Map();
-    for (const d of scope) for (const c of d.data.chains) {
-      const g = byChain.get(c.chain) || { chain: c.chain, current: 0, series: [] };
-      g.current += c.currentUsd || 0;
-      if (c.series) g.series.push(c.series);
-      byChain.set(c.chain, g);
-    }
-    const chains = [...byChain.values()].sort((a, b) => b.current - a.current);
-    // Whole weeks ending at the data end, starting no earlier than the chain history does:
-    // a bucket whose base precedes the (400-day) history would book the entire balance as inflow.
-    const earliest = chains.flatMap((c) => c.series.map((s) => s.start)).sort()[0];
-    const lo = rangeStart(earliest);
-    const nWeeks = Math.max(1, Math.floor(daysBetween(lo, end) / 7));
-    const start = addDays(end, -7 * nWeeks);
-    const maxRows = root.innerWidth < 600 ? 8 : 12;
-    const shown = chains.slice(0, chains.length > maxRows ? maxRows - 1 : maxRows);
-    const rest = chains.slice(shown.length);
-    const rowsDef = shown.map((c) => ({ label: c.chain, series: sumCompacts(c.series, start, end) }));
-    if (rest.length) rowsDef.push({ label: `Other chains (${rest.length})`, series: sumCompacts(rest.flatMap((c) => c.series), start, end) });
-    const weeks = bucketChanges(rowsDef[0].series, start, end, 'week').map((b) => ({ from: b.from, to: b.to }));
-    const grid = rowsDef.map((rd) => bucketChanges(rd.series, start, end, 'week').map((b) => b.value));
-    const absVals = grid.flat().filter((v) => isNum(v) && v !== 0).map(Math.abs);
-    // Colour saturates at the 95th percentile of |weekly change| so one outlier week does not wash out the rest.
-    const cap = quantile(absVals, 0.95) || Math.max(1, ...absVals);
-    const col = (v) => (v === 0 ? TOK['div-mid'] : mixHex(TOK['div-mid'], v > 0 ? TOK['div-pos'] : TOK['div-neg'], Math.min(1, Math.abs(v) / cap)));
-    const tip = getTooltip();
-    const hm = h('div', { class: 'hm', role: 'img', 'aria-label': `Heatmap of weekly net supply change for ${rowsDef.length} chains over ${weeks.length} weeks; values in the table view.` });
-    rowsDef.forEach((rd, i) => {
-      const cells = h('div', { class: 'cells' });
-      cells.style.gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`;
-      grid[i].forEach((v, j) => {
-        // No data is hatched so it cannot be mistaken for "no change" (the gray midpoint).
-        const sp = h('span', { 'data-i': i, 'data-j': j, class: isNum(v) ? null : 'nd' });
-        if (isNum(v)) sp.style.background = col(v);
-        cells.append(sp);
-      });
-      hm.append(h('div', { class: 'row' }, h('span', { class: 'rl', title: rd.label }, rd.label), cells));
-    });
-    const axis = h('div', { class: 'axis' });
-    // Each label is a week's end date, placed at that week's right edge.
-    const marks = [0, Math.floor((weeks.length - 1) / 2), weeks.length - 1].filter((v, i, a) => a.indexOf(v) === i);
-    for (const j of marks) {
-      const pos = ((j + 1) / weeks.length) * 100;
-      axis.append(h('span', { class: j === weeks.length - 1 ? 'last' : j === 0 ? 'edge' : 'mid' }, fmtTick(weeks[j].to, daysBetween(start, end))));
-      axis.lastChild.style.left = pos + '%';
-    }
-    hm.append(h('div', { class: 'row' }, h('span'), axis));
-    hm.addEventListener('pointermove', (e) => {
-      const t = e.target;
-      if (!t.dataset || t.dataset.j === undefined) {
-        tip.hidden = true;
-        return;
-      }
-      const i = +t.dataset.i;
-      const j = +t.dataset.j;
-      const v = grid[i][j];
-      tip.replaceChildren(h('b', null, isNum(v) ? fmtUsd(v, { signed: true }) : 'no data'), `${rowsDef[i].label}`, h('br'), `${fmtDate(weeks[j].from)} to ${fmtDate(weeks[j].to)}`);
-      tip.hidden = false;
-      tip.style.left = Math.min(e.clientX + 12, root.innerWidth - 270) + 'px';
-      tip.style.top = e.clientY + 14 + 'px';
-    });
-    hm.addEventListener('pointerleave', () => (tip.hidden = true));
-    const scale = h('div', { class: 'scale' }, h('span', null, fmtUsd(-cap)), h('span', { class: 'bar' }), h('span', null, fmtUsd(cap, { signed: true })), h('span', null, `per week; colours saturate beyond ±${fmtUsd(cap)}`), h('span', { class: 'nd-key' }, h('span', { class: 'nd', 'aria-hidden': 'true' }), 'no data'));
-    scale.querySelector('.bar').style.background = `linear-gradient(90deg, ${TOK['div-neg']}, ${TOK['div-mid']}, ${TOK['div-pos']})`;
-    const hmTable = () => table({ wrap: 'tall', head: ['Week ending', ...rowsDef.map((rd) => rd.label)], rows: weeks.map((w, j) => weeks.length - 1 - j).map((j) => ({ cells: [weeks[j].to, ...grid.map((g) => fmtUsd(g[j], { signed: true }))] })) });
-    const fig = h('figure', { class: 'viz' }, h('figcaption', null, `Chain flows, ${state.asset === 'all' ? 'all Paxos assets combined' : state.asset}`, h('span', { class: 'cap-sub' }, `${weeks.length} weeks to ${fmtDate(end)}; rows ordered by current supply`)), hm, scale, fold('tv:chain-hm', ['Table view', h('span', { class: 'sr-only' }, ': chain flows')], hmTable(), 'tv'));
-    // Chain table
-    const multi = state.asset === 'all';
-    const STATUS = { tracked: 'tracked', tracking_ended: 'tracking ended', new: 'new (< 30 days)' };
-    // Chains whose balance and 30-day move are both below the asset's materiality floor (a typical
-    // day's net flow) are folded away: they cannot move the asset and only bury the chains that can.
-    const floors = (P().insights && P().insights.floorsUsd) || {};
-    const small = ({ d, c }) => isNum(floors[d.key]) && (c.currentUsd || 0) < floors[d.key] && !(c.change && c.change.d30 && Math.abs(c.change.d30.abs || 0) >= floors[d.key]);
-    const toRow = ({ d, c }) => ({
-        cells: [
-          h('span', { class: 'cname' }, c.chain),
-          ...(multi ? [assetLabel(d.key)] : []),
-          fmtUsd(c.currentUsd),
-          fmtShare(c.share),
-          ...['d7', 'd30'].map((w) => (c.change && c.change[w] ? h('span', null, h('span', { class: 'nowrap' }, fmtUsd(c.change[w].abs, { signed: true })), h('div', { class: 'small muted nowrap' }, fmtPct(c.change[w].pct, { signed: true }))) : 'n/a')),
-          h('span', { class: 'nowrap' }, c.first ? fmtDate(c.first) : 'n/a'),
-          h('span', null, STATUS[c.status] || c.status || 'n/a', (c.notes || []).slice(0, 2).map((n) => h('div', { class: 'small muted' }, n)), (c.notes || []).length > 2 ? h('div', { class: 'small muted', title: c.notes.slice(2).join('\n') }, `+${c.notes.length - 2} more notes`) : null),
-          spark((sliceCompact(c.series, r.days, end) || { values: [] }).values, multi ? colorOf(d.key) : TOK['ink-2'], { w: 90, h: 22 }),
-        ],
-      });
-    const all = scope.flatMap((d) => d.data.chains.map((c) => ({ d, c }))).sort((x, y) => (y.c.currentUsd || 0) - (x.c.currentUsd || 0));
-    const major = all.filter((x) => !small(x)), minor = all.filter(small);
-    const head = ['Chain', ...(multi ? ['Asset'] : []), 'Current', 'Share of asset', '7d', '30d', 'First seen', { t: 'Status', l: true }, `Trend (${r.label})`];
-    return [h('div', { class: 'card' }, fig), h('div', { class: 'card' }, h('h3', null, 'Chain balances'), table({ wrap: 'tall', head, rows: major.map(toRow) }),
-      minor.length ? fold('chains-small', [`${plural(minor.length, 'small chain')} `, h('span', { class: 'muted' }, '(balance and 30-day move below the asset\'s typical daily flow)')], table({ wrap: 'tall', head, rows: minor.map(toRow) })) : null)];
-  }
-  let tooltipEl = null;
-  function getTooltip() {
-    if (!tooltipEl) {
-      tooltipEl = h('div', { class: 'tooltip', role: 'presentation' });
-      tooltipEl.hidden = true;
-      document.body.append(tooltipEl);
-    }
-    return tooltipEl;
-  }
-
-  // 10. Peg
-  function hourlyLabels(series) {
-    return series.t.map((t) => new Date(Math.round(t / 3600) * 3600 * 1000).toISOString().slice(0, 16));
-  }
-  function alignHourly(base, other) {
-    if (!other || !other.t) return base.map(() => null);
-    const m = new Map(other.t.map((t, i) => [new Date(Math.round(t / 3600) * 3600 * 1000).toISOString().slice(0, 16), other.v[i]]));
-    return base.map((l) => (m.has(l) && isNum(m.get(l)) ? m.get(l) : null));
-  }
-  // Placeholder for a panel whose input is missing: name the degraded sources of the kinds it needs.
-  function degradedNote(kinds) {
-    const bad = sourcesNow().filter((x) => kinds.includes(x.s.kind) && x.status !== 'ok' && x.status !== 'skipped');
-    return bad.length ? ` (${bad.map((x) => `${x.s.label}: ${(SOURCE_STATUS[x.status] || {}).label || x.status}`).join('; ')})` : '';
-  }
-  const missingCard = (title, text) => h('div', { class: 'card missing' }, h('h3', null, title), h('p', { class: 'placeholder' }, text));
-  function renderPeg() {
-    const p = P();
-    const r = rng();
-    const end = endIso();
-    const scope = scopeAssets().filter((d) => d.data && d.data.series);
-    const peers = (p.pegPeers || []).filter((x) => x && (x.priceHourly || x.price));
-    const hourlyMode = r.id === '30d';
-    const panels = [];
-    let usdPanels = 0;
-    const bp = (v) => (isNum(v) ? (v - 1) * 1e4 : null);
-    // Context lines are one neutral gray (>= 3:1 on the card); alternate ones are dashed, not darker.
-    const peerStyle = (i) => ({ color: TOK.neutral, dash: i % 2 === 1 });
-    for (const d of scope) {
-      const s = d.data.series;
-      if (isUsdKind(d)) {
-        let labels;
-        let own;
-        let peerVals;
-        let hourly = false;
-        if (hourlyMode && s.priceHourly && s.priceHourly.t && s.priceHourly.t.length > 1) {
-          hourly = true;
-          labels = hourlyLabels(s.priceHourly);
-          own = s.priceHourly.v.map(bp);
-          peerVals = peers.map((x) => alignHourly(labels, x.priceHourly).map(bp));
-        } else if (s.price) {
-          const first = compactFirst(s.price);
-          const start = rangeStart(first && first.date);
-          const al = alignCompacts([s.price, ...peers.map((x) => x.price)], start, end);
-          labels = al.dates;
-          own = al.rows[0].map(bp);
-          peerVals = al.rows.slice(1).map((row) => row.map(bp));
-        } else {
-          panels.push(missingCard(`${d.key}: deviation from $1`, `No price history for ${d.key} in this snapshot${degradedNote(['price'])}.`));
-          continue;
-        }
-        usdPanels++;
-        const spanD = hourly ? Math.max(1, Math.round(labels.length / 24)) : labels.length;
-        const lim = Math.max(1, ...own.filter(isNum).map(Math.abs)) * 1.15;
-        const datasets = [...peerVals.map((v, i) => lineDataset(peers[i].symbol, v, peerStyle(i).color, { borderWidth: 1.5, borderDash: peerStyle(i).dash ? [5, 3] : undefined })), lineDataset(d.key, own, colorOf(d.key))];
-        panels.push(
-          h(
-            'div',
-            { class: 'card' },
-            figure({
-              key: 'peg-' + d.key,
-              title: `${d.key}: deviation from $1`,
-              sub: `latest ${fmtBp(d.data.current.pegDevBp)}${hourly ? ' · hourly' : ' · daily'}`,
-              size: 'sm',
-              legend: [{ label: d.key, color: colorOf(d.key), line: true }, ...peers.map((x, i) => ({ label: x.symbol, color: peerStyle(i).color, line: true, dash: peerStyle(i).dash }))],
-              config: () => lineConfig({ labels, datasets, yFmt: (v) => fmtBp(v), spanDays: spanD, hourly, yExtra: { suggestedMin: -lim, suggestedMax: lim } }),
-              tableView: () => seriesTable(labels, [{ label: d.key, values: own, fmt: (v) => fmtBp(v) }, ...peers.map((x, i) => ({ label: x.symbol, values: peerVals[i], fmt: (v) => fmtBp(v) }))]),
-            }),
-          ),
-        );
-      } else if (d.kind === 'gold') {
-        // Gold: premium of the price in XAU over 1 oz (daily), and vs other gold tokens (hourly).
-        if (s.xau) {
-          const first = compactFirst(s.xau);
-          const start = rangeStart(first && first.date);
-          const al = alignCompacts([s.xau], start, end);
-          const own = al.rows[0].map(bp);
-          panels.push(h('div', { class: 'card' }, figure({ key: 'peg-xau-' + d.key, title: `${d.key}: premium vs XAU`, sub: `latest ${fmtBp(d.data.current.pegDevBp)}${d.data.current.pegAsOf ? ` (${fmtDateTime(d.data.current.pegAsOf)})` : ''} · daily price in ounces of gold`, size: 'sm', config: () => lineConfig({ labels: al.dates, datasets: [lineDataset(d.key, own, colorOf(d.key))], yFmt: (v) => fmtBp(v), spanDays: al.dates.length }), tableView: () => seriesTable(al.dates, [{ label: `${d.key} vs XAU`, values: own, fmt: (v) => fmtBp(v) }]) })));
-        } else {
-          panels.push(missingCard(`${d.key}: premium vs XAU`, `XAU reference price unavailable in this snapshot${degradedNote(['price'])}.`));
-        }
-        const refs = (p.goldRefs || []).filter((g) => g && g.priceHourly && g.priceHourly.t && g.priceHourly.t.length);
-        if (refs.length && s.priceHourly && s.priceHourly.t && s.priceHourly.t.length > 1) {
-          const labels = hourlyLabels(s.priceHourly);
-          const vals = refs.map((g) => {
-            const ref = alignHourly(labels, g.priceHourly);
-            return s.priceHourly.v.map((v, i) => (isNum(v) && isNum(ref[i]) && ref[i] ? (v / ref[i] - 1) * 1e4 : null));
-          });
-          const color = (i) => (i ? peerStyle(i).color : colorOf(d.key));
-          panels.push(
-            h(
-              'div',
-              { class: 'card' },
-              figure({
-                key: 'peg-ref-' + d.key,
-                title: `${d.key} price vs other gold tokens`,
-                sub: `${d.key} premium over ${refs.map((g) => g.symbol).join(', ')} in bp · hourly`,
-                size: 'sm',
-                legend: refs.map((g, i) => ({ label: `vs ${g.symbol}`, color: color(i), line: true, dash: i > 0 && peerStyle(i).dash })),
-                config: () => lineConfig({ labels, datasets: vals.map((v, i) => lineDataset(`vs ${refs[i].symbol}`, v, color(i), { borderDash: i > 0 && peerStyle(i).dash ? [5, 3] : undefined })), yFmt: (v) => fmtBp(v), spanDays: Math.round(labels.length / 24), hourly: true }),
-                tableView: () => seriesTable(labels, refs.map((g, i) => ({ label: `vs ${g.symbol}`, values: vals[i], fmt: (v) => fmtBp(v) }))),
-              }),
-            ),
-          );
-        } else {
-          panels.push(missingCard(`${d.key} price vs other gold tokens`, `${refs.length ? `No recent hourly price for ${d.key}` : 'No other gold tokens with recent hourly prices'} in this snapshot${degradedNote(['price'])}.`));
-        }
-      } else {
-        // Another peg (e.g. a non-USD fiat stablecoin): no reference series is charted for it yet.
-        panels.push(missingCard(`${d.key}: peg`, `No peg reference is charted for ${d.unit || d.kind} assets; the price is in the asset table.`));
-      }
-    }
-    $('sub-peg').textContent = `Deviation from the peg in basis points (1 bp = 0.01%). ${hourlyMode ? 'Hourly prices where available (about the last 3 weeks).' : `Daily prices over ${r.text}.`} ${usdPanels && peers.length ? `Gray lines: ${peers.map((x) => x.symbol).join(', ')} (peg peers) for context.` : ''} Each panel has its own scale.`;
-    if (!panels.length) return h('p', { class: 'placeholder' }, `No price history for ${scopeLabel()} in this snapshot${degradedNote(['price'])}.`);
-    return h('div', { class: 'grid g2' }, panels);
-  }
-
-  // 11. DeFi
-  function renderDefi() {
-    const scope = scopeAssets().filter((d) => d.data && d.data.defi);
-    if (!scope.length) return h('p', { class: 'placeholder' }, `No matched DeFi pools for ${scopeLabel()}.`);
-    const out = [];
-    const tile = (label, v, m) => h('div', { class: 'tile' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, v), m ? h('span', { class: 'meta' }, m) : null);
-    if (scope.length === 1) {
-      const f = scope[0].data.defi;
-      out.push(h('div', { class: 'tiles' }, tile('Footprint', fmtUsd(f.footprintUsd), 'sum of matched pool TVL'), tile('Share of supply', fmtShare(f.footprintShare), 'upper bound'), tile('Pools', fmtCount(f.poolCount), `effective ${isNum(f.effectivePools) ? f.effectivePools.toFixed(1) : 'n/a'} (TVL-weighted)`), tile('Incentive share', fmtShare(f.rewardShare), 'of TVL-weighted yield')));
-    } else {
-      const tot = scope.reduce((s, d) => s + (d.data.defi.footprintUsd || 0), 0);
-      out.push(h('div', { class: 'tiles' }, tile('Footprint, all assets', fmtUsd(tot), 'sum of matched pool TVL'), tile('Pools', fmtCount(scope.reduce((s, d) => s + (d.data.defi.poolCount || 0), 0)), 'a pair pool counts once per asset')));
-      out.push(table({ head: ['Asset', 'Footprint', 'Share of supply', 'Pools', 'Effective pools', 'Incentive share'], rows: scope.map((d) => ({ cells: [assetLabel(d.key), fmtUsd(d.data.defi.footprintUsd), fmtShare(d.data.defi.footprintShare), fmtCount(d.data.defi.poolCount), isNum(d.data.defi.effectivePools) ? d.data.defi.effectivePools.toFixed(1) : 'n/a', fmtShare(d.data.defi.rewardShare)] })) }));
-    }
-    const pools = scope.flatMap((d) => (d.data.defi.pools || []).map((x) => ({ ...x, asset: d.key }))).sort((a, b) => (b.tvlUsd || 0) - (a.tvlUsd || 0));
-    const more = state.more.has('pools');
-    const limit = 20;
-    const list = more ? pools : pools.slice(0, limit);
-    const multi = scope.length > 1;
-    const apy = (v) => (isNum(v) ? v.toFixed(2) + '%' : 'n/a');
-    const rows = list.map((x) => {
-      const url = safeUrl(x.url);
-      return {
-        cells: [
-          url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, x.project) : x.project,
-          h('span', { class: 'cname' }, x.chain),
-          h('span', { class: 'cname' }, x.symbol),
-          ...(multi ? [assetLabel(x.asset)] : []),
-          fmtUsd(x.tvlUsd),
-          apy(x.apy),
-          apy(x.apyBase),
-          apy(x.apyReward),
-          isNum(x.utilization) ? fmtShare(x.utilization) : 'n/a',
-        ],
-      };
-    });
-    out.push(h('h3', null, `Pools (${fmtCount(pools.length)}${pools.length < scope.reduce((s, d) => s + (d.data.defi.poolCount || 0), 0) ? ' largest listed' : ''})`));
-    out.push(table({ head: ['Project', { t: 'Chain', l: true }, { t: 'Symbol', l: true }, ...(multi ? ['Asset'] : []), 'TVL', 'APY', 'Base', 'Reward', 'Utilisation'], rows }));
-    if (pools.length > limit) out.push(h('button', { type: 'button', class: 'btn', 'data-more': 'pools', 'aria-expanded': String(more) }, more ? `Show the top ${limit}` : `Show all ${pools.length} pools`));
-    return out;
-  }
-
-  // 12. Economics
-  function renderEcon() {
-    const p = P();
-    const e = p.economics;
-    const r = rng();
-    const end = endIso();
-    $('sub-econ').textContent = e ? `${e.label || 'Model estimate'}. ${e.note || ''} Issuer-level; not split by asset${state.asset !== 'all' ? ', so the asset filter does not apply' : ''}.` : '';
-    if (!e) {
-      const src = (p.sources || []).find((x) => x.kind === 'economics' && x.status !== 'ok');
-      return h('p', { class: 'placeholder' }, `Issuer economics are not in this snapshot${src ? ` (${src.label}: ${(SOURCE_STATUS[src.status] || {}).label || src.status}${src.message ? ', ' + src.message : ''})` : ''}.`);
-    }
-    const c = e.current || {};
-    const tile = (label, v, m) => h('div', { class: 'tile' }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, v), m ? h('span', { class: 'meta' }, m) : null);
-    const out = [h('div', { class: 'tiles' }, tile('Modelled fees, 24h', fmtUsd(c.fees24h)), tile('Modelled revenue, 24h', fmtUsd(c.revenue24h)), tile('Modelled fees, 1 year', fmtUsd(c.fees1y)), tile('Implied yield', isNum(c.impliedYield) ? fmtShare(c.impliedYield) : 'n/a', isNum(c.baseUsd) ? `annualised, on ${fmtUsd(c.baseUsd)} of modelled supply` : null))];
-    const grid = h('div', { class: 'grid g2' });
-    const lastOf = (x) => compactEnd(x) || end;
-    if (e.fees || e.revenue) {
-      const fe = lastOf(e.fees || e.revenue);
-      const first = compactFirst(e.fees || e.revenue);
-      const start = isNum(r.days) ? addDays(fe, -r.days) : first ? first.date : fe;
-      const al = alignCompacts([e.fees, e.revenue], start, fe);
-      const sets = [e.fees ? { label: 'Fees', values: al.rows[0], color: TOK['ink-2'] } : null, e.revenue ? { label: 'Revenue', values: al.rows[1], color: TOK.neutral } : null].filter(Boolean);
-      grid.append(h('div', { class: 'card' }, figure({ key: 'econ-fees', title: 'Modelled daily fees and revenue (USD)', sub: `${fmtDate(start)} to ${fmtDate(fe)}`, legend: sets.map((s) => ({ label: s.label, color: s.color, line: true })), config: () => lineConfig({ labels: al.dates, datasets: sets.map((s) => lineDataset(s.label, s.values, s.color)), yFmt: (v) => fmtUsd(v), spanDays: al.dates.length, endLabel: sets.length > 1 }), tableView: () => seriesTable(al.dates, sets.map((s) => ({ label: s.label, values: s.values, fmt: (v) => fmtUsd(v) }))) })));
-    }
-    if (e.impliedYield) {
-      const fe = lastOf(e.impliedYield);
-      const first = compactFirst(e.impliedYield);
-      const start = isNum(r.days) ? addDays(fe, -r.days) : first ? first.date : fe;
-      const al = alignCompacts([e.impliedYield], start, fe);
-      const vals = al.rows[0].map((v) => (isNum(v) ? v * 100 : null));
-      grid.append(h('div', { class: 'card' }, figure({ key: 'econ-yield', title: 'Implied yield on modelled supply', sub: 'daily modelled fees × 365 / supply of the fee-modelled assets', config: () => lineConfig({ labels: al.dates, datasets: [lineDataset('Implied yield', vals, TOK['ink-2'])], yFmt: (v) => fmtPct(v, { digits: 2 }), spanDays: al.dates.length }), tableView: () => seriesTable(al.dates, [{ label: 'Implied yield', values: vals, fmt: (v) => fmtPct(v, { digits: 2 }) }]) })));
-    }
-    out.push(grid);
-    return out;
-  }
-
-  // 13. On-chain & usage
-  const normName = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  function assetChains(d) {
-    const a = d.data || {};
-    return [...new Set([...(a.chains || []).map((c) => c.chain), ...(a.onchain || []).map((x) => x.chain), ...addressesOf(d.key).map((x) => x.chain)].filter(Boolean))];
-  }
-  // Which chain a Coin Metrics series covers: the payload's activity.chain, else the series id's
-  // suffix ("<asset>_<chain>") matched against the asset's own chain names.
-  function activityScope(d) {
-    const act = d.data && d.data.activity;
-    if (!act) return null;
-    if (typeof act.chain === 'string' && act.chain) return act.chain;
-    const m = /_([a-z0-9]+)$/i.exec(String(act.key || ''));
-    if (!m) return null;
-    const hits = assetChains(d).filter((c) => normName(c).startsWith(normName(m[1])));
-    return hits.length === 1 ? hits[0] : null;
-  }
-  function renderUsage() {
-    const r = rng();
-    const end = endIso();
-    const scope = scopeAssets().filter((d) => d.data);
-    const out = [];
-    const tile = (d) => h('div', { class: 'tile' }, h('span', { class: 'label' }, swatch(colorOf(d.key)), `${d.key} 24h turnover`), h('span', { class: 'value' }, isNum(d.data.current.turnover24h) ? fmtShare(d.data.current.turnover24h) : 'n/a'), h('span', { class: 'meta' }, isNum(d.data.current.volume24hUsd) ? `${fmtUsd(d.data.current.volume24hUsd)} traded` : `volume unavailable${degradedNote(['price'])}`));
-    out.push(h('div', { class: 'tiles' }, scope.filter((d) => d.status !== 'dead').map(tile)));
-    const grid = h('div', { class: 'grid g2' });
-    const turn = scope.filter((d) => d.data.series && d.data.series.turnover7d);
-    if (turn.length) {
-      const first = turn.map((d) => compactFirst(d.data.series.turnover7d)).filter(Boolean).map((x) => x.date).sort()[0];
-      const start = rangeStart(first);
-      const al = alignCompacts(turn.map((d) => d.data.series.turnover7d), start, end);
-      const sets = turn.map((d, i) => ({ label: d.key, values: al.rows[i].map((v) => (isNum(v) ? v * 100 : null)), color: colorOf(d.key) }));
-      grid.append(h('div', { class: 'card' }, figure({ key: 'turnover', title: 'Turnover, 7-day average', sub: 'daily trading volume / market cap (CoinGecko)', legend: sets.map((s) => ({ label: s.label, color: s.color, line: true })), config: () => lineConfig({ labels: al.dates, datasets: sets.map((s) => lineDataset(s.label, s.values, s.color)), yFmt: (v) => fmtPct(v, { digits: 0 }), tipFmt: (v) => fmtPct(v, { digits: 1 }), spanDays: al.dates.length, endLabel: sets.length > 1 && sets.length <= 4 }), tableView: () => seriesTable(al.dates, sets.map((s) => ({ label: s.label, values: s.values, fmt: (v) => fmtPct(v, { digits: 1 }) }))) })));
-    } else if (scope.some((d) => d.status !== 'dead')) {
-      grid.append(missingCard('Turnover, 7-day average', `Turnover history is not in this snapshot${degradedNote(['price'])}.`));
-    }
-    const METRICS = [['activeAddresses', 'Active addresses'], ['transfers', 'Transfers'], ['holders', 'Addresses with a balance']];
-    for (const d of scope.filter((x) => x.data.activity && x.data.activity.series)) {
-      const act = d.data.activity;
-      const chain = activityScope(d);
-      const others = assetChains(d).filter((c) => c !== chain).length;
-      const src = `${act.source === 'coinmetrics' ? 'Coin Metrics' : act.source} series ${act.key}`;
-      const sub = chain ? `${src}: ${chain} only${others ? '; other chains are not counted (see holders by chain below)' : ''}` : `${src}; the chains it covers are not stated, so compare with holders by chain below`;
-      for (const [k, label] of METRICS) {
-        const s = act.series[k];
-        if (!s) continue;
-        const first = compactFirst(s);
-        const start = rangeStart(first && first.date);
-        const al = alignCompacts([s], start, end);
-        grid.append(h('div', { class: 'card' }, figure({ key: `act-${d.key}-${k}`, title: `${d.key}${chain ? ` on ${chain}` : ''}: ${label.toLowerCase()} per day`, sub, size: 'sm', config: () => lineConfig({ labels: al.dates, datasets: [lineDataset(label, al.rows[0], colorOf(d.key))], yFmt: (v) => fmtNum(v), spanDays: al.dates.length }), tableView: () => seriesTable(al.dates, [{ label, values: al.rows[0], fmt: (v) => fmtCount(v) }]) })));
-      }
-    }
-    if (grid.childNodes.length) out.push(grid);
-    // Holders: every reading, then the asset's material or contract chains that have none.
-    const rows = [];
-    for (const d of scope) {
-      const a = d.data;
-      const have = new Set((a.onchain || []).map((x) => x.chain));
-      for (const x of a.onchain || []) rows.push({ cells: [x.chain, assetLabel(d.key), isNum(x.holders) ? fmtCount(x.holders) : h('span', { class: 'muted', title: 'Holder counts come from a block explorer; none answered for this chain' }, 'n/a'), fmtNum(x.totalSupply), x.source, x.asOf ? fmtDateTime(x.asOf) : 'n/a'] });
-      if (d.status === 'dead') continue;
-      const floor = floorOf(d.key);
-      const material = (a.chains || []).filter((c) => isNum(c.currentUsd) && c.currentUsd > 0 && (!isNum(floor) || c.currentUsd >= floor)).map((c) => c.chain);
-      const want = [...new Set([...material, ...addressesOf(d.key).map((x) => x.chain)])].filter((c) => !have.has(c));
-      // Why a chain has no reading: an issuer contract that did not answer (the source's state says why),
-      // or no issuer contract at all on that chain (supply DefiLlama counts there is bridged in or held by
-      // a third-party contract), in which case there is nothing of Paxos's to read.
-      const issuerChains = new Set(addressesOf(d.key).map((x) => x.chain));
-      const thirdParty = new Set(((P().discovery && P().discovery.addresses) || []).filter((x) => x && x.asset === d.key && !isIssuerAddress(x)).map((x) => x.chain));
-      const why = (c) => (issuerChains.has(c) ? `not available${degradedNote(['onchain']) || ': no on-chain reading for this chain'}` : thirdParty.has(c) ? 'no issuer contract on this chain (only a third-party contract; see the address registry)' : 'no issuer contract on this chain in the address registry');
-      for (const c of want) rows.push({ cells: [c, assetLabel(d.key), 'n/a', 'n/a', h('span', { class: 'muted' }, why(c)), 'n/a'] });
-    }
-    out.push(h('h3', null, 'Holders and on-chain supply by chain'));
-    out.push(h('p', { class: 'small muted' }, 'Token supply is read from each chain (ERC-20 totalSupply over its public RPC, or the explorer); holder counts need a block explorer (Blockscout, Jupiter on Solana).'));
-    if (rows.length) out.push(table({ head: ['Chain', 'Asset', 'Holders', 'Token supply', { t: 'Source', l: true }, 'As of'], rows }));
-    else out.push(h('p', { class: 'placeholder' }, `No holder counts for ${scopeLabel()} in this snapshot.`));
-    return out;
-  }
-
-  // 14. Standing + watchlist
-  function renderStanding() {
-    const ins = P().insights || {};
-    const key = state.asset;
-    const st = (ins.standing || []).filter((i) => insightMatches(i, key));
-    const wl = (ins.watch || []).filter((i) => insightMatches(i, key));
-    const ctx = (ins.context || []).filter((i) => insightMatches(i, key));
-    const list = (items) => (items.length ? h('div', { class: 'compact-list' }, items.map((i) => insightCard(i, null))) : h('p', { class: 'placeholder' }, 'None for this selection.'));
-    return [
-      fold('standing', [`Standing conditions `, h('span', { class: 'muted' }, `(${st.length})`)], list(st)),
-      fold('watch', [`Watchlist `, h('span', { class: 'muted' }, `(${wl.length})`)], list(wl)),
-      ctx.length ? fold('context', [`Context `, h('span', { class: 'muted' }, `(${ctx.length})`)], h('ul', { class: 'small' }, ctx.map((i) => h('li', null, i.headline)))) : null,
-    ];
-  }
-
-  // 15. Data quality & methodology
-  function sourcePill(x) {
-    const s = x.s;
-    const st = SOURCE_STATUS[x.status] || SOURCE_STATUS.skipped;
-    const tip = [`${s.label} (${s.host})`, `Status: ${st.label}${x.status !== s.status ? ` (was ${s.status} when generated)` : ''}`, isNum(x.ageNow) ? `Data age ${fmtHours(x.ageNow)}${isNum(s.cadenceHours) ? ` vs ${fmtHours(s.cadenceHours)} cadence` : ''}` : null, s.message].filter(Boolean);
-    return h('li', null, h('span', { class: `pill st-${x.status}`, tabindex: 0, 'data-src': s.id, 'aria-label': tip.join('. ') }, h('span', { class: 'ico', 'aria-hidden': 'true' }, st.ico), s.label, h('span', { class: 'sr-only' }, ` ${st.label}`), h('span', { class: 'tip', 'aria-hidden': 'true' }, tip.map((t, i) => (i ? [h('br'), t] : t)))));
-  }
-  function renderQuality() {
-    const p = P();
-    const ins = p.insights || {};
-    const out = [];
-    const now = sourcesNow();
-    const bad = now.filter((x) => x.status !== 'ok');
-    const counts = Object.entries(now.reduce((acc, x) => ((acc[x.status] = (acc[x.status] || 0) + 1), acc), {})).map(([k, n]) => `${n} ${(SOURCE_STATUS[k] || {}).label || k}`);
-    out.push(h('h3', null, `Data sources (${counts.join(', ')})`));
-    if (bad.length) out.push(h('ul', { class: 'pills', 'aria-label': 'Degraded data sources' }, bad.map(sourcePill)));
-    out.push(fold('sources', `${plural(now.length - bad.length, 'healthy source')}`, h('ul', { class: 'pills', 'aria-label': 'Healthy data sources' }, now.filter((x) => x.status === 'ok').map(sourcePill)), 'srcfold'));
-    const src = now.map((x) => {
-      const s = x.s;
-      return {
-        cells: [
-          h('span', null, s.label, h('div', { class: 'small muted' }, s.host)),
-          h('span', { class: `nowrap st-${x.status}`, 'data-src-status': s.id, 'data-st': x.status }, ...statusLabel(x)),
-          h('span', { 'data-src-age': s.id }, sourceAgeText(x)),
-          s.dataAsOf ? fmtDateTime(s.dataAsOf) : 'n/a',
-          `${fmtCount(s.requests)}${s.failed ? ` (${fmtCount(s.failed)} failed)` : ''}`,
-          fmtBytes(s.bytes),
-          isNum(s.latencyMs) ? `${fmtCount(s.latencyMs)} ms` : 'n/a',
-          h('span', { class: 'mono-wrap' }, s.message || ''),
-        ],
-      };
-    });
-    out.push(table({ note: 'Age is measured now (the snapshot\'s age plus the data\'s age when it was generated), against each source\'s update cadence.', head: ['Source', { t: 'Status', l: true }, 'Age / cadence', 'Data as of', 'Requests', 'Bytes', 'Latency', { t: 'Message', l: true }], rows: src }));
-    const disc = p.discovery || {};
-    const keys = discovered().map((d) => d.key);
-    if ((disc.tiers || []).length) {
-      out.push(
-        h('h3', null, 'Discovery'),
-        h('p', { class: 'small' }, 'Which source found which asset. Active assets come from an active-issuance tier (the CoinGecko category or the Paxos docs); others are legacy, and DefiLlama-dead assets are marked dead.'),
-        table({ head: ['Tier', ...keys], rows: disc.tiers.map((t) => ({ cells: [h('span', null, t.label || t.id, t.ok === false ? h('span', { class: 'badge' }, 'failed') : null), ...keys.map((k) => ((t.found || []).includes(k) ? h('span', { 'aria-label': 'found' }, '✓') : h('span', { 'aria-label': 'not found', class: 'muted' }, '–')))] })) }),
+    if (isGold(d)) {
+      const s = d.data.series || {};
+      return grid2(
+        s.supply ? goldLineFigure(d, 'gold-oz', `${d.key} supply in ounces · ${spanText()}`, s.supply, (v) => fmtOz(v)) : notIn(),
+        s.supplyUsd ? goldLineFigure(d, 'gold-usd', `Value in USD · ${spanText()}`, s.supplyUsd, (v) => fmtUsd(v), 'moves with gold price') : null,
       );
     }
-    const addrs = (disc.addresses || []).filter((a) => state.asset === 'all' || a.asset === state.asset);
-    const third = addrs.filter((a) => !isIssuerAddress(a)).length;
-    out.push(fold('addresses', [`Address registry `, h('span', { class: 'muted' }, `(${addrs.length} contracts${state.asset === 'all' ? '' : ' for ' + state.asset}${third ? `, ${fmtCount(third)} third-party` : ''})`)], [third ? h('p', { class: 'small muted' }, 'Third-party contracts carry the asset\'s name but are not issuer contracts (bridged copies, or listed only by an aggregator); they are shown for reference and never counted as issuance.') : null, table({ wrap: 'tall', head: ['Asset', { t: 'Chain', l: true }, { t: 'Address', l: true }, { t: 'Role', l: true }, 'Decimals', { t: 'Found via', l: true }], rows: addrs.map((a) => ({ cells: [a.asset, a.chain, h('code', { class: 'mono-wrap' }, a.address), roleText(a.role), isNum(a.decimals) ? String(a.decimals) : 'n/a', (a.via || []).join(', ')] })) })].filter(Boolean)));
-    out.push(h('h3', null, 'How findings are flagged'));
-    out.push(h('p', null, (ins.rule && ins.rule.text) || 'Notability rule not provided in this snapshot.'));
-    const fam = ins.families ? Object.keys(ins.families).length : null;
-    out.push(h('p', null, `This snapshot ran ${fmtCount(ins.testsRun)} checks${isNum(ins.groups) ? ` in ${fmtCount(ins.groups)} groups` : ''}${fam ? ` across ${fmtCount(fam)} health dimensions` : ''}. Materiality floors (a typical day's net flow): ${Object.entries(ins.floorsUsd || {}).map(([k, v]) => `${labelOf(k)} ${fmtUsd(v)}`).join(', ') || 'n/a'}.`));
-    const errs = ins.errors || [];
-    out.push(h('h3', null, 'Detector errors'));
-    out.push(errs.length ? h('ul', { class: 'small' }, errs.map((e) => h('li', null, h('code', null, e.detector), `: ${e.error}`))) : h('p', { class: 'small' }, 'None in this snapshot.'));
-    if (p.timingsMs) {
-      const ms = (v) => (isNum(v) ? `${fmtCount(v)} ms` : 'n/a');
-      out.push(h('p', { class: 'small muted' }, `Server timings: fetch ${ms(p.timingsMs.fetch)}, model ${ms(p.timingsMs.model)}, engine ${p.timingsMs.engine === null ? 'not run (insights reused from an identical model)' : ms(p.timingsMs.engine)}, total ${ms(p.timingsMs.total)}. Market definition: ${(p.market && p.market.definition) || 'n/a'}`));
+    return grid2(movesFigure(d.key), d.data.series && d.data.series.supplyUsd ? supplyAreaFigure([d.key], `${d.key} supply · ${spanText()}`, true) : notIn());
+  }
+
+  // ----- Chains lens -----
+  function chainTotals(keys) {
+    const by = new Map();
+    for (const k of keys) for (const c of assetData(k).chains || []) {
+      if (!isNum(c.currentUsd) || c.currentUsd <= 0) continue;
+      const g = by.get(c.chain) || { chain: c.chain, total: 0, parts: {}, series: [] };
+      g.total += c.currentUsd;
+      g.parts[k] = (g.parts[k] || 0) + c.currentUsd;
+      if (c.series) g.series.push({ k, c: c.series });
+      by.set(c.chain, g);
     }
-    return out;
+    return [...by.values()].sort((a, b) => b.total - a.total);
+  }
+  function stackBars(rows, keys, fmt) {
+    const max = Math.max(1, ...rows.map((r) => r.total));
+    return h('div', { class: 'bars', 'data-graphic': 'bars' }, rows.map((r) => {
+      const tr = h('span', { class: 'track stack' });
+      for (const k of keys) {
+        if (!r.parts[k]) continue;
+        const s = h('span', { class: 'seg-fill', color: lensColor(k) });
+        s.style.width = (r.parts[k] / max) * 100 + '%';
+        tr.append(s);
+      }
+      return h('div', { class: 'brow', 'data-tip': keys.filter((k) => r.parts[k]).map((k) => `${k} ${fmt(r.parts[k])}`).join('\n') }, h('span', { class: 'bl' }, h('span', null, r.chain)), tr, h('span', { class: 'bv' }, fmt(r.total)));
+    }));
+  }
+  function chainMultiples(groups, keys) {
+    const end = endIso();
+    const all = groups.flatMap((g) => g.series.map((s) => s.c));
+    const first = all.map((c) => compactFirst(c)).filter(Boolean).map((x) => x.date).sort()[0];
+    const start = spanStart(end) && first && spanStart(end) < first ? first : spanStart(end) || first;
+    if (!start) return null;
+    const dates = datesBetween(start, end);
+    const panels = groups.map((g) => ({ g, rows: keys.map((k) => { const ss = g.series.filter((s) => s.k === k).map((s) => s.c); return ss.length ? alignCompacts([sumCompacts(ss, start, end)], start, end).rows[0] : new Array(dates.length).fill(null); }) }));
+    const hi = Math.max(1, ...panels.map((pn) => Math.max(...dates.map((_, i) => pn.rows.reduce((s, r) => s + (isNum(r[i]) ? r[i] : 0), 0)))));
+    const pr = period();
+    const band = pr.from ? [indexIn(dates, addDays(pr.from, 1)), dates.length - 1] : null;
+    const tipLines = (i) => [h('b', null, md(dates[i])), ...panels.map((pn) => `${pn.g.chain}: ${fmtUsd(pn.rows.reduce((s, r) => s + (isNum(r[i]) ? r[i] : 0), 0))}`)];
+    const hg = hoverGroup(dates.length, (i, e) => showTip(tipLines(i).map((x, k) => (k ? ['\n', x] : x)), e.clientX, e.clientY), hideTip);
+    return h('div', { class: 'multiples', 'data-graphic': 'multiples' }, panels.map((pn) => {
+      const svg = mini({ n: dates.length, stacked: true, series: keys.map((k, j) => ({ values: pn.rows[j], color: lensColor(k) })), lo: 0, hi, band, focusBand: focusBandOf(dates), h: 80 });
+      hg.attach(svg);
+      return h('div', { class: 'mp' }, h('div', { class: 'ml' }, h('span', null, pn.g.chain), h('span', null, fmtUsd(pn.g.total))), svg);
+    }));
+  }
+  function lensChains() {
+    const p = P();
+    const all = state.asset === 'all';
+    const d = all ? null : meta(state.asset);
+    if (d && (isGold(d) || !(d.data.chains || []).some((c) => c.currentUsd > 0))) {
+      const oc = (d.data.onchain || []).filter((x) => isNum(x.totalSupply)).sort((a, b) => b.totalSupply - a.totalSupply);
+      if (!oc.length) return h('p', { class: 'note-line' }, `No per-chain data for ${d.key}.`);
+      const tot = oc.reduce((s, x) => s + x.totalSupply, 0);
+      const fmt = isGold(d) ? (x) => fmtOz(x) : (x) => fmtUsd(x);
+      const rows = oc.map((x) => ({ chain: x.chain, total: x.totalSupply, parts: { [d.key]: x.totalSupply } }));
+      return [grid2(figure({ key: 'chain-bal', title: `${oc[0].chain} holds ${fmtPortion(oc[0].totalSupply / tot)} of ${d.key} (on-chain read)`, body: () => stackBars(rows, [d.key], fmt),
+        table: () => table({ head: ['Chain', isGold(d) ? 'oz' : 'Supply', 'Holders'], rows: oc.map((x) => ({ cells: [x.chain, fmt(x.totalSupply), isNum(x.holders) ? fmtCount(x.holders) : dash('No holder count for this chain')] })) }) }),
+      h('p', { class: 'note-line' }, `No chain history for ${d.key}; current split from on-chain reads.`)), contractsBlock()];
+    }
+    const keys = all ? (p.totals.usd.assets || []).filter((k) => assetData(k)) : [d.key];
+    const groups = chainTotals(keys);
+    if (!groups.length) return h('p', { class: 'note-line' }, 'No per-chain data in this snapshot.');
+    const total = groups.reduce((s, g) => s + g.total, 0);
+    const top = groups.slice(0, 7);
+    const rest = groups.slice(7);
+    const rows = top.slice();
+    if (rest.length) rows.push({ chain: `Other ${rest.length} chains`, total: rest.reduce((s, g) => s + g.total, 0), parts: rest.reduce((acc, g) => { for (const [k, v] of Object.entries(g.parts)) acc[k] = (acc[k] || 0) + v; return acc; }, {}) });
+    let title = `${groups[0].chain} holds ${fmtPortion(groups[0].total / total)} of ${all ? aggKey() || 'the' : d.key}${all ? ' supply' : ''}`;
+    if (!all) {
+      const pr = period();
+      const c0 = (d.data.chains || []).find((c) => c.chain === groups[0].chain);
+      const start = pr.from;
+      const totStart = start ? (d.data.chains || []).reduce((s, c) => s + (compactAt(c.series, start) || 0), 0) : null;
+      const s0 = c0 && start && totStart ? compactAt(c0.series, start) / totStart : null;
+      if (isNum(s0)) title += `, ${groups[0].total / total >= s0 ? 'up' : 'down'} from ${fmtPortion(s0)}`;
+    }
+    const figA = figure({ key: 'chain-bal', title, legend: keys.length > 1 ? keys.map((k) => ({ label: k, color: lensColor(k) })) : null, body: () => stackBars(rows, keys, (x) => fmtUsd(x)), table: () => chainsTable(keys) });
+    const figB = figure({ key: 'chain-mult', title: `Top chains · ${spanText()}`, body: () => chainMultiples(groups.slice(0, 6), keys), table: () => chainsTable(keys) });
+    return [grid2(figA, figB), contractsBlock()];
+  }
+  function chainsTable(keys) {
+    const r = rng();
+    const end = endIso();
+    const multi = keys.length > 1;
+    const rows = [];
+    const small = [];
+    for (const k of keys) {
+      const a = assetData(k);
+      const fl = floorOf(k);
+      const oc = new Map((a.onchain || []).map((x) => [x.chain, x]));
+      for (const c of (a.chains || []).slice().sort((x, y) => (y.currentUsd || 0) - (x.currentUsd || 0))) {
+        const ch = chainChange(c, r, end);
+        const o = oc.get(c.chain);
+        const row = { cells: [c.chain, ...(multi ? [h('span', { class: 'asset-cell' }, swatch(colorOf(k)), k)] : []), fmtUsd(c.currentUsd), ch ? fmtUsd(ch.abs, { signed: true }) : dash('No history for this window'), fmtPortion(c.share),
+          o && isNum(o.totalSupply) ? { v: fmtUsd(o.totalSupply), tip: `${o.source || ''}${o.asOf ? `, ${fmtDate(String(o.asOf).slice(0, 10))} ${fmtHM(o.asOf)} UTC` : ''}` } : dash('No on-chain reading'),
+          o && isNum(o.holders) ? fmtCount(o.holders) : dash('No holder count for this chain'),
+          c.status === 'tracking_ended' ? 'tracking ended' : c.first && period().from && c.first > period().from ? 'new' : ''] };
+        if (isNum(fl) && (c.currentUsd || 0) < fl) small.push({ k, c });
+        else rows.push(row);
+      }
+    }
+    if (small.length) rows.push({ cls: 'sub', cells: [`${small.length} small chains · ${fmtUsd(small.reduce((s, x) => s + (x.c.currentUsd || 0), 0))}`, ...(multi ? [''] : []), '', '', '', '', '', ''] });
+    return table({ wrap: 'tall', head: ['Chain', ...(multi ? ['Coin'] : []), 'Supply', `Change ${r.label}`, 'Share', 'On-chain', 'Holders', { t: 'Status', l: true }], rows });
+  }
+  function contractsBlock() {
+    const addrs = ((P().discovery && P().discovery.addresses) || []).filter((x) => x && inScopeKey(x.asset) && (state.asset !== 'all' || isActiveOrShown(x.asset)));
+    if (!addrs.length) return null;
+    const mid = (a) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+    const ROLE = { bridged: 'third-party', unlisted: 'third-party' };
+    const det = h('details', { class: 'fold', 'data-k': 'contracts', open: state.open.has('contracts') }, h('summary', null, `Contracts (${addrs.length})`));
+    const fill = () => {
+      if (det._built) return;
+      det._built = true;
+      det.append(table({ wrap: 'tall', head: ['Chain', 'Coin', { t: 'Contract', l: true }, { t: 'Role', l: true }], rows: addrs.map((x) => ({ cells: [x.chain, x.asset, h('span', { class: 'mono' }, h('span', { 'data-tip': x.address }, mid(String(x.address))), ' ', h('button', { type: 'button', class: 'linkbtn', 'data-action': 'copy-addr', 'data-addr': x.address, 'aria-label': `Copy address ${x.address}` }, 'Copy address')), ROLE[x.role] || 'issuer'] })) }));
+    };
+    det.addEventListener('toggle', () => det.open && fill());
+    if (det.open) fill();
+    return det;
+  }
+
+  // ----- Peg lens -----
+  function lensPeg() {
+    const p = P();
+    const scope = scopeAssets().filter((d) => d.data && d.data.series);
+    const usd = scope.filter((d) => isUsd(d) && d.data.series.price);
+    const gold = scope.filter((d) => isGold(d));
+    const peers = (p.pegPeers || []).filter((x) => x && x.price);
+    const pr = period();
+    const figs = [];
+    if (usd.length) {
+      const stats = usd.map((d) => ({ d, s: pegStats(d.data.series.price, pr.from, pr.to) }));
+      const peerStats = peers.map((x) => ({ x, s: pegStats(x.price, pr.from, pr.to) })).filter((x) => x.s);
+      const peerMax = peerStats.length ? Math.max(...peerStats.map((x) => x.s.absAvg)) : null;
+      const active = stats.filter((x) => x.d.status === 'active');
+      const outside = isNum(peerMax) ? active.filter((x) => x.s && x.s.absAvg > peerMax) : [];
+      const over = pr.from ? ` over ${periodWords()}` : '';
+      const title = !isNum(peerMax) ? `Distance from $1 · ${spanText()}` : outside.length === 1 ? `${outside[0].d.key} averaged ${pegWords(outside[0].s.avg)}${over}; others inside the peers' range` : outside.length ? `${outside.length} coins outside the peers' range${over}` : `All ${active.length} coins inside the peers' range${over}`;
+      const flagged = new Set(((lastVerdict || {}).items || []).filter((it) => it.lens === 'peg').map((it) => it.asset));
+      figs.push(figure({ key: 'peg-mult', title, sub: `Distance from $1 · ${spanText()}`,
+        legend: peers.length ? Object.assign([{ label: `${joinAnd(peers.map((x) => x.symbol))} range`, color: TOK.neutral, band: true }], { force: true }) : null,
+        body: () => pegMultiples(usd, peers, flagged), table: () => pegTable(stats, peerStats) }));
+    }
+    // Gold without a hourly reference in this snapshot: one line, not an empty chart frame.
+    const notes = [];
+    for (const g of gold) {
+      const f = goldPremiumFigure(g, p);
+      if (f) figs.push(f);
+      else notes.push(h('p', { class: 'note-line' }, `${g.key} vs reference gold: gold reference prices not in this snapshot.`));
+    }
+    if (!figs.length) return notes.length ? notes : notIn();
+    return [grid2(...figs), ...notes];
+  }
+  function pegMultiples(list, peers, flagged) {
+    const end = endIso();
+    const all = list.map((d) => d.data.series.price);
+    const first = all.map((c) => compactFirst(c)).filter(Boolean).map((x) => x.date).sort()[0];
+    const start = spanStart(end) || first;
+    const priceEnd = all.map((c) => compactEnd(c)).filter(Boolean).sort().pop() || end;
+    const stop = priceEnd > end ? end : priceEnd;
+    let dates = datesBetween(start, stop);
+    let rows = list.map((d) => alignCompacts([d.data.series.price], start, stop).rows[0].map((v) => (isNum(v) ? v - 1 : null)));
+    const pr0 = peers.map((x) => alignCompacts([x.price], start, stop).rows[0].map((v) => (isNum(v) ? v - 1 : null)));
+    let plo = dates.map((_, i) => { const xs = pr0.map((r) => r[i]).filter(isNum); return xs.length ? Math.min(...xs) : null; });
+    let phi = dates.map((_, i) => { const xs = pr0.map((r) => r[i]).filter(isNum); return xs.length ? Math.max(...xs) : null; });
+    if (!spanOf(rng())) {
+      const idx = downsampleIdx(rows[0].map((v) => (isNum(v) ? Math.abs(v) : null)), 700);
+      if (idx) {
+        dates = idx.map((i) => dates[i]);
+        rows = rows.map((r) => idx.map((i) => r[i]));
+        plo = idx.map((i) => plo[i]);
+        phi = idx.map((i) => phi[i]);
+      }
+    }
+    const active = list.map((d, k) => ({ d, k })).filter((x) => x.d.status === 'active');
+    const legacy = list.map((d, k) => ({ d, k })).filter((x) => x.d.status !== 'active');
+    const range = (xs) => {
+      const v = xs.flatMap((x) => rows[x.k]).concat(plo, phi).filter(isNum);
+      return v.length ? [Math.min(0, ...v), Math.max(0, ...v)] : [-0.001, 0.001];
+    };
+    const pr = period();
+    const band = pr.from ? [indexIn(dates, addDays(pr.from, 1)), dates.length - 1] : null;
+    const fb = focusBandOf(dates);
+    const tipLines = (i) => [h('b', null, md(dates[i])), ...list.map((d, k) => `${d.key}: ${fmtPeg(rows[k][i])}`), isNum(plo[i]) ? `${peers.map((x) => x.symbol).join(', ')}: ${fmtPeg(plo[i])} to ${fmtPeg(phi[i])}` : null].filter(Boolean);
+    const hg = hoverGroup(dates.length, (i, e) => showTip(tipLines(i).map((x, k) => (k ? ['\n', x] : x)), e.clientX, e.clientY), hideTip);
+    // The shared scale is printed once, on the first panel's right edge: its top, 0% and its bottom.
+    const ticks = (lohi) => {
+      const [lo, hi] = lohi;
+      const at = (v) => ((2 + ((hi - v) / (hi - lo)) * 68) / 72) * 100;
+      const kept = [];
+      for (const v of [0, lo, hi]) if (v >= lo && v <= hi && kept.every((u) => Math.abs(at(u) - at(v)) >= 22)) kept.push(v);
+      return h('div', { class: 'mp-ticks', 'aria-hidden': 'true' }, kept.map((v) => {
+        const t = h('span', null, v === 0 ? '0%' : fmtPeg(v));
+        t.style.top = at(v) + '%';
+        return t;
+      }));
+    };
+    const panel = (x, lohi, first) => {
+      const svg = mini({ n: dates.length, series: [{ values: rows[x.k], color: lensColor(x.d.key) }], peer: peers.length ? { lo: plo, hi: phi } : null, lo: lohi[0], hi: lohi[1], zero: true, band, focusBand: fb, h: 72 });
+      hg.attach(svg);
+      const st = pegStats(x.d.data.series.price, pr.from, pr.to);
+      return h('div', { class: 'mp' }, h('div', { class: 'ml' }, h('span', null, flagged.has(x.d.key) ? h('span', { class: 't-negative', 'aria-hidden': 'true' }, '! ') : null, x.d.key), h('span', null, st ? `avg ${fmtPeg(st.avg)}` : '')), h('div', { class: 'mp-plot' }, svg, first ? ticks(lohi) : null));
+    };
+    const ra = range(active);
+    const out = [h('div', { class: 'multiples rows' }, active.map((x, k) => panel(x, ra, k === 0)))];
+    if (legacy.length) {
+      const rl = range(legacy);
+      out.push(h('div', { class: 'mp-sep' }, 'Legacy · own scale'), h('div', { class: 'multiples rows' }, legacy.map((x, k) => panel(x, rl, k === 0))));
+    }
+    return h('div', { 'data-graphic': 'multiples' }, out);
+  }
+  function pegTable(stats, peerStats) {
+    const r = rng();
+    const rows = stats.map(({ d, s }) => {
+      const c = d.data.current || {};
+      return { cells: [d.key, isNum(c.pegDevBp) ? `${fmtPeg(c.pegDevBp / 1e4)}${c.pegAsOf ? ` (${fmtHM(c.pegAsOf)})` : ''}` : dash('No price in this snapshot'), s ? fmtPeg(s.avg) : '—', s && s.wide ? `${fmtPeg(s.wide.gap)} (${md(s.wide.date)})` : '—'] };
+    });
+    if (peerStats.length) {
+      const avgs = peerStats.map((x) => x.s.absAvg);
+      const wide = peerStats.map((x) => x.s.wide).filter(Boolean).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0];
+      rows.push({ cls: 'sub', cells: [`Peers (${peerStats.map((x) => x.x.symbol).join(', ')})`, '', `${fmtPeg(Math.min(...avgs), { unsigned: true })}–${fmtPeg(Math.max(...avgs), { unsigned: true })}`, wide ? `${fmtPeg(wide.gap)} (${md(wide.date)})` : '—'] });
+    }
+    return table({ head: ['Coin', 'Now', `Average, ${r.label}`, 'Widest day'], rows });
+  }
+  function hourKey(t) {
+    return new Date(Math.round(t / 3600) * 3600 * 1000).toISOString().slice(0, 13);
+  }
+  function goldPremiumFigure(d, p) {
+    const ref = (p.goldRefs || []).find((g) => g && g.priceHourly && g.priceHourly.t && g.priceHourly.t.length);
+    const own = d.data.series.priceHourly;
+    if (!ref || !own || !own.t || own.t.length < 2) return null;
+    const m = new Map(ref.priceHourly.t.map((t, i) => [hourKey(t), ref.priceHourly.v[i]]));
+    const pts = own.t.map((t, i) => ({ k: hourKey(t), v: own.v[i], r: m.get(hourKey(t)) })).filter((x) => isNum(x.v) && isNum(x.r) && x.r > 0).map((x) => ({ k: x.k, prem: x.v / x.r - 1, v: x.v, r: x.r }));
+    if (pts.length < 2) return null;
+    const vals = pts.map((x) => x.prem);
+    const p10 = quantile(vals, 0.1);
+    const p90 = quantile(vals, 0.9);
+    const last = vals[vals.length - 1];
+    const inside = last >= p10 && last <= p90;
+    const title = `${d.key} ${fmtPeg(Math.abs(last), { unsigned: true })} ${last >= 0 ? 'above' : 'below'} ${ref.symbol}, ${inside ? 'inside' : 'outside'} its usual range`;
+    const body = () => {
+      const svg = mini({ n: pts.length, series: [{ values: vals, color: lensColor(d.key) }], peer: { lo: vals.map(() => p10), hi: vals.map(() => p90) }, zero: true, h: 160, dot: true });
+      svg.classList.add('tall');
+      const hg = hoverGroup(pts.length, (i, e) => showTip([h('b', null, `${md(pts[i].k.slice(0, 10))} ${pts[i].k.slice(11, 13)}:00 UTC`), '\n', `${d.key} vs ${ref.symbol}: ${fmtPeg(pts[i].prem)}`], e.clientX, e.clientY), hideTip);
+      hg.attach(svg);
+      return h('div', { class: 'mp', 'data-graphic': 'premium' }, svg);
+    };
+    return figure({ key: 'gold-prem', title, sub: `${d.key} vs ${ref.symbol} · hourly`, legend: [{ label: d.key, color: lensColor(d.key) }, { label: 'usual range (p10–p90)', color: TOK.neutral, band: true }], body,
+      table: () => table({ wrap: 'tall', head: ['Hour', d.key, ref.symbol, 'Premium'], rows: pts.slice().reverse().map((x) => ({ cells: [`${fmtDate(x.k.slice(0, 10))} ${x.k.slice(11, 13)}:00`, `$${x.v.toFixed(2)}`, `$${x.r.toFixed(2)}`, fmtPeg(x.prem)] })) }) });
+  }
+
+  // ----- Market lens -----
+  function lensMarket() {
+    const p = P();
+    const r = rng();
+    const end = endIso();
+    const all = state.asset === 'all';
+    const d = all ? null : meta(state.asset);
+    const mk = p.market && p.market.usdTotal;
+    const facts = [];
+    if (all && isNum(p.totals.usd.rankEquivalent)) facts.push(['', `Would rank #${p.totals.usd.rankEquivalent} if combined`]);
+    if (!all && isNum(d.data.current.rank)) facts.push(['', `#${d.data.current.rank} of ${fmtCount(d.data.current.rankOf)}`]);
+    const mkLast = compactLast(mk);
+    if (mkLast) facts.push(['All USD stablecoins', fmtUsd(mkLast.value)]);
+    const series = all ? p.totals.usd.marketShare : (() => { const s = d.data.series.supplyUsd; return s && mk ? { start: s.start, values: s.values.map((v, i) => { const m = compactAt(mk, addDays(s.start, i)); return isNum(v) && m ? v / m : null; }) } : null; })();
+    const figs = [];
+    if (series) {
+      const cov = (p.market && p.market.coverageFrom) || coverageStart(mk);
+      // The span starts where the supply history does (range All), so a share line that begins later says why.
+      const first = compactFirst(all ? p.totals.usd.supplyUsd : d.data.series.supplyUsd) || compactFirst(series);
+      let start = spanStart(end) || (first && first.date) || end;
+      const clipped = cov && cov > start;
+      if (clipped) start = cov;
+      let al = alignCompacts([series], start, end);
+      const full = al;
+      if (!spanOf(r)) al = thin(al.dates, al.rows, 900);
+      const pr = period();
+      const sc = shareChange(series, pr.from || start, end);
+      const mkc = mk && pr.from ? ratioChange(mk, pr.from, end) : null;
+      const s1 = sc ? sc.s1 : null;
+      const over = pr.from ? `over ${periodWords()}` : `since ${fmtMonthYear(start)}`;
+      const title = sc ? `Share ${fmtShare(s1)}, ${Math.abs(sc.pp) < 0.005 ? 'flat' : `${sc.pp > 0 ? '▲' : '▼'} ${fmtPP(sc.pp)}`} ${over}${isNum(mkc) ? `; all USD stablecoins ${fmtPct(mkc)}` : ''}` : `Share of USD stablecoins · ${spanText()}`;
+      const color = all ? TOK['ink-2'] : colorOf(d.key);
+      figs.push(figure({ key: 'share', title, sub: [`Share of USD stablecoins · ${spanText()}`, clipped ? h('span', { 'data-tip': `Market total comparable from ${fmtDate(cov)}.` }, ' ⓘ') : null],
+        config: () => lineConfig({ labels: al.dates, datasets: [lineDs('Share', al.rows[0].map((v) => (isNum(v) ? v * 100 : null)), color)], yFmt: (v) => `${Number(v.toPrecision(3))}%`, tipFmt: (v) => `${v.toFixed(3)}%`, spanDays: daysBetween(al.dates[0], end), band: periodBands(al.dates) }),
+        table: () => table({ wrap: 'tall', head: ['Date', 'Share'], rows: full.dates.map((dt, i) => ({ cells: [fmtDate(dt), isNum(full.rows[0][i]) ? fmtShare(full.rows[0][i]) : '—'] })).reverse().filter((_, j) => full.dates.length <= 92 || j % 7 === 0) }) }));
+    } else figs.push(figure({ key: 'share', title: `Share of USD stablecoins · ${spanText()}`, body: () => notIn() }));
+    figs.push(peerFigure());
+    return [facts.length ? h('dl', { class: 'facts' }, facts.map(([k, v]) => h('div', null, k ? h('dt', null, k) : null, h('dd', null, v)))) : null, grid2(...figs)];
+  }
+  function peerFigure() {
+    const p = P();
+    const pe = p.peers;
+    if (!pe || !Array.isArray(pe.rows) || !pe.rows.length) return figure({ key: 'peers', title: 'Growth vs the largest stablecoins', body: () => notIn() });
+    const r = rng();
+    const win = r.win === 'd7' ? 'd7' : 'd30';
+    const rows = pe.rows.filter((x) => x.change && x.change[win] && isNum(x.change[win].pct));
+    const n = pe.rows.filter((x) => !x.isPaxos).length;
+    const title = `${win === 'd7' ? '7-day' : '30-day'} growth vs the ${n} largest stablecoins${r.win !== 'd7' && r.win !== 'd30' ? ' (30 days, longest available)' : ''}`;
+    const body = () => {
+      const vals = rows.map((x) => x.change[win].pct);
+      const lo = quantile(vals, 0.05);
+      const hi = quantile(vals, 0.95);
+      const med = quantile(rows.filter((x) => !x.isPaxos).map((x) => x.change[win].pct), 0.5);
+      const a = Math.min(lo, 0);
+      const b = Math.max(hi, 0);
+      const pos = (v) => (b === a ? 50 : ((Math.max(a, Math.min(b, v)) - a) / (b - a)) * 100);
+      const el = h('div', { class: 'dotstrip', 'data-graphic': 'dots', role: 'img', 'aria-label': `${title}: ${rows.filter((x) => x.isPaxos).map((x) => `${x.symbol} ${fmtPct(x.change[win].pct)}`).join(', ')}; median ${fmtPct(med)}` }, h('span', { class: 'dl' }));
+      const mline = h('span', { class: 'med' });
+      mline.style.left = pos(med) + '%';
+      const mlab = h('span', { class: 'medl' }, `median ${fmtPct(med)}`);
+      mlab.style.left = pos(med) + '%';
+      el.append(mline, mlab);
+      // Paxos labels sit above the line in two alternating lanes (ordered by x); a clamped Paxos coin
+      // states its value; other clamped coins share one edge label per side (the most extreme).
+      for (const x of rows.filter((u) => !u.isPaxos)) {
+        const pt = h('span', { class: 'pt', color: TOK.neutral, 'data-tip': `${x.symbol}: ${fmtPct(x.change[win].pct)} (${fmtUsd(x.change[win].abs, { signed: true })})` });
+        pt.style.left = pos(x.change[win].pct) + '%';
+        el.append(pt);
+      }
+      // Scale ticks under the line (its two ends and 0); peers beyond them sit on the edge and are named in
+      // a note under the strip, so an edge never reads as two values.
+      const tick = (v, cls) => {
+        const t = h('span', { class: 'tick ' + (cls || '') }, v === 0 ? '0' : fmtPct(v));
+        t.style.left = pos(v) + '%';
+        return t;
+      };
+      el.append(tick(a, 'at-l'), ...(a < 0 && b > 0 ? [tick(0)] : []), tick(b, 'at-r'));
+      const clamps = [-1, 1].map((side) => {
+        const out = rows.filter((x) => !x.isPaxos && (side > 0 ? x.change[win].pct > b : x.change[win].pct < a));
+        if (!out.length) return null;
+        const ext = out.map((x) => x.change[win].pct).sort((u, v) => side * (v - u))[0];
+        return `${out.length} ${out.length === 1 ? 'coin' : 'coins'} ${side < 0 ? 'below' : 'above'} ${fmtPct(side < 0 ? a : b)} (to ${fmtPct(ext)})`;
+      }).filter(Boolean);
+      el._note = clamps.length ? h('p', { class: 'note-line' }, `Off the scale: ${clamps.join('; ')}.`) : null;
+      const pax = rows.filter((x) => x.isPaxos && x.assetKey && isActiveOrShown(x.assetKey)).sort((u, v) => u.change[win].pct - v.change[win].pct);
+      pax.forEach((x, k) => {
+        const v = x.change[win].pct;
+        const pt = h('span', { class: 'pt pax', color: lensColor(x.assetKey), 'data-tip': `${x.symbol}: ${fmtPct(v)} (${fmtUsd(x.change[win].abs, { signed: true })})` });
+        pt.style.left = pos(v) + '%';
+        const l = h('span', { class: 'pl' + (pos(v) < 8 ? ' at-l' : pos(v) > 92 ? ' at-r' : '') }, v < a || v > b ? `${x.symbol} ${fmtPct(v)}` : x.symbol);
+        l.style.left = pos(v) + '%';
+        l.style.top = (k % 2 ? 2 : 18) + 'px';
+        el.append(pt, l);
+      });
+      return h('div', null, el, el._note);
+    };
+    return figure({ key: 'peers', title, body,
+      table: () => table({ wrap: 'tall', caption: pe.asOf ? `List as of ${fmtHM(pe.asOf)} UTC` : null, head: ['#', 'Coin', 'Supply', '7d', '30d'], rows: pe.rows.slice().sort((x, y) => (y.supplyUsd || 0) - (x.supplyUsd || 0)).map((x, i) => ({ cls: x.isPaxos ? 'sub' : null, cells: [String(i + 1), x.isPaxos ? { v: h('span', { class: 'asset-cell' }, swatch(x.assetKey ? colorOf(x.assetKey) : TOK.neutral), x.symbol), tip: 'Hourly list; cards use the daily snapshot.' } : x.symbol, fmtUsd(x.supplyUsd), x.change && x.change.d7 ? fmtPct(x.change.d7.pct) : '—', x.change && x.change.d30 ? fmtPct(x.change.d30.pct) : '—'] })) }) });
+  }
+
+  // ----- Usage lens -----
+  function holderCoverage(d) {
+    const a = d.data;
+    const have = new Map((a.onchain || []).filter((x) => isNum(x.holders)).map((x) => [x.chain, x.holders]));
+    const total = [...have.values()].reduce((s, v) => s + v, 0);
+    const bal = (a.chains || []).filter((c) => isNum(c.currentUsd) && c.currentUsd > 0);
+    const missing = bal.filter((c) => !have.has(c.chain));
+    const tot = bal.reduce((s, c) => s + c.currentUsd, 0);
+    const partial = bal.length ? missing.length > 0 : (a.onchain || []).some((x) => !isNum(x.holders));
+    return { total: have.size ? total : null, partial, missing: missing.map((c) => c.chain), missingShare: tot ? missing.reduce((s, c) => s + c.currentUsd, 0) / tot : null, coveredShare: tot ? 1 - missing.reduce((s, c) => s + c.currentUsd, 0) / tot : null };
+  }
+  const turnoverLast = (d) => compactLast(d.data.series && d.data.series.turnover7d);
+  function holdersNode(d) {
+    const hc = holderCoverage(d);
+    if (!isNum(hc.total)) return '—';
+    const tipText = hc.partial ? `Holder counts from block explorers. Missing: ${hc.missing.length ? joinAnd(hc.missing) : 'some chains'}${isNum(hc.missingShare) ? ` (${fmtPortion(hc.missingShare)} of ${d.key})` : ''}.` : 'Holder counts from block explorers.';
+    return h('span', { 'data-tip': tipText }, `${fmtCount(hc.total)}${hc.partial ? '+' : ''}`, hc.partial ? sr(' (some chains missing)') : null);
+  }
+  // DefiLlama project slugs and pool symbols, readable: "morpho-blue" -> "Morpho Blue", "usd-ai" -> "USD AI",
+  // "{coin} (Earn (Ethena Market))" -> "{coin} (Earn, Ethena Market)".
+  const projectName = (slug) => String(slug || '').split('-').filter(Boolean).map((w) => (w.length <= 3 && /^[a-z]+\d*$|^v\d+$/i.test(w) && !/^\d/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' ');
+  const poolSymbol = (s) => { let t = String(s || ''); while (/\(([^()]*)\(([^()]*)\)\)/.test(t)) t = t.replace(/\(([^()]*?)\s*\(([^()]*)\)\)/, '($1, $2)'); return t; };
+  const poolName = (x) => `${projectName(x.project)} · ${poolSymbol(x.symbol)}`;
+  function lensUsage() {
+    const scope = scopeAssets().filter((d) => d.data && d.status !== 'dead');
+    const pools = scope.flatMap((d) => ((d.data.defi && d.data.defi.pools) || []).map((x) => ({ ...x, asset: d.key }))).sort((a, b) => (b.tvlUsd || 0) - (a.tvlUsd || 0));
+    const poolsTable = () => {
+      const key = 'pools';
+      const more = state.more.has(key);
+      const list = more ? pools : pools.slice(0, 10);
+      const wrap = h('div', null, table({ wrap: 'tall', head: ['Pool', { t: 'Chain', l: true }, ...(scope.length > 1 ? ['Coin'] : []), 'Size', 'APY', 'Lent out'], rows: list.map((x) => {
+        const url = safeUrl(x.url);
+        const name = poolName(x);
+        return { cells: [url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, name) : name, x.chain, ...(scope.length > 1 ? [x.asset] : []), fmtUsd(x.tvlUsd), isNum(x.apy) ? { v: `${x.apy.toFixed(2)}%`, tip: `base ${isNum(x.apyBase) ? x.apyBase.toFixed(2) : '—'}% + incentives ${isNum(x.apyReward) ? x.apyReward.toFixed(2) : '—'}%` } : '—', isNum(x.utilization) ? fmtPortion(x.utilization) : dash('Not a lending market')] };
+      }) }));
+      if (pools.length > 10) wrap.append(h('button', { type: 'button', class: 'linkbtn more-btn', 'data-more': key, 'data-rerender': 'panel', 'aria-expanded': String(more) }, more ? 'Show fewer' : `Show all ${pools.length}`));
+      return wrap;
+    };
+    const poolBars = () => {
+      const top = pools.slice(0, 10);
+      if (!top.length) return h('p', { class: 'note-line' }, 'No DeFi pools found.');
+      const max = Math.max(1, ...top.map((x) => x.tvlUsd || 0));
+      return h('div', { class: 'bars', 'data-graphic': 'bars' }, top.map((x) => {
+        const tr = h('span', { class: 'track' });
+        const f = h('span', { class: 'solid', color: lensColor(x.asset) });
+        f.style.width = ((x.tvlUsd || 0) / max) * 100 + '%';
+        tr.append(f);
+        return h('div', { class: 'brow', 'data-tip': `${poolName(x)} · ${x.chain}\nTotal pool deposits; may include other coins.` }, h('span', { class: 'bl' }, swatch(lensColor(x.asset)), h('span', null, `${poolName(x)} · ${x.chain}`)), tr, h('span', { class: 'bv' }, fmtUsd(x.tvlUsd)));
+      }));
+    };
+    // tvlUsd is the pool's total deposits (vaults, two-coin pools), not the coin's own balance in it.
+    const top = pools[0];
+    const figB = figure({ key: 'pools', title: top ? `Largest pool: ${projectName(top.project)} on ${top.chain}, ${fmtUsd(top.tvlUsd)} in total deposits` : 'Largest DeFi pools', sub: top ? 'Pool size, all assets' : null, body: poolBars, table: poolsTable });
+    if (scope.length === 1) {
+      const d = scope[0];
+      const f = d.data.defi || {};
+      const tl = turnoverLast(d);
+      const t7 = d.data.series && d.data.series.turnover7d;
+      const usual = t7 ? quantile(sliceCompact(t7, 365, endIso()).values, 0.5) : null;
+      const hc = holderCoverage(d);
+      const c = d.data.current || {};
+      const tiles = h('div', { class: 'tiles' },
+        h('div', { class: 'tile' }, h('span', { class: 'tl' }, 'In DeFi'), h('span', { class: 'tv', 'data-tip': 'Upper bound: two-coin pools count in full.' }, isNum(f.footprintShare) ? `≤${fmtPortion(f.footprintShare)}` : '—'), h('span', { class: 'tm' }, isNum(f.footprintUsd) ? `${fmtUsd(f.footprintUsd)} in ${fmtCount(f.poolCount)} pools` : '')),
+        h('div', { class: 'tile' }, h('span', { class: 'tl' }, 'Traded daily'), h('span', { class: 'tv', 'data-tip': `24h: ${isNum(c.turnover24h) ? fmtPortion(c.turnover24h) : '—'}, ${fmtUsd(c.volume24hUsd)} volume` }, tl ? fmtPortion(tl.value) : '—'), h('span', { class: 'tm' }, isNum(usual) ? `usually ${fmtPortion(usual)}` : '')),
+        h('div', { class: 'tile' }, h('span', { class: 'tl' }, 'Holders'), h('span', { class: 'tv' }, holdersNode(d)), h('span', { class: 'tm' }, isNum(hc.coveredShare) && hc.partial ? `on chains with ${fmtPortion(hc.coveredShare)} of supply` : '')));
+      let figT = null;
+      if (t7) {
+        const end = endIso();
+        const first = compactFirst(t7);
+        const start = spanStart(end) || (first && first.date) || end;
+        let al = alignCompacts([t7], start, end);
+        const full = al;
+        if (!spanOf(rng())) al = thin(al.dates, al.rows, 900);
+        figT = figure({ key: 'turnover', title: `Traded daily, 7-day average · ${spanText()}`, config: () => lineConfig({ labels: al.dates, datasets: [lineDs('Traded daily', al.rows[0].map((v) => (isNum(v) ? v * 100 : null)), lensColor(d.key))], yFmt: (v) => `${Number(v.toPrecision(2))}%`, tipFmt: (v) => `${v.toFixed(1)}%`, spanDays: daysBetween(al.dates[0], end), band: periodBands(al.dates) }),
+          table: () => table({ wrap: 'tall', head: ['Date', 'Traded daily'], rows: full.dates.map((dt, i) => ({ cells: [fmtDate(dt), isNum(full.rows[0][i]) ? fmtPortion(full.rows[0][i]) : '—'] })).reverse().filter((_, j) => full.dates.length <= 92 || j % 7 === 0) }) });
+      }
+      const holdersTbl = (d.data.onchain || []).length ? figure({ key: 'holders', title: `Holders by chain`, body: () => h('p', { class: 'note-line' }, `${fmtCount(hc.total)}${hc.partial ? '+' : ''} holders on ${(d.data.onchain || []).filter((x) => isNum(x.holders)).length} chains.`),
+        table: () => table({ head: ['Chain', 'Holders', 'Supply on chain'], rows: (d.data.onchain || []).map((x) => ({ cells: [x.chain, isNum(x.holders) ? fmtCount(x.holders) : dash('No holder count for this chain'), isGold(d) ? fmtOz(x.totalSupply) : fmtUsd(x.totalSupply)] })) }) }) : null;
+      return [h('p', { class: 'cap' }, h('b', null, `${d.key} usage`)), tiles, h('div', { class: 'lens-grid' }, figT, figB), holdersTbl];
+    }
+    const rows = scope.filter((d) => d.status === 'active');
+    const usage = rows.map((d) => ({ d, defi: d.data.defi && d.data.defi.footprintShare, t: turnoverLast(d), hc: holderCoverage(d) }));
+    const maxBy = (f) => usage.filter((u) => isNum(f(u))).sort((a, b) => f(b) - f(a))[0];
+    const md1 = maxBy((u) => u.defi);
+    const mt = maxBy((u) => u.t && u.t.value);
+    const traded = usage.some((u) => u.t && isNum(u.t.value)); // no coin with a trading volume: no column
+    const titleA = md1 && mt ? `Up to ${fmtPortion(md1.defi)} of ${md1.d.key} sits in DeFi; ${mt.d.key} trades ${fmtPortion(mt.t.value)} of supply a day` : md1 ? `Up to ${fmtPortion(md1.defi)} of ${md1.d.key} sits in DeFi` : 'How each coin is used';
+    const body = () => {
+      const col = (vals) => Math.max(1e-12, ...vals.filter(isNum));
+      const metrics = [
+        { l: 'In DeFi', v: (u) => u.defi, text: (u) => h('span', { 'data-tip': 'Upper bound: two-coin pools count in full.' }, isNum(u.defi) ? `≤${fmtPortion(u.defi)}` : '—') },
+        ...(traded ? [{ l: 'Traded daily', v: (u) => u.t && u.t.value, text: (u) => (u.t ? fmtPortion(u.t.value) : '—') }] : []),
+        { l: 'Holders', v: (u) => u.hc.total, text: (u) => holdersNode(u.d) },
+      ];
+      // Rows are coins and columns metrics; on a narrow screen each metric becomes its own list of coins
+      // (CSS order from --om), so coins compare within a metric.
+      const cell = (m, mi, u, ui, max) => {
+        const tr = h('span', { class: 'track' });
+        const f = h('span', { class: 'solid', color: lensColor(u.d.key) });
+        const v = m.v(u);
+        f.style.width = (isNum(v) ? (v / max) * 100 : 0) + '%';
+        tr.append(f);
+        const c = h('div', { class: 'ucell', 'data-c': u.d.key }, tr, h('span', { class: 'bv' }, m.text(u)));
+        c.style.setProperty('--om', String((mi + 1) * 100 + ui));
+        return c;
+      };
+      const tbl = h('div', { class: 'usage-table' + (traded ? '' : ' cols2'), 'data-graphic': 'usage' }, h('span', { class: 'uh corner' }, ''),
+        metrics.map((m, mi) => { const x = h('span', { class: 'uh' }, m.l); x.style.setProperty('--om', String((mi + 1) * 100)); return x; }),
+        usage.map((u, ui) => [h('span', { class: 'asset-cell' }, swatch(lensColor(u.d.key)), u.d.key), metrics.map((m, mi) => cell(m, mi, u, ui + 1, col(usage.map(m.v))))]));
+      return traded ? tbl : h('div', null, tbl, h('p', { class: 'note-line' }, 'Trading volume not in this snapshot.'));
+    };
+    const figA = figure({ key: 'usage', title: titleA, body, table: () => table({ head: ['Coin', 'In DeFi (up to)', 'Traded daily', 'Holders', 'Pools'], rows: usage.map((u) => ({ cells: [u.d.key, isNum(u.defi) ? fmtPortion(u.defi) : '—', u.t ? fmtPortion(u.t.value) : dash('No trading volume in this snapshot'), isNum(u.hc.total) ? `${fmtCount(u.hc.total)}${u.hc.partial ? '+' : ''}` : '—', fmtCount(u.d.data.defi && u.d.data.defi.poolCount)] })) }) });
+    return grid2(figA, figB);
+  }
+  const safeUrl = (u) => {
+    try {
+      const x = new URL(String(u));
+      return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // ----- Income lens -----
+  function lensIncome() {
+    const e = P().economics;
+    if (!e) return notIn();
+    const c = e.current || {};
+    const end = endIso();
+    const covers = econAssets();
+    const facts = h('div', { class: 'facts' }, h('span', { class: 'badge', 'data-tip': e.note || null }, 'DefiLlama model'), isNum(c.fees1y) ? h('span', null, `${fmtUsd(c.fees1y)} earned in the last 12 months`) : null, covers.length ? h('span', null, `covers ${joinAnd(covers)}`) : null);
+    const mean7 = (cmp) => (cmp ? { start: cmp.start, values: cmp.values.map((_, i) => { const xs = cmp.values.slice(Math.max(0, i - 6), i + 1).filter(isNum); return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null; }) } : null);
+    const fees = mean7(e.fees);
+    const rev = mean7(e.revenue);
+    const fe = compactEnd(e.fees || e.revenue) || end;
+    const first = compactFirst(e.fees || e.revenue);
+    const start = spanStart(fe) || (first && first.date) || fe;
+    let al = alignCompacts([fees, rev], start, fe);
+    const full = al;
+    if (!spanOf(rng())) al = thin(al.dates, al.rows, 900);
+    const figs = [];
+    if (fees || rev) {
+      // Fees are the reserve income; revenue is the part DefiLlama's model leaves with Paxos after partner
+      // payouts. The title's year is today's daily rate times 365 (the facts line has the last 12 months).
+      const sets = [fees ? { label: 'Reserve income (fees)', v: al.rows[0], color: TOK['ink-2'] } : null, rev ? { label: `Kept by ${issuer()} (revenue)`, tip: "After partner payouts, per DefiLlama's model.", v: al.rows[1], color: TOK.neutral } : null].filter(Boolean);
+      figs.push(figure({ key: 'income', title: isNum(c.fees24h) ? `Est. reserve income ${fmtUsd(c.fees24h)} a day (≈${fmtUsd(c.fees24h * 365)} a year at today's rate)` : 'Est. reserve income', legend: sets.map((s) => ({ label: s.label, color: s.color, tip: s.tip })),
+        config: () => lineConfig({ labels: al.dates, datasets: sets.map((s) => lineDs(s.label, s.v, s.color)), yFmt: (v) => fmtUsd(v), spanDays: daysBetween(al.dates[0], fe), band: periodBands(al.dates) }),
+        table: () => incomeTable(e, full) }));
+    }
+    if (e.impliedYield) {
+      const ay = alignCompacts([e.impliedYield], start, fe);
+      const aly = spanOf(rng()) ? ay : thin(ay.dates, ay.rows, 900);
+      figs.push(figure({ key: 'yield', title: `Implied yield on reserves ${isNum(c.impliedYield) ? (c.impliedYield * 100).toFixed(2) + '%' : ''}`.trim(),
+        config: () => lineConfig({ labels: aly.dates, datasets: [lineDs('Implied yield', aly.rows[0].map((v) => (isNum(v) ? v * 100 : null)), TOK['ink-2'])], yFmt: (v) => `${v.toFixed(1)}%`, tipFmt: (v) => `${v.toFixed(2)}%`, spanDays: daysBetween(aly.dates[0], fe), band: periodBands(aly.dates) }),
+        table: () => incomeTable(e, full) }));
+    }
+    return [facts, state.asset !== 'all' ? h('p', { class: 'note-line' }, 'Issuer-wide; not split by coin.') : null, grid2(...figs)];
+  }
+  function incomeTable(e, full) {
+    const rows = [];
+    for (let i = full.dates.length - 1; i >= 0; i -= 7) {
+      const d = full.dates[i];
+      const y = compactAt(e.impliedYield, d);
+      rows.push({ cells: [fmtDate(d), fmtUsd(full.rows[0][i]), fmtUsd(full.rows[1][i]), isNum(y) ? `${(y * 100).toFixed(2)}%` : '—'] });
+    }
+    return table({ wrap: 'tall', caption: '7-day averages, weekly.', head: ['Week', 'Fees', 'Revenue', 'Yield'], rows });
+  }
+  const LENS_RENDER = { supply: lensSupply, chains: lensChains, peg: lensPeg, market: lensMarket, usage: lensUsage, income: lensIncome };
+
+  // 8. All findings (§3.10): built when opened
+  function findingsModel() {
+    const end = endIso();
+    const inScope = (i) => insightMatches(i, state.asset, floorsAll());
+    const shown = (i) => i.asset === aggKey() || !meta(i.asset) || isActiveOrShown(i.asset);
+    let hiddenLegacy = 0;
+    const keep = (i) => {
+      if (!inScope(i)) return false;
+      if (!shown(i)) {
+        hiddenLegacy++;
+        return false;
+      }
+      return true;
+    };
+    const unusual = [];
+    const earlier = [];
+    const notes = [];
+    for (const u of IX.units) {
+      const members = [u.lead, ...u.related];
+      const lead = members.find((i) => roleOf(i) !== 'note' && roleOf(i) !== 'api' && ['new', 'ongoing'].includes(stageOf(i)));
+      if (lead && keep(lead)) unusual.push(relead({ lead, related: members.filter((i) => i !== lead && roleOf(i) !== 'note'), list: u.list }));
+      for (const i of members) {
+        if (roleOf(i) === 'note') {
+          if (keep(i)) notes.push({ lead: i, related: [] });
+        } else if (stageOf(i) === 'past' && i !== lead && keep(i)) earlier.push({ lead: i, related: [] });
+      }
+    }
+    const watching = [];
+    for (const i of IX.watch) {
+      if (roleOf(i) === 'note') {
+        if (keep(i)) notes.push({ lead: i, related: [] });
+      } else if (roleOf(i) !== 'api' && stageOf(i) === 'watch' && keep(i)) watching.push({ lead: i, related: [] });
+      else if (stageOf(i) === 'past' && keep(i)) earlier.push({ lead: i, related: [] });
+    }
+    const named = namedIds();
+    unusual.sort((a, b) => (isMajor(a.lead, named) ? 0 : 1) - (isMajor(b.lead, named) ? 0 : 1));
+    earlier.sort((a, b) => String((b.lead.novelty || {}).since || '').localeCompare(String((a.lead.novelty || {}).since || '')));
+    const cut = addDays(end, -365);
+    const recent = earlier.filter((u) => !(u.lead.novelty && u.lead.novelty.since) || u.lead.novelty.since >= cut);
+    return { unusual, earlier: recent, older: earlier.filter((u) => !recent.includes(u)), watching, notes, hiddenLegacy };
+  }
+  function renderFindingsSummary() {
+    const det = $('all-findings');
+    const m = findingsModel();
+    const n = m.unusual.length + m.earlier.length + m.older.length + m.watching.length + m.notes.length;
+    det.querySelector('summary').textContent = `All findings (${n})`;
+    det._model = m;
+    if (det.open) renderFindingsBody();
+  }
+  function renderFindingsBody(force) {
+    const det = $('all-findings');
+    const body = det.querySelector('[data-body]');
+    const sig = bodySig(`${state.ftab}|${state.more.has('older')}|${state.fidMissing}`);
+    if (!force && body.dataset.sig === sig && body.childNodes.length) return;
+    body.dataset.sig = sig;
+    const m = det._model || findingsModel();
+    const tabs = [['unusual', 'Unusual', m.unusual], ['earlier', 'Earlier', m.earlier.concat(m.older)], ['watching', 'Watching', m.watching], ['notes', 'Data notes', m.notes]];
+    const cur = tabs.find((t) => t[0] === state.ftab) || tabs[0];
+    let list = cur[2];
+    const extra = [];
+    if (cur[0] === 'earlier' && m.older.length && !state.more.has('older')) {
+      list = m.earlier;
+      extra.push(h('button', { type: 'button', class: 'linkbtn more-btn', 'data-more': 'older', 'data-rerender': 'findings' }, `Show ${m.older.length} older`));
+    }
+    if (cur[0] === 'watching') {
+      // watchTotal counts data notes too, and the cap keeps every one of them (they list under Data notes).
+      const wt = P().insights && P().insights.watchTotal;
+      const notesHeld = IX.watch.filter((i) => roleOf(i) === 'note').length;
+      const shown = IX.watch.filter((i) => roleOf(i) !== 'note' && roleOf(i) !== 'api').length;
+      // (counted after the scope and legacy filters, so the footer and the tab agree)
+      if (isNum(wt) && wt - notesHeld > shown) extra.push(h('p', { class: 'note-line' }, state.asset === 'all' ? `Showing ${m.watching.length} of ${fmtCount(wt - notesHeld)} (the most unusual).` : 'Showing the most unusual only.'));
+    }
+    if (m.hiddenLegacy) extra.push(h('p', { class: 'note-line' }, `${plural(m.hiddenLegacy, 'finding')} on legacy coins hidden · `, h('button', { type: 'button', class: 'linkbtn', 'data-action': 'legacy' }, 'Show')));
+    const groups = [];
+    if (state.asset === 'all' && list.length) {
+      const by = new Map();
+      for (const u of list) {
+        const k = u.lead.asset || '';
+        if (!by.has(k)) by.set(k, []);
+        by.get(k).push(u);
+      }
+      for (const [k, us] of by) groups.push(h('p', { class: 'fgroup-h' }, meta(k) ? swatch(colorOf(k)) : null, k || 'Other'), h('ul', { class: 'flist' }, us.map((u) => findingLine(u, { where: 'all', autoOpen: true }))));
+    } else if (list.length) groups.push(h('ul', { class: 'flist' }, list.map((u) => findingLine(u, { where: 'all', autoOpen: true }))));
+    else groups.push(h('p', { class: 'note-line' }, 'None right now.'));
+    put(body,
+      state.fidMissing ? h('p', { class: 'note-line' }, 'That finding isn\'t in this snapshot.') : null,
+      h('div', { class: 'ftabs', role: 'group', 'aria-label': 'Findings' }, tabs.map(([id, label, xs]) => h('button', { type: 'button', class: 'btn', 'aria-pressed': String(id === cur[0]), 'data-ftab': id }, `${label} (${xs.length})`))),
+      ...groups, ...extra);
+  }
+
+  // 9. About this data (§3.11): built when opened
+  const KIND_USE = { supply: 'Supply', market: 'Market totals', price: 'Prices', defi: 'DeFi', economics: 'Income model', usage: 'Activity', onchain: 'On-chain reads', discovery: 'Discovery' };
+  const SRC_STATUS = { ok: ['✓', 's-good', 'OK'], partial: ['~', 's-warn', 'Partial'], stale: ['!', 's-warn', 'Late'], error: ['✕', 's-crit', 'Down'], skipped: ['–', 's-muted', 'Not used'] };
+  const srcAgeText = (x) => `${isNum(x.ageNow) ? fmtAge(x.ageNow) : '—'}${isNum(x.s.cadenceHours) ? ` / every ${fmtAge(x.s.cadenceHours)}` : ''}`;
+  // Source messages in plain words: "Rate-limited: 8 of 13 requests failed (HTTP 429)." (no response bodies).
+  function humanMsg(msg) {
+    const m = String(msg || '').trim();
+    if (!m) return '';
+    const f = /^(\d+)\/(\d+) requests failed:\s*(.*)$/.exec(m);
+    const rest = f ? f[3] : m;
+    const code = /HTTP (\d{3})/.exec(rest);
+    const why = code ? (code[1] === '429' ? `rate-limited (HTTP 429)` : `HTTP ${code[1]}`) : /time budget/.test(rest) ? 'build time ran out' : /timeout/.test(rest) ? 'timed out' : /failed over/.test(rest) ? 'served by a fallback' : '';
+    if (f) return `${f[1]} of ${f[2]} requests failed${why ? `: ${why}` : ''}.`;
+    return why ? `${why[0].toUpperCase()}${why.slice(1)}.` : m.replace(/\s*\{.*$/, '').slice(0, 90);
+  }
+  // The data notes' lateness and the Sources status agree: a source a live freshness note is about reads
+  // "Late (data note)" (the note judges a daily feed against its daily schedule, the table against a limit).
+  // (feed of the note -> the source that serves it; source ids are lib/paxos/sources.js identifiers)
+  const FEED_SOURCE = {
+    fees: (s) => s.kind === 'economics', cm: (s) => s.kind === 'usage', hourly: (s) => s.kind === 'price' && /coins/.test(s.id), cgDaily: (s) => /coingecko/.test(s.id),
+    supply: (s, f) => s.kind === 'supply' && (!f.source || String(s.label).includes(f.source)),
+  };
+  function lateByNote(src) {
+    for (const [, x] of IX.byId) {
+      const i = x.i, f = i.facts;
+      if (i.detector !== 'dq.freshness' || !(stageOf(i) === 'new' || stageOf(i) === 'ongoing') || !f || !(f.overdueHours > 0)) continue;
+      if (FEED_SOURCE[f.feed] && FEED_SOURCE[f.feed](src, f)) return true;
+    }
+    return false;
+  }
+  // Disclosure bodies are rebuilt only when what they show changed (a rebuild would drop focus and scroll).
+  const bodySig = (extra) => `${(P() && P().generatedAt) || ''}|${state.asset}|${state.legacy}|${extra || ''}`;
+  function renderAbout() {
+    const det = $('about');
+    if (!det.open) return;
+    const body = det.querySelector('[data-body]');
+    if (body.dataset.sig === bodySig() && body.childNodes.length) return;
+    body.dataset.sig = bodySig();
+    const p = P();
+    const insx = p.insights || {};
+    const out = [];
+    const part = (name, fn) => {
+      try {
+        out.push(...[fn()].flat().filter(Boolean));
+      } catch (e) {
+        console.error(`about ${name} failed`, e);
+        out.push(h('p', { class: 'fail' }, 'Not in this snapshot.'));
+      }
+    };
+    part('sources', () => [h('h3', { id: 'about-sources', tabindex: '-1' }, 'Sources'), table({ head: ['Source', { t: 'Used for', l: true }, 'Age / updates', { t: 'Status', l: true }], rows: sourcesNow().map((x) => {
+      const noted = x.status === 'ok' && lateByNote(x.s);
+      const st = noted ? ['!', 's-warn', 'Late (data note)'] : SRC_STATUS[x.status] || SRC_STATUS.skipped;
+      const msg = humanMsg(x.s.message);
+      return { cells: [h('span', null, x.s.label, msg ? h('span', { class: 'src-msg', 'data-tip': String(x.s.message).slice(0, 300) }, msg) : null), KIND_USE[x.s.kind] || x.s.kind || '—', h('span', { 'data-src-age': x.s.id }, srcAgeText(x)), h('span', { 'data-src-status': x.s.id }, h('span', { class: 'ico ' + st[1], 'aria-hidden': 'true' }, st[0]), ' ', st[2])] };
+    }) }), h('p', { class: 'note-line' }, 'Ages are judged against each source\'s own update rhythm.')]);
+    part('how', () => {
+      const b = p.briefing;
+      return [h('h3', null, 'How findings work'), h('ul', { class: 'bul' },
+        h('li', null, `Each build runs ${fmtCount(insx.testsRun)} checks comparing every coin with its own history and with other stablecoins.`),
+        h('li', null, 'A result is flagged only if chance is an unlikely explanation, after allowing for how many checks ran.'),
+        h('li', null, 'It must also move at least a typical day\'s flow for that coin.'),
+        h('li', null, `The verdict and the briefing also need ${fmtUsd(b && isNum(b.floorUsd) ? b.floorUsd : floorOf(aggKey()))}, a typical day's flow for ${aggKey() || 'the total'} overall, or a peg gap wider than every peer.`),
+        h('li', null, 'Where supply moved is exact arithmetic on daily supply, not statistics.')),
+      h('details', null, h('summary', { class: 'small' }, 'Exact rule'), h('p', { class: 'small' }, (insx.rule && insx.rule.text) || '—'), insx.family ? h('p', { class: 'small muted' }, `${fmtCount(insx.family.counted)} checks counted; ${fmtCount(insx.family.underpowered)} could not reach a flag.`) : null)];
+    });
+    part('grid', () => {
+      const hg = insx.health;
+      if (!hg || !hg.cells) return null;
+      const DIMS = [['supply', 'Supply'], ['market', 'Market'], ['chains', 'Chains'], ['peg', 'Peg'], ['defi', 'DeFi'], ['usage', 'Usage'], ['portfolio', 'Coin mix'], ['economics', 'Income'], ['data', 'Data']];
+      const G = { notable_negative: '!', notable_positive: '+', notable_neutral: '◆', within_own_history: '✓', insufficient_history: '?', no_data: '–' };
+      // A flagged cell wears the verdict's mark only when the verdict names its finding; otherwise it is a
+      // smaller finding (·), as in the lists.
+      const named = namedIds();
+      const rows = (hg.assets || Object.keys(hg.cells)).filter((a) => hg.cells[a] && (state.asset === 'all' ? a === aggKey() || !meta(a) || isActiveOrShown(a) : a === state.asset));
+      return [h('h3', null, 'Checks by area'), table({ head: ['', ...DIMS.map((x) => x[1])], rows: rows.map((a) => ({ cells: [a, ...DIMS.map(([dim]) => {
+        const c = hg.cells[a][dim];
+        if (!c) return '–';
+        const g = dim === 'data' && /^notable_/.test(c.state) ? 'i' : /^notable_/.test(c.state) && !(c.evidence && named.has(c.evidence.id)) ? '·' : G[c.state] || '–';
+        return c.tests ? `${g} ${fmtCount(c.tests)}` : g;
+      })] })) }), h('p', { class: 'note-line' }, '! unusual, negative · + unusual, positive · ◆ unusual · · smaller finding · i data note · ✓ normal · ? too new to judge · – not checked')];
+    });
+    part('notes', () => {
+      const m = findingsModel();
+      return [h('h3', null, `Data notes (${m.notes.length})`), m.notes.length ? h('ul', { class: 'flist' }, m.notes.map((u) => findingLine(u, { where: 'about' }))) : h('p', { class: 'note-line' }, 'None right now.')];
+    });
+    part('terms', () => {
+      const peers = (p.pegPeers || []).map((x) => x.symbol);
+      const T = [['Peg', 'Distance of the daily price from $1, as a percent of $1; 0.44% below $1 is $0.9956.'], ['pp', 'Percentage points.'], ['Peers', `${joinAnd(peers)}: the large dollar stablecoins used as the peg reference.`], ['Typical day\'s flow', 'Median daily net issuance or redemption over the past year.'], ['Smaller finding', `Rare for that coin, but under a typical day's flow for ${aggKey() || 'the total'} overall, a peg gap inside the peers' range, or a detail shown only in its tab.`], ['Earlier', 'Flagged changes that began more than 30 days ago.'], ['Watching', 'Unusual, but not rare enough to flag.'], ['≤', 'Upper bound: two-coin pools count in full.'], ['+', 'Some chains did not report holders.'], ['Est.', 'Modelled by DefiLlama; not reported by Paxos.'], ['Supply change', 'Tokens issued or redeemed, valued at today\'s price, so a price move is not a supply change.']];
+      return [h('h3', null, 'Terms'), h('dl', { class: 'small' }, T.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]))];
+    });
+    part('found', () => {
+      const tiers = (p.discovery && p.discovery.tiers) || [];
+      const notes = discovered().filter((d) => d.data && (d.data.notes || []).length);
+      return [h('h3', null, 'What was found'), h('p', { class: 'small' }, 'Coins, chains and contracts are found on every build from these sources:'), h('ul', { class: 'bul' }, tiers.map((t) => h('li', null, h('span', { class: t.ok === false ? 's-crit' : 's-good', 'aria-hidden': 'true' }, t.ok === false ? '✕ ' : '✓ '), `${t.label || t.id}: ${(t.found || []).join(', ') || '—'}`))),
+        notes.length ? h('ul', { class: 'bul' }, notes.flatMap((d) => d.data.notes.map((n) => h('li', null, `${d.key}: ${n}`)))) : null];
+    });
+    part('build', () => {
+      const errs = [...(insx.errors || []).map((e) => `${e.detector || 'engine'}: ${e.error}`), ...((p.briefing && p.briefing.errors) || []).map((e) => `${e.builder || 'briefing'}${e.frame ? ' ' + e.frame : ''}${e.asset ? ' ' + e.asset : ''}: ${e.error}`)];
+      return errs.length ? [h('h3', null, 'Build notes'), h('ul', { class: 'bul' }, errs.map((e) => h('li', null, e)))] : null;
+    });
+    out.push(h('p', { class: 'small' }, h('a', { href: API }, 'Raw data (JSON)')));
+    body.replaceChildren(...out);
+  }
+  function updateLiveAges() {
+    const by = new Map(sourcesNow().map((x) => [x.s.id, x]));
+    for (const el of document.querySelectorAll('[data-src-age]')) {
+      const x = by.get(el.dataset.srcAge);
+      if (x) el.textContent = srcAgeText(x);
+    }
   }
 
   // ===== Render loop =====
-  const SECTIONS = [
-    ['s-hero', renderHero],
-    ['s-unusual', renderUnusual],
-    ['s-changed', renderChanged],
-    ['s-health', renderHealth],
-    ['s-assets', renderAssets],
-    ['s-supply', renderSupply],
-    ['s-peers', renderPeers],
-    ['s-chains', renderChains],
-    ['s-peg', renderPeg],
-    ['s-defi', renderDefi],
-    ['s-econ', renderEcon],
-    ['s-usage', renderUsage],
-    ['s-standing', renderStanding],
-    ['s-quality', renderQuality],
-  ];
-  let errorPanel = null;
-  // Header, status and busy state only: a refetch keeps the previous render (dimmed) instead of rebuilding it.
   function renderChrome() {
-    renderHeader();
-    document.body.classList.toggle('is-refreshing', state.loading && !!state.payload);
+    try {
+      renderChip();
+    } catch (e) {
+      console.error('chip failed', e);
+      slotState('header', true);
+    }
+    document.body.classList.toggle('is-refreshing', state.loading && !!state.payload && !state.fromSnapshot);
     $('content').setAttribute('aria-busy', String(state.loading));
   }
-  // Re-rendering replaces the focused control; remember what it was (its data-* identity and the
-  // section it sits in) and focus the matching new node afterwards, so keyboard and screen-reader
-  // users keep their place and hear the new state.
-  const FOCUS_ATTRS = ['data-asset', 'data-range', 'data-action', 'data-more', 'data-a', 'data-d', 'data-src', 'id'];
-  const FOCUS_SCOPE = 'section, #filters, header, .status-row';
+  const FOCUS_ATTRS = ['data-asset', 'data-range', 'data-action', 'data-more', 'data-lens', 'data-f', 'data-ftab', 'data-exp', 'data-tv', 'id'];
+  const FOCUS_SCOPE = 'section, #scope, header, .chip-extra, details, .verdict, #compact';
   const scopeIdOf = (el) => {
     const sec = el.closest(FOCUS_SCOPE);
     return sec ? sec.id || sec.className || sec.tagName : null;
@@ -2222,8 +2751,7 @@
       return null;
     }
     const cands = [...document.querySelectorAll(key.tag)].filter((el) => Object.entries(key.attrs).every(([a, v]) => el.getAttribute(a) === v));
-    // An asset chosen from a tile or the table that no longer exists there lands on its filter button.
-    return cands.find((el) => scopeIdOf(el) === key.scope) || (key.attrs['data-asset'] !== undefined ? cands.find((el) => el.closest('#filters')) : null) || null;
+    return cands.find((el) => scopeIdOf(el) === key.scope) || (key.attrs['data-asset'] !== undefined ? cands.find((el) => el.closest('#scope')) : null) || (key.attrs['data-lens'] ? cands[0] : null) || null;
   }
   function restoreFocus(key) {
     if (!key) return;
@@ -2240,48 +2768,94 @@
       restoreFocus(fk);
     }
   }
+  // Looked up at call time, so a test can swap one for a throwing function (H9 isolation).
+  const components = {
+    header: renderChip,
+    scope: renderScope,
+    verdict: renderVerdict,
+    hero: renderHero,
+    brief: renderBrief,
+    cards: renderCards,
+    lenses: () => {
+      renderTabs();
+      renderPanel();
+    },
+    allFindings: renderFindingsSummary,
+    about: renderAbout,
+  };
+  helpers.components = components;
+  const COMPONENT_EL = { verdict: 'verdict', hero: 'hero', brief: 'brief', cards: 'cards', lenses: 'panel' };
+  // Regions that keep their frame when their component throws: the fallback line is added (header, scope keep
+  // their last good controls) or fills the disclosure body, and is removed by the next good render.
+  const COMPONENT_SLOT = { header: ['.head', false], scope: ['#scope', false], allFindings: ['#all-findings [data-body]', true], about: ['#about [data-body]', true] };
+  function slotState(name, failed) {
+    const spec = COMPONENT_SLOT[name];
+    const el = spec && document.querySelector(spec[0]);
+    if (!el) return;
+    const old = el.querySelectorAll('[data-fail]');
+    if (!failed && !old.length) return;
+    for (const x of old) x.remove();
+    if (spec[1]) el.dataset.sig = '';
+    if (!failed) return;
+    const line = h('p', { class: 'fail', 'data-fail': '' }, 'Not in this snapshot.');
+    if (spec[1]) el.replaceChildren(line);
+    else el.append(line);
+  }
+  let errorPanel = null;
   function renderAll() {
     renderChrome();
     const p = state.payload;
     if (!p) {
-      $('filters').hidden = true;
-      for (const [id] of SECTIONS) $(id).hidden = !!state.error;
-      if (state.error) {
+      renderScope();
+      renderVerdict();
+      const failed = !!state.error;
+      for (const id of ['overview', 'cards-sec', 'lens-sec', 'all-findings', 'about', 'verdict']) $(id).hidden = failed;
+      if (failed) {
         if (!errorPanel) {
           errorPanel = h('div', { class: 'error-panel', role: 'alert' });
           $('content').prepend(errorPanel);
         }
         errorPanel.hidden = false;
-        errorPanel.replaceChildren(h('h2', null, 'The dashboard data could not be loaded'), h('p', null, `${state.error.message}. Nothing is shown rather than stale or partial numbers.`), h('button', { type: 'button', class: 'btn', 'data-action': 'reload' }, state.loading ? 'Retrying…' : 'Retry'));
+        errorPanel.replaceChildren(h('h2', null, 'Data unavailable'), h('p', null, state.error && state.error.invalid ? 'The data service sent a snapshot this page cannot read.' : 'The data service did not respond.'), h('p', null, h('button', { type: 'button', class: 'btn', 'data-action': 'reload' }, 'Retry'), ' · ', h('a', { href: API }, 'Raw data (JSON)')));
       }
       return;
     }
     if (errorPanel) errorPanel.hidden = true;
-    $('filters').hidden = false;
-    for (const [id] of SECTIONS) $(id).hidden = false;
-    renderFilters();
-    for (const [id, fn] of SECTIONS) {
-      const body = $(id).querySelector('[data-body]');
-      destroyCharts(body);
+    for (const id of ['overview', 'cards-sec', 'lens-sec', 'all-findings', 'about', 'verdict']) $(id).hidden = false;
+    const notice = $('notice');
+    notice.hidden = !state.notice;
+    notice.textContent = state.notice || '';
+    for (const name of Object.keys(components)) {
       try {
-        const out = fn();
-        body.className = '';
-        body.replaceChildren(...[out].flat(Infinity).filter(Boolean));
+        components[name]();
+        slotState(name, false);
       } catch (e) {
-        console.error(`section ${id} failed`, e);
-        body.replaceChildren(h('p', { class: 'sec-error' }, `This section could not be rendered (${e.message}). Other sections are unaffected.`));
+        console.error(`component ${name} failed`, e);
+        slotState(name, true);
+        const el = COMPONENT_EL[name] && $(COMPONENT_EL[name]);
+        if (el) {
+          if (name === 'lenses') destroyCharts(el);
+          el.hidden = false;
+          el.replaceChildren(h('p', { class: 'fail' }, 'Not in this snapshot.'));
+          if (name === 'verdict') {
+            el.dataset.sig = '';
+            lastVerdict = { level: 'unknown', items: [], text: '' };
+          }
+        }
       }
     }
+    renderCompact(lastVerdict);
     rememberSeen();
   }
 
-  // "New to you": insight ids this browser has not shown before (localStorage is optional).
+  // "New since your last visit": insight ids this browser has not shown before (localStorage optional).
   const SEEN_KEY = 'paxos-health:seen:v1';
   function loadSeen() {
     try {
       const raw = root.localStorage.getItem(SEEN_KEY);
-      const obj = raw ? JSON.parse(raw) : {};
-      return new Set(Object.keys(obj && typeof obj === 'object' ? obj : {}));
+      const obj = raw ? JSON.parse(raw) : null;
+      const keys = obj && typeof obj === 'object' ? Object.keys(obj) : [];
+      return keys.length ? new Set(keys) : null; // first visit: no dots
     } catch {
       return null;
     }
@@ -2291,24 +2865,26 @@
       const raw = root.localStorage.getItem(SEEN_KEY);
       const obj = raw ? JSON.parse(raw) || {} : {};
       const now = Date.now();
-      for (const id of insightIndex.keys()) if (!obj[id]) obj[id] = now;
+      for (const id of IX.byId.keys()) if (!obj[id]) obj[id] = now;
       const keep = Object.entries(obj).filter(([, t]) => now - t < 90 * 864e5).sort((a, b) => b[1] - a[1]).slice(0, 2000);
       root.localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(keep)));
     } catch {
-      /* storage unavailable: badges stay off */
+      /* storage unavailable: no dots */
     }
   }
 
+  // A response the page cannot read is not "no response": its error says so (state.error.invalid).
+  const invalid = (msg) => Object.assign(new Error(msg), { invalid: true });
   function validate(p) {
-    if (!p || typeof p !== 'object') throw new Error('Empty response');
-    if (p.schemaVersion !== 1) throw new Error(`Unsupported payload schema ${p.schemaVersion}`);
-    if (!p.totals || !p.totals.usd || !p.assets) throw new Error('Payload is missing required sections');
+    if (!p || typeof p !== 'object') throw invalid('Empty response');
+    if (p.schemaVersion !== 1) throw invalid(`Unsupported payload schema ${p.schemaVersion}`);
+    if (!p.totals || !p.totals.usd || typeof p.totals.usd !== 'object' || !p.assets || typeof p.assets !== 'object') throw invalid('Payload is missing required sections');
   }
-  // Derive percentages and drawdowns from levels (see pctFrom). Non-USD assets (gold) keep the payload's
-  // USD fields as market-value figures and get their supply figures in their own unit: from
-  // current.changeNative / athNative / drawdownNativePct when the payload has them, otherwise from the
-  // native-unit series (older payloads).
+  // Percentages and drawdowns from levels (pctFrom); gold gets its supply figures in ounces.
   function normalizePayload(p) {
+    if (p._normalized) return;
+    p._normalized = true;
+    if (!Array.isArray(p.sources)) p.sources = [];
     const dd = (curr, ath) => (isNum(curr) && ath && ath.value > 0 ? 100 * (curr / ath.value - 1) : null);
     const t = p.totals.usd;
     t.change = normalizeChanges(t.change, t.current);
@@ -2316,71 +2892,108 @@
     for (const a of Object.values(p.assets || {})) {
       if (!a || !a.current) continue;
       const c = a.current;
-      const usd = a.unit === 'USD' || a.kind === 'usd-stablecoin';
+      a.series = a.series || {};
       c.change = normalizeChanges(c.change, c.supplyUsd);
-      if (usd) {
+      if (a.unit === 'USD' || a.kind === 'usd-stablecoin') {
         if (c.ath) c.drawdownPct = dd(c.supplyUsd, c.ath);
       } else {
-        const nat = a.series && a.series.supply;
-        const s = nat || (a.series && a.series.supplyUsd);
+        const s = a.series.supply || a.series.supplyUsd;
         c.nativeChange = c.changeNative ? normalizeChanges(c.changeNative, c.supply) : null;
         c.nativeAth = c.athNative || peakOf(s);
-        c.nativeAthUnit = c.athNative || nat ? a.unit : 'USD';
         const last = c.athNative && isNum(c.supply) ? { value: c.supply } : compactLast(s);
         c.nativeDrawdownPct = isNum(c.drawdownNativePct) ? c.drawdownNativePct : last ? dd(last.value, c.nativeAth) : null;
       }
       for (const ch of a.chains || []) if (ch) ch.change = normalizeChanges(ch.change, ch.currentUsd);
     }
-    for (const x of (p.peers && p.peers.rows) || []) if (x) x.change = normalizeChanges(x.change, x.supplyUsd);
   }
   function onPayload() {
-    const p = state.payload;
-    normalizePayload(p);
+    normalizePayload(state.payload);
     indexInsights();
     if (state.seenBefore === null) state.seenBefore = loadSeen();
     const known = discovered().map((d) => d.key);
     const canon = canonicalAsset(state.asset, known);
-    if (canon && canon !== state.asset) {
-      state.asset = canon;
-      syncUrl();
-    }
     if (!canon) {
-      state.notice = `Asset "${state.asset}" is not in the current discovery; showing all Paxos assets.`;
+      state.notice = `${state.asset} isn't in this snapshot.`;
       state.asset = 'all';
-      syncUrl();
-    } else if (state.asset !== 'all' && meta(state.asset).status !== 'active' && !state.legacy) {
-      state.legacy = true;
-      syncUrl();
+    } else {
+      state.asset = canon;
+      if (canon !== 'all' && meta(canon).status === 'legacy') state.legacy = true;
     }
-    void p;
+    if (state.focus && !meta(state.focus)) state.focus = null;
+    state.fidMissing = !!state.fid && !ins(state.fid);
+    if (state.fidMissing) {
+      state.open.add('findings');
+      $('all-findings').open = true;
+    }
+    syncUrl();
   }
 
+  // ----- loading: network first, the last good snapshot (Cache Storage) if the network is slow or down -----
+  async function readSnapshot() {
+    try {
+      if (!root.caches) return null;
+      const c = await root.caches.open(SNAP_CACHE);
+      const res = await c.match(API);
+      if (!res) return null;
+      const p = JSON.parse(await res.text());
+      validate(p);
+      const gen = Date.parse(p.generatedAt);
+      if (!isNum(gen) || Date.now() - gen > SNAP_MAX_AGE_MS) return null;
+      return p;
+    } catch {
+      return null;
+    }
+  }
+  async function saveSnapshot(text) {
+    try {
+      if (!root.caches) return;
+      const c = await root.caches.open(SNAP_CACHE);
+      await c.put(API, new Response(text, { headers: { 'content-type': 'application/json' } }));
+    } catch {
+      /* Cache Storage unavailable: no snapshot */
+    }
+  }
+  function showSnapshot(p) {
+    if (!p || (state.payload && !state.fromSnapshot)) return;
+    state.payload = p;
+    state.fromSnapshot = true;
+    onPayload();
+    render();
+  }
   let inflight = null;
+  let netAnswered = false;
+  let snapshot = null;
+  let snapshotP = null;
   function load() {
     if (inflight) return inflight;
     state.loading = true;
+    state.loadStart = Date.now();
     if (state.payload) renderChrome();
     else render();
-    const ctrl = new AbortController();
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     let fresh = false;
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl && ctrl.abort(), TIMEOUT_MS);
+    const slow = state.payload ? null : setTimeout(() => state.loading && !state.payload && renderChip(), 3000);
     inflight = (async () => {
       try {
-        const res = await fetch(API, { signal: ctrl.signal, headers: { accept: 'application/json' } });
+        const res = await fetch(API, ctrl ? { signal: ctrl.signal } : undefined);
         if (!res.ok) throw new Error(`The data service answered HTTP ${res.status}`);
-        const p = await res.json();
+        const text = await res.text();
+        const p = JSON.parse(text);
         validate(p);
-        // An unchanged snapshot (same generatedAt, e.g. still in the CDN cache) keeps the current render.
-        fresh = !state.payload || p.generatedAt !== state.payload.generatedAt;
+        netAnswered = true;
+        // An older copy (another CDN region, a stale-while-revalidate answer) never replaces a newer one.
+        const tNew = Date.parse(p.generatedAt), tOld = state.payload ? Date.parse(state.payload.generatedAt) : NaN;
+        fresh = !state.payload || (p.generatedAt !== state.payload.generatedAt && !(isNum(tOld) && isNum(tNew) && tNew < tOld));
         state.error = null;
         state.receivedAt = Date.now();
         state.sameSnapshot = !fresh;
         if (fresh) {
           state.payload = p;
+          state.fromSnapshot = false;
           onPayload();
-        }
-        // A snapshot older than its s-maxage was served stale-while-revalidate: the CDN is fetching a
-        // new one in the background, so ask once more shortly instead of waiting for the minute tick.
+          saveSnapshot(text);
+        } else state.fromSnapshot = !!state.payload && state.payload.generatedAt !== p.generatedAt ? state.fromSnapshot : false;
         if (!snapshotAge(p, Date.now()).current && state.retryFor !== p.generatedAt) {
           state.retryFor = p.generatedAt;
           state.retryPending = true;
@@ -2390,10 +3003,21 @@
           }, REVALIDATE_RETRY_MS);
         }
       } catch (e) {
+        netAnswered = true;
+        // Shown by the chip and the error panel; not a console error (an outage is a state, not a page bug).
         state.error = e && e.name === 'AbortError' ? new Error(`No response within ${TIMEOUT_MS / 1000} s`) : e instanceof Error ? e : new Error(String(e));
-        console.error('paxos load failed', e);
+        // The saved snapshot may still be on its way from Cache Storage: wait for it before choosing the
+        // error panel (which would otherwise flash, and be announced, before the snapshot replaces it).
+        if (!state.payload && snapshotP) snapshot = await snapshotP;
+        if (!state.payload && snapshot) {
+          state.payload = snapshot;
+          state.fromSnapshot = true;
+          onPayload();
+          fresh = true;
+        }
       } finally {
         clearTimeout(timer);
+        if (slow) clearTimeout(slow);
         state.loading = false;
         inflight = null;
         if (fresh || !state.payload) render();
@@ -2408,11 +3032,11 @@
     const max = ((p.cache && p.cache.sMaxAge) || 300) * 1000;
     return Date.now() - Date.parse(p.generatedAt) > max && Date.now() - state.receivedAt > 60000;
   }
-
   function syncUrl() {
     try {
       const q = buildQuery(state);
-      if (q !== root.location.search) root.history.replaceState(null, '', root.location.pathname + q + root.location.hash);
+      const hash = state.fid ? '#f=' + encodeURIComponent(state.fid) : '';
+      if (q !== root.location.search || hash !== (root.location.hash || '')) root.history.replaceState(null, '', root.location.pathname + q + hash);
     } catch {
       /* non-fatal */
     }
@@ -2420,105 +3044,281 @@
   function setState(patch) {
     Object.assign(state, patch);
     state.notice = null;
+    if (patch.fid !== undefined) state.fidMissing = !!state.fid && !ins(state.fid);
     syncUrl();
     render();
+  }
+  function scrollToEl(el, block) {
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: block || 'start', behavior: reduced() ? 'auto' : 'smooth' });
+  }
+  function goLens(lens, focus, fid) {
+    const patch = { lens: lensDisabled(lens) ? 'supply' : lens, focus: focus && meta(focus) ? focus : null };
+    if (fid !== undefined) patch.fid = fid || null;
+    if (fid) state.expanded.add(`f:lens:${fid}`);
+    setState(patch);
+    scrollToEl($('lens-sec'));
+    const lh = $('lens-h');
+    if (lh) lh.focus({ preventScroll: true });
+  }
+  function openDetails(id, then) {
+    const d = $(id);
+    d.open = true;
+    state.open.add(d.dataset.k);
+    if (id === 'all-findings') renderFindingsBody();
+    if (id === 'about') renderAbout();
+    if (then) then();
   }
 
   function boot() {
     readTokens();
     setupCharts();
-    Object.assign(state, parseQuery(root.location.search));
-    syncUrl();
-    document.addEventListener('click', (e) => {
-      const t = e.target.closest('button, [data-asset]');
-      if (!t) return;
-      if (t.dataset.action === 'reload') return void load();
-      if (t.dataset.asset !== undefined && t.closest('#filters, #s-hero, #s-assets')) {
-        const a = t.dataset.asset;
-        const fromContent = !!t.closest('#s-hero, #s-assets');
-        if (a !== state.asset) setState({ asset: a });
-        if (fromContent) {
-          // The view moves to the filters, so focus moves to the now-pressed filter button too.
-          $('filters').scrollIntoView({ block: 'start' });
-          const btn = [...$('f-asset').querySelectorAll('button')].find((b) => b.dataset.asset === state.asset);
-          if (btn) btn.focus({ preventScroll: true });
-        }
-        return;
-      }
-      if (t.dataset.range) return void (t.dataset.range !== state.range && setState({ range: t.dataset.range }));
-      if (t.id === 'f-legacy') {
-        const legacy = !state.legacy;
-        const keep = legacy || state.asset === 'all' || (meta(state.asset) || {}).status === 'active';
-        return void setState({ legacy, asset: keep ? state.asset : 'all' });
-      }
-      if (t.dataset.more) {
-        if (state.more.has(t.dataset.more)) state.more.delete(t.dataset.more);
-        else state.more.add(t.dataset.more);
-        render();
-      }
+    Object.assign(state, parseQuery(root.location.search, root.location.hash));
+    snapshotP = readSnapshot();
+    load();
+    snapshotP.then((snap) => {
+      snapshot = snap;
+      const wait = Math.max(0, SNAP_WAIT_MS - (Date.now() - state.loadStart));
+      setTimeout(() => {
+        if (!netAnswered && snap && !state.payload) showSnapshot(snap);
+        else if (state.error && snap && !state.payload) showSnapshot(snap);
+      }, wait);
     });
-    document.addEventListener(
-      'toggle',
-      (e) => {
-        const d = e.target;
-        if (d && d.tagName === 'DETAILS' && d.dataset.k) {
-          if (d.open) state.open.add(d.dataset.k);
-          else state.open.delete(d.dataset.k);
-          if (d.open) for (const c of d.querySelectorAll('canvas')) if (!c._chart && io) io.observe(c);
-        }
-      },
-      true,
-    );
-    // Source-pill tooltips never run past the viewport edge (they would make the page scroll sideways).
-    const clampTip = (e) => {
-      const pill = e.target && e.target.closest ? e.target.closest('.pill') : null;
-      const tip = pill && pill.querySelector('.tip');
-      if (!tip) return;
-      tip.style.left = '';
-      const fit = () => {
-        const r = tip.getBoundingClientRect();
-        const over = r.right - (document.documentElement.clientWidth - 16);
-        if (r.width && over > 0) tip.style.left = `${-Math.min(over, pill.getBoundingClientRect().left - 16)}px`;
-      };
-      if (root.requestAnimationFrame) root.requestAnimationFrame(fit);
-      else fit();
+    document.addEventListener('click', onClick);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (!d || d.tagName !== 'DETAILS' || !d.dataset.k) return;
+      if (d.open) state.open.add(d.dataset.k);
+      else state.open.delete(d.dataset.k);
+      if (d.open && d.id === 'all-findings') renderFindingsBody();
+      if (d.open && d.id === 'about') renderAbout();
+    }, true);
+    const tipOn = (e) => {
+      const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (!t || !t.dataset.tip) return;
+      const r = t.getBoundingClientRect();
+      showTip(t.dataset.tip, e.clientX || r.left, e.clientY || r.bottom);
     };
-    document.addEventListener('focusin', clampTip);
-    document.addEventListener('mouseover', clampTip);
+    document.addEventListener('pointerover', (e) => e.pointerType !== 'touch' && tipOn(e));
+    document.addEventListener('pointerout', (e) => e.target && e.target.closest && e.target.closest('[data-tip]') && hideTip());
+    document.addEventListener('focusin', (e) => (e.target && e.target.matches && e.target.matches('[data-tip]') ? tipOn(e) : hideTip()));
+    document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tipOn(e);
+      else hideTip();
+    });
+    root.addEventListener('scroll', hideTip, { passive: true });
+    $('f-asset').addEventListener('scroll', () => fadeEnd($('f-asset')), { passive: true });
     root.addEventListener('popstate', () => {
-      Object.assign(state, parseQuery(root.location.search));
+      Object.assign(state, parseQuery(root.location.search, root.location.hash));
       if (state.payload) onPayload();
       render();
     });
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && expired()) load();
-    });
-    root.addEventListener('online', () => {
-      if (expired() || state.error) load();
-    });
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && expired() && load());
+    root.addEventListener('online', () => (expired() || state.error ? load() : renderChip()));
+    root.addEventListener('offline', () => renderChip());
     setInterval(() => {
-      if (document.visibilityState === 'visible' && state.payload) {
-        if (expired()) load();
-        else renderHeader();
+      if (document.visibilityState !== 'visible' || !state.payload) return;
+      if (expired()) load();
+      else {
+        renderChrome();
+        updateLiveAges();
       }
     }, 60000);
+    if ('IntersectionObserver' in root) {
+      new IntersectionObserver((entries) => {
+        for (const e of entries) compactShown = !e.isIntersecting && e.boundingClientRect.top < 0;
+        renderCompact(lastVerdict);
+      }).observe($('scope'));
+    }
     let rt = null;
     let lastW = root.innerWidth;
     root.addEventListener('resize', () => {
-      // Layout budgets (rows shown, tick counts) depend on width; re-render only when it changes materially.
-      if (Math.abs(root.innerWidth - lastW) < 120) return;
+      if ((lastW < 760) === (root.innerWidth < 760) && Math.abs(root.innerWidth - lastW) < 160) return;
       clearTimeout(rt);
       rt = setTimeout(() => {
         lastW = root.innerWidth;
         if (state.payload) render();
       }, 250);
     });
-    load();
+  }
+  function onClick(e) {
+    const t = e.target.closest ? e.target.closest('button, a[data-lens]') : null;
+    if (!t || t.disabled) return;
+    const svg = e.target.closest && e.target.closest('svg');
+    if (svg && svg._suppressClick) return void e.preventDefault();
+    const ds = t.dataset;
+    if (t.tagName === 'A' && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button)) return;
+    if (ds.action === 'reload') return void load();
+    if (!state.payload) return;
+    if (ds.action === 'chip') return void openDetails('about', () => {
+      scrollToEl($('about-sources') || $('about'));
+      const h3 = $('about-sources');
+      if (h3) h3.focus({ preventScroll: true });
+    });
+    if (ds.action === 'legacy') {
+      const legacy = !state.legacy;
+      const keep = legacy || state.asset === 'all' || (meta(state.asset) || {}).status === 'active';
+      return void setState({ legacy, asset: keep ? state.asset : 'all' });
+    }
+    if (ds.action === 'clear-focus') return void setState({ focus: null, fid: null });
+    if (ds.action === 'notes') return void openDetails('about', () => scrollToEl($('about')));
+    if (ds.action === 'to-scope') {
+      scrollToEl(document.body);
+      const b = [...$('f-asset').querySelectorAll('button')].find((x) => x.dataset.asset === state.asset);
+      if (b) b.focus({ preventScroll: true });
+      return;
+    }
+    if (ds.action === 'to-brief') return void scrollToEl($('overview'));
+    if (ds.action === 'verdict-more') {
+      // Unusual: the first finding opens (its evidence panel) and comes into view with focus.
+      const first = document.querySelector('#brief-list li[data-kind="finding"] button[data-exp]');
+      if (lastVerdict && lastVerdict.level === 'unusual' && first) {
+        const k = first.dataset.exp;
+        if (!state.expanded.has(k)) {
+          state.expanded.add(k);
+          const li = first.closest('li');
+          if (li) li.replaceWith(briefRowFor(li));
+        }
+        const again = [...document.querySelectorAll('#brief-list button[data-exp]')].find((b) => b.dataset.exp === k);
+        if (again) {
+          again.focus({ preventScroll: true });
+          scrollToEl(again.closest('li') || again, 'nearest');
+        }
+        return;
+      }
+      state.ftab = 'unusual';
+      return void openDetails('all-findings', () => {
+        scrollToEl($('all-findings'));
+        $('all-findings').querySelector('summary').focus({ preventScroll: true });
+      });
+    }
+    if (ds.action === 'copy') {
+      const i = ins(ds.f);
+      const url = root.location.origin + hrefFor({ lens: i ? lensOfIns(i) : state.lens, focus: i && meta(i.asset) ? i.asset : null, fid: ds.f });
+      const bl = i ? bulletFor(unitOf(i.id) || { lead: i, related: [] }) : null;
+      const text = i ? `${i.asset} · ${lensLabel(lensOfIns(i) || 'supply')} · ${bl ? bl.text : titleOf(i)} — ${url}` : url;
+      copyText(text, t, 'Link copied');
+      return;
+    }
+    if (ds.action === 'copy-addr') return void copyText(ds.addr, t, 'Copied');
+    if (ds.tab) {
+      e.preventDefault();
+      if (t.getAttribute('aria-disabled') === 'true' || ds.lens === state.lens) return;
+      return void setState({ lens: ds.lens, fid: null });
+    }
+    if (ds.lens && !ds.tab) {
+      e.preventDefault();
+      return void goLens(ds.lens, ds.focus || null, ds.f !== undefined ? ds.f || null : undefined);
+    }
+    if (ds.asset !== undefined) {
+      const fromCard = !!t.closest('#cards');
+      if (ds.asset !== state.asset) setState({ asset: ds.asset, focus: null, fid: null });
+      if (fromCard) {
+        scrollToEl(document.body);
+        const b = [...$('f-asset').querySelectorAll('button')].find((x) => x.dataset.asset === state.asset);
+        if (b) b.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (ds.range) return void (ds.range !== state.range && setState({ range: ds.range }));
+    if (ds.exp) {
+      if (state.expanded.has(ds.exp)) state.expanded.delete(ds.exp);
+      else state.expanded.add(ds.exp);
+      const li = t.closest('li');
+      if (li && li.parentNode && li.closest('#brief')) li.replaceWith(briefRowFor(li));
+      else if (li && li.parentNode) {
+        const unit = unitFor(ds.f, li);
+        const where = ds.exp.split(':')[1];
+        if (unit) li.replaceWith(findingLine(unit, { where, lens: where === 'lens' ? state.lens : undefined }));
+      }
+      const again = [...document.querySelectorAll('button')].find((b) => b.dataset.exp === ds.exp);
+      if (again) again.focus({ preventScroll: true });
+      return;
+    }
+    if (ds.ftab) {
+      state.ftab = ds.ftab;
+      renderFindingsBody();
+      const b = [...document.querySelectorAll('button')].find((x) => x.dataset.ftab === ds.ftab);
+      if (b) b.focus({ preventScroll: true });
+      return;
+    }
+    if (ds.more) {
+      if (state.more.has(ds.more)) state.more.delete(ds.more);
+      else state.more.add(ds.more);
+      if (ds.rerender === 'findings') renderFindingsBody();
+      else render();
+    }
+  }
+  // Re-render one briefing row (its index is in the data-exp key) or one finding line in place.
+  function briefRowFor(li) {
+    const key = li.querySelector('[data-exp]').dataset.exp;
+    const idx = +key.split(':').pop();
+    const b = briefingFor();
+    const fr = b && b.frames && b.frames[rng().frame];
+    const bullets = fr ? fr.bullets.filter((x) => x && x.kind !== 'state' && x.text) : [];
+    return bullets[idx] ? briefRow(bullets[idx], idx) : li;
+  }
+  function unitFor(id, li) {
+    const i = ins(id);
+    if (!i) return null;
+    const where = li.closest('#all-findings') ? 'all' : li.closest('#panel') ? 'lens' : 'about';
+    if (where === 'lens') return lensUnits(state.lens).find((u) => u.lead.id === id) || { lead: i, related: [] };
+    if (where === 'all') {
+      const m = $('all-findings')._model || findingsModel();
+      return [...m.unusual, ...m.earlier, ...m.older, ...m.watching, ...m.notes].find((u) => u.lead.id === id) || { lead: i, related: [] };
+    }
+    return { lead: i, related: [] };
+  }
+  // Clipboard refused or missing: the button says so and the text appears selected in a read-only field
+  // beside it, ready to copy by hand.
+  function copyText(text, btn, done) {
+    const was = btn.textContent;
+    const flash = (label) => {
+      btn.textContent = label;
+      setTimeout(() => (btn.textContent = was), 2000);
+    };
+    const fail = () => {
+      flash('Copy failed');
+      let f = btn.nextElementSibling && btn.nextElementSibling.classList && btn.nextElementSibling.classList.contains('copy-fallback') ? btn.nextElementSibling : null;
+      if (!f) {
+        f = h('input', { type: 'text', class: 'copy-fallback', readonly: true, 'aria-label': 'Link to copy' });
+        btn.after(f);
+      }
+      f.value = text;
+      f.focus();
+      if (typeof f.select === 'function') f.select();
+    };
+    try {
+      if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) root.navigator.clipboard.writeText(text).then(() => flash(done), fail);
+      else fail();
+    } catch {
+      fail();
+    }
+  }
+  // Tabs: roving tabindex with Arrow / Home / End; disabled tabs stay focusable but never activate.
+  function onKey(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.tab) return;
+    const tabs = [...$('tabs').querySelectorAll('[role="tab"]')];
+    const i = tabs.indexOf(t);
+    let j = null;
+    if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = tabs.length - 1;
+    if (j === null) return;
+    e.preventDefault();
+    const next = tabs[j];
+    tabs.forEach((x) => x.setAttribute('tabindex', x === next ? '0' : '-1'));
+    next.focus();
+    if (next.getAttribute('aria-disabled') !== 'true') setState({ lens: next.dataset.lens, fid: null });
   }
   helpers.render = render;
   helpers.load = load;
-  helpers.renderHeader = renderHeader; // tests: the minute tick
-  helpers.flushCharts = () => document.querySelectorAll('canvas').forEach(createChart); // tests: draw lazy charts now
+  helpers.renderHeader = renderChrome;
+  helpers.flushCharts = () => document.querySelectorAll('canvas').forEach(createChart);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -15,6 +15,8 @@ const F = require('../lib/paxos/format.js');
 const D = require('../lib/paxos/detectors.js');
 const E = require('../lib/paxos/engine.js');
 const A = require('../lib/paxos/attribution.js');
+const CP = require('../lib/paxos/copy.js');
+const K = await import('./fixtures/paxos/contract-v2.mjs');
 
 const DAY = 86400;
 const T0 = 1704067200; // 2024-01-01T00:00Z
@@ -522,7 +524,9 @@ test('dead assets only produce dq.frozen', () => {
 });
 
 // ---------- 4. schema, determinism, timing ----------
-const INSIGHT_KEYS = ['id', 'detector', 'asset', 'chain', 'dimension', 'polarity', 'surprise', 'materialityUsd', 'materialityShare', 'materialityFloorUsd', 'novelty', 'headline', 'detail', 'evidence', 'drivers', 'asOf'];
+// v2 (FINAL-SPEC §4.2): title, why, facts, stage, role and tier (null until briefing.applyBriefing) on every
+// insight; novelty.since; evidence.{unit, valueLabel, valueText, baselineLabel, baselineText}.
+const INSIGHT_KEYS = ['id', 'detector', 'asset', 'chain', 'dimension', 'polarity', 'surprise', 'materialityUsd', 'materialityShare', 'materialityFloorUsd', 'novelty', 'headline', 'detail', 'evidence', 'drivers', 'asOf', 'title', 'why', 'facts', 'stage', 'role', 'tier'];
 const numOrNull = (x) => x === null || (typeof x === 'number' && Number.isFinite(x));
 const ADVICE = /\b(investigate|recommend\w*|should|consider|verify|we suggest|you may want)\b/i;
 function validateInsight(x) {
@@ -539,9 +543,10 @@ function validateInsight(x) {
   for (const k of ['bits', 'adjustedBits']) assert.ok(numOrNull(x.surprise[k]));
   assert.ok(x.materialityUsd === null || Number.isInteger(x.materialityUsd));
   assert.ok(numOrNull(x.materialityShare) && (x.materialityFloorUsd === null || Number.isInteger(x.materialityFloorUsd)));
-  assert.deepEqual(Object.keys(x.novelty).sort(), ['ageDays', 'front', 'isNew']);
+  assert.deepEqual(Object.keys(x.novelty).sort(), ['ageDays', 'front', 'isNew', 'since']);
   assert.ok((x.novelty.ageDays === null || Number.isInteger(x.novelty.ageDays)) && typeof x.novelty.isNew === 'boolean' && (x.novelty.front === null || Number.isInteger(x.novelty.front)));
-  const ev = x.evidence, evKeys = ['baseline', 'metric', 'n', 'nEff', 'otherWindows', 'stat', 'value', 'window'];
+  assert.ok(x.novelty.since === null || /^\d{4}-\d{2}-\d{2}$/.test(x.novelty.since), `${where} novelty.since ${x.novelty.since}`);
+  const ev = x.evidence, evKeys = ['baseline', 'baselineLabel', 'baselineText', 'metric', 'n', 'nEff', 'otherWindows', 'stat', 'unit', 'value', 'valueLabel', 'valueText', 'window'];
   assert.deepEqual(Object.keys(ev).filter((k) => k !== 'series').sort(), evKeys, where);
   assert.ok(typeof ev.metric === 'string' && typeof ev.window === 'string' && typeof ev.stat === 'string', where);
   for (const k of ['value', 'baseline', 'n', 'nEff']) assert.ok(numOrNull(ev[k]), `${where} evidence.${k}`);
@@ -557,13 +562,28 @@ function validateInsight(x) {
     assert.ok(!/NaN|undefined|Infinity|\[object/.test(s), `${where}: ${s}`);
     assert.ok(!ADVICE.test(s), `advice wording in ${where}: ${s}`);
   }
+  // v2 copy (§4.1, §4.2): plain title and why within their caps, no banned word, never the fallback.
+  assert.ok(['new', 'ongoing', 'past', 'watch', 'context'].includes(x.stage) && ['headline', 'evidence', 'lens', 'context', 'note', 'api'].includes(x.role), `${where} stage ${x.stage} role ${x.role}`);
+  assert.equal(x.role, K.ROLE_OF[K.roleKey(x)], `${where}: role ${x.role}, §4.4 says ${K.ROLE_OF[K.roleKey(x)]}`);
+  assert.equal(x.tier, null, `${where}: tier is set only by briefing.applyBriefing`);
+  assert.ok(typeof x.title === 'string' && x.title.trim() && K.countWords(x.title) <= 14 && x.title.length <= 100, `${where}: title "${x.title}" (${K.countWords(x.title)} words, ${String(x.title).length} chars)`);
+  assert.ok(x.why === null || (typeof x.why === 'string' && x.why.trim() && K.countWords(x.why) <= 20), `${where}: why "${x.why}"`);
+  for (const s of [x.title, x.why, ev.valueLabel, ev.valueText, ev.baselineLabel, ev.baselineText].filter((y) => y !== null)) {
+    assert.ok(!K.BANNED.test(s), `${where}: banned word "${(K.BANNED.exec(s) || [])[0]}" in "${s}"`);
+    assert.ok(!K.BAD_TEXT.test(s), `${where}: placeholder text in "${s}"`);
+  }
+  assert.ok(!x.title.endsWith('…') && x.title !== K.fallbackTitle(x.headline), `${where}: fallback title "${x.title}" (no template)`);
+  assert.ok(typeof ev.valueLabel === 'string' && ev.valueLabel.trim() && typeof ev.valueText === 'string' && ev.valueText.trim(), `${where}: evidence.valueLabel/valueText`);
+  assert.ok((ev.baselineLabel === null) === (ev.baselineText === null), `${where}: baselineLabel and baselineText set together`);
+  assert.ok(ev.unit === null ? !('series' in ev) : ['usd', 'fraction', 'count', 'oz', 'ratio', 'usdPerDay'].includes(ev.unit), `${where}: evidence.unit ${ev.unit}`);
+  assert.ok(x.facts === null || (typeof x.facts === 'object' && !Array.isArray(x.facts)), `${where}: facts`);
 }
 test('engine output shape and toInsight schema on a synthetic model that exercises every detector', () => {
   const m = richModel(), t0 = performance.now(), res = runOn(m), ms = performance.now() - t0;
   assert.deepEqual(res.errors, []);
   for (const k of ['m', 'testsRun', 'groups', 'errors', 'timingsMs', 'clusters', 'standing', 'watch', 'context', 'health', 'paxosUsd', 'floors', 'collapsed']) assert.ok(k in res, k);
   assert.ok(Number.isFinite(res.timingsMs.detectors) && Number.isFinite(res.timingsMs.novelty));
-  assert.ok(res.watch.length <= 40);
+  assert.ok(res.watch.length === res.watchTotal, `engine.run returns the whole watch list (${res.watch.length} of ${res.watchTotal}); the payload caps it`);
   perf(ms < 3000, `engine on the rich model ${ms} ms`);
   const produced = new Set(res.collapsed.map((k) => k.source));
   const missing = D.DETECTORS.map((d) => d.id).filter((id) => !produced.has(id));
@@ -868,6 +888,140 @@ test('#56 no dead exports in the engine helpers', () => {
   }
 });
 
+// ---------- 7. v2 copy (lib/paxos/copy.js) and the H6 engine fixes ----------
+test('copy.js API (§6.3): BANNED and countWords follow §4.1/§3.17, ROLE follows §4.4, no .headline', () => {
+  for (const k of ['render', 'ROLE', 'BANNED', 'countWords']) assert.ok(k in CP, `copy.js exports ${k}`);
+  // The spec's own regex and word rule (contract-v2.mjs) and copy.js's must agree on these probes.
+  const probes = ['p = 0.01', 'E=0.5', '6.5 bits', 'a bit', 'materiality floor', 'material', 'rotation', 'regime shift', 'effective chains', 'notable', 'Pareto front', 'CUSUM', 'robust', '90th percentile', 'drawdown', 'dimension', 'cluster', 'novelty', 'underpowered', 'null', '12 bp', '3 bps', 'basis point', 'basis points', 'utilised', 'should', 'consider', 'warning', 'risk',
+    'USDP 0.44% below $1 on average over 7 days', 'Steady: USDG and PYUSD within 0.03% of $1 all week', 'Bigger than 95% of past 4-day moves on Ethereum.', 'risky', 'regimes', 'bitcoin', 'materially', 'p', 'E'];
+  for (const x of probes) assert.equal(CP.BANNED.test(x), K.BANNED.test(x), `BANNED disagrees with §4.1 on "${x}"`);
+  const texts = ['', 'USDP 0.44% below $1 on average over 7 days', '$5.85B ▼ $60M · −1.0% · 7d', '! Unusual: USDP peg', 'X Layer −$85M, Ethereum −$25M', 'Last 7 days to Oct 1', '(USDG) +$1.2M; 30d: 1y', '15.6% below May 13 peak · $7.71B with gold and legacy'];
+  for (const x of texts) assert.equal(CP.countWords(x), K.countWords(x), `countWords disagrees with §3.17 on "${x}"`);
+  // copy.ROLE is keyed by detector id, plus 'peg.deviation:excess' for the excess variant (§6.3).
+  for (const [k, role] of Object.entries(K.ROLE_OF)) { const ck = k === 'peg.deviation:abs' ? 'peg.deviation' : k; assert.equal(CP.ROLE[ck], role, `copy.ROLE["${ck}"] = ${CP.ROLE[ck]}, §4.4 says ${role}`); }
+  const src = readFileSync(new URL('../lib/paxos/copy.js', import.meta.url), 'utf8');
+  assert.ok(!/\.headline\b|\[['"]headline['"]\]/.test(src), 'copy.js never reads headline (H5)');
+});
+test('every detector renders a templated title within the caps (rich model and fixture: no fallback, no banned word)', async () => {
+  const res = runOn(richModel());
+  const seen = new Set();
+  for (const t of res.collapsed) { const x = E.toInsight(t); validateInsight(x); seen.add(K.roleKey(x)); assert.ok(CP.render(t).fallback !== true, `${x.id}: copy.render fell back (no template)`); }
+  const missing = Object.keys(K.ROLE_OF).filter((k) => !seen.has(k) && k !== 'peg.deviation:excess');
+  assert.deepEqual(missing, [], 'every detector (and variant) was rendered on the rich model');
+  for (const r of await fixtureRun()) for (const t of r.collapsed) { validateInsight(E.toInsight(t)); assert.ok(CP.render(t).fallback !== true, `${t.id}: copy.render fell back (no template)`); }
+});
+test('facts on every feed and standing item of the fixture (§6.2); facts use fractions, dollars, integer days, dates', async (t) => {
+  const runs = await fixtureRun();
+  if (!runs.length) { t.skip('fixture unavailable'); return; }
+  const [res] = runs;
+  const items = [...res.clusters.flatMap((c) => [c.lead, ...c.related]), ...res.standing].map(E.toInsight);
+  assert.ok(items.length >= 5);
+  for (const x of items) {
+    assert.ok(x.facts && typeof x.facts === 'object' && Object.keys(x.facts).length, `${x.id}: facts present`);
+    const walk = (v, path) => {
+      if (typeof v === 'number') assert.ok(Number.isFinite(v), `${x.id} facts${path} finite`);
+      else if (typeof v === 'string' && /date|since|first|peakDate/i.test(path)) assert.match(v, /^\d{4}-\d{2}-\d{2}$/, `${x.id} facts${path} is YYYY-MM-DD`);
+      else if (v && typeof v === 'object') for (const [k, y] of Object.entries(v)) walk(y, `${path}.${k}`);
+    };
+    walk(x.facts, '');
+    if ('days' in x.facts && x.facts.days !== null) assert.ok(Number.isInteger(x.facts.days), `${x.id}: facts.days is an integer`);
+    const rec = x.facts.record;
+    assert.ok(rec === undefined || rec === null || (typeof rec === 'object' && typeof rec.word === 'string' && (rec.since === null || /^\d{4}-\d{2}-\d{2}$/.test(rec.since))) || (x.detector === 'chain.concentration' && ['most', 'least'].includes(rec)), `${x.id}: facts.record is null or { word, since } (${JSON.stringify(rec)})`);
+  }
+  const abs = items.find((x) => x.id === 'peg.deviation:USDP:abs:up');
+  assert.ok(abs && Math.abs(abs.facts.gap - abs.evidence.value) < 1e-6 && abs.facts.gap < 0.01 && abs.facts.days === 7 && abs.facts.side === 'below', `peg facts are fractions of $1 (${JSON.stringify(abs && abs.facts)})`);
+});
+test('H6a windowTest: an observed change of exactly 0 is never an extreme (p = 1, no record)', () => {
+  const r = S.mulberry32(11);
+  for (const h of [1, 4, 7]) {
+    const base = Array.from({ length: 300 }, () => gauss(r));
+    for (const side of ['two', 'upper', 'lower']) {
+      const res = S.windowTest([...base, 0], h, side);
+      assert.ok(res && res.p === 1 && res.pEmp === 1 && res.tie === true && res.h === h, `h=${h} ${side}: p ${res && res.p}, tie ${res && res.tie}`);
+    }
+    // A dust series: almost every change is 0, today's too.
+    const dust = Array.from({ length: 300 }, (_, i) => (i % 97 === 0 ? 0.01 : 0));
+    const d = S.windowTest([...dust, 0], h);
+    assert.ok(d && d.p === 1 && (d.sinceIndex === null || d.inWindow === false || true), `dust h=${h}: p ${d && d.p}`);
+  }
+  // A non-zero change still resolves normally.
+  const xs = Array.from({ length: 300 }, (_, i) => Math.sin(i));
+  const nz = S.windowTest([...xs, 50], 1);
+  assert.ok(nz.p < 0.05 && nz.tie === false);
+});
+test('H6 fixture: zero-change chain tests are not notable; the USDP peg regime dates from its split', async (t) => {
+  const runs = await fixtureRun();
+  if (!runs.length) { t.skip('fixture unavailable'); return; }
+  const [res] = runs;
+  const zero = res.collapsed.filter((k) => /^chain\.move:USDP:BSC:/.test(k.id) || /^chain\.attribution:USDP:/.test(k.id));
+  assert.ok(zero.some((k) => k.detector === 'chain.move') && zero.some((k) => k.detector === 'chain.attribution'), `the fixture has both zero-change tests (${zero.map((k) => k.id)})`);
+  for (const k of zero) assert.equal(k.notable, false, `${k.id} (${k.materialityUsd} USD) must not be notable (p ${k.p})`);
+  const reg = res.clusters.flatMap((c) => [c.lead, ...c.related]).find((k) => k.id === 'peg.regime:USDP:week-2026-09-13');
+  assert.ok(reg, 'the USDP peg regime is in the feed');
+  assert.equal(E.toInsight(reg).novelty.since, '2026-09-11');
+});
+test('H6b record clauses: only on a non-zero change, dated at least a native week before the window', async () => {
+  const runs = [runOn(richModel()), ...(await fixtureRun())];
+  let n = 0;
+  for (const res of runs) for (const t of res.collapsed) {
+    const x = E.toInsight(t), f = x.facts || {}, rec = f.record;
+    if (rec && typeof rec === 'object') {
+      for (const k of ['usd', 'pct', 'gap']) if (k in f) assert.ok(f[k] !== 0, `${x.id}: a record clause on a zero ${k}`);
+      if (typeof rec.since === 'string') {
+        const m = /^(\d+)d$/.exec(x.evidence.window || ''), end = String(x.asOf || '').slice(0, 10);
+        if (m && end) {
+          const start = new Date(Date.parse(end) - (Number(m[1]) - 1) * 864e5).toISOString().slice(0, 10);
+          const latest = new Date(Date.parse(start) - 7 * 864e5).toISOString().slice(0, 10);
+          assert.ok(rec.since <= latest, `${x.id}: record since ${rec.since}, window starts ${start} (must be on or before ${latest})`);
+          n++;
+        }
+      }
+    }
+    if (('usd' in f && f.usd === 0) || ('pct' in f && f.pct === 0)) assert.ok(!rec, `${x.id}: no record clause on a zero change (${JSON.stringify(rec)})`);
+  }
+  assert.ok(n >= 1, `some record clause was checked (${n})`);
+});
+
+test('H6a money resolution: a change worth under one dollar is flat (p = 1, no record)', () => {
+  const n = 320, t = daysFrom(n);
+  // One chain flat for 300+ days whose last value rises by 0.39 tokens (a USD coin at $1).
+  const flat = t.map((_, i) => (i === n - 1 ? 5e6 + 0.39 : 5e6)), other = t.map(() => 3e7);
+  const a = mkAsset('AAA', { t, supply: t.map((_, i) => flat[i] + other[i]), chains: { 'Chain A': flat, 'Chain B': other } });
+  const mv = detFn('chain.move')(mkModel([a]), { now: t[n - 1] }).filter((k) => k.chain === 'Chain A');
+  assert.ok(mv.length >= 1, 'chain.move tested the dust move');
+  for (const k of mv) {
+    const x = E.toInsight({ ...k, id: 'x', notable: false, material: false });
+    assert.ok(k.stat.p === 1 && !(x.facts && x.facts.record), `${k.group || k.detector} ${k.window}: p ${k.stat.p}, record ${JSON.stringify(x.facts && x.facts.record)}`);
+  }
+  // Two chains offsetting by $0.65: no attribution finding.
+  const c1 = t.map((_, i) => (i === n - 1 ? 2e7 + 0.65 : 2e7)), c2 = t.map((_, i) => (i === n - 1 ? 1e7 - 0.65 : 1e7));
+  const b = mkAsset('BBB', { t, supply: t.map((_, i) => c1[i] + c2[i]), chains: { 'Chain A': c1, 'Chain B': c2 } });
+  const at = detFn('chain.attribution')(mkModel([b]), { now: t[n - 1] });
+  assert.ok(at.every((k) => k.window !== '1d' || k.stat.p === 1), `chain.attribution on a $0.65 offset: ${at.map((k) => k.window + ' p ' + k.stat.p)}`);
+});
+test('format.js plain formatters follow §3.0', () => {
+  const eq = (got, want, what) => assert.equal(got, want, what);
+  eq(F.money(5853927118), '$5.85B', 'money B'); eq(F.money(99209549), '$99M', 'money from $10M'); eq(F.money(1997519), '$2.0M', 'money below $10M');
+  eq(F.money(999700), '$1.0M', 'no $1000K rollover'); eq(F.money(9960000), '$10M', 'no $10.0M'); eq(F.smoney(-59527866), '−$60M', 'U+2212 minus');
+  eq(F.pctPlain(0.0996), '10%', 'percent from 10%: no decimals'); eq(F.pctPlain(0.999), '99.9%', 'never 100% below 100'); eq(F.spctPlain(-0.031116), '−3.1%', 'signed percent');
+  eq(F.spctPlain(0.0003), '+0.03%', '2 decimals below 0.1%'); eq(F.sharePlain(0.018841), '1.88%', 'share'); eq(F.sharePlain(0.0000838), '0.0084%', 'share below 1%: 2 significant digits');
+  eq(F.pegPct(0.0044), '0.44%', 'peg as percent of $1, 2 decimals'); eq(F.pegPct(0.000646, { ceil: true }), '0.07%', 'a bound rounds up');
+  eq(F.ounces(435065.59), '435,066 oz', 'ounces'); eq(F.ounces(129.4, { signed: true }), '+129 oz', 'signed ounces');
+  eq(F.monthDay('2026-09-11', '2026-10-01'), 'Sep 11', 'date within the year'); eq(F.monthDay('2025-05-30', '2026-10-01'), 'May 2025', 'an older date');
+  eq(F.wordsCount('$5.85B in Paxos USD stablecoins, −$60M (−1.0%); all USD stablecoins +1.2%'), 7, 'the §3.17 word rule');
+  for (const [x, y] of [[F.money(-1997519), F.smoney(-1997519)], [F.pctPlain(0.5), '50%']]) assert.ok(!/NaN|undefined/.test(x + y));
+});
+test('copy.render of a payload insight with ref = generatedAt reproduces its title (no fallback)', async (t) => {
+  const runs = await fixtureRun();
+  if (!runs.length) { t.skip('fixture unavailable'); return; }
+  const [res] = runs;
+  const ref = new Date(res.collapsed[0].refT * 1000).toISOString();
+  for (const k of [...res.clusters.flatMap((c) => [c.lead, ...c.related]), ...res.standing]) {
+    const x = E.toInsight(k), r = CP.render(x, { ref });
+    assert.ok(r.fallback === false && r.title === x.title, `${x.id}: re-rendered "${r.title}" (fallback ${r.fallback}) vs "${x.title}"`);
+  }
+});
+
 // Golden snapshot (review #19): the exact feed and standing ids on the recorded fixture, so any change to
 // the notability rule, a detector or the data layer shows up as a reviewed diff. After reviewing a change,
 // refresh with: PAXOS_GOLDEN=print node scripts/check-paxos-engine.mjs (prints the object to paste here).
@@ -903,7 +1057,7 @@ test('golden: feed and standing ids on the recorded fixture (review #19)', async
 
 // ---------- 5. nothing about Paxos is hard-coded in the engine ----------
 test('no hard-coded symbols, gecko ids, chain names, addresses or advice in engine sources', () => {
-  const files = ['detectors', 'engine', 'attribution', 'format'].map((f) => [f, readFileSync(new URL(`../lib/paxos/${f}.js`, import.meta.url), 'utf8')]);
+  const files = ['detectors', 'engine', 'attribution', 'format', 'copy', 'briefing'].map((f) => [f, readFileSync(new URL(`../lib/paxos/${f}.js`, import.meta.url), 'utf8')]);
   const banned = [
     [/\b(USDG|PYUSD|USDP|PAXG|BUSD|USDL|XAUT|USDT|USDC|CDT|EUROe)\b/, 'asset symbol'],
     [/global-dollar|paypal-usd|paxos-standard|pax-gold|tether-gold|binance-usd|lift-dollar|tether\b|usd-coin/i, 'gecko id'],
@@ -914,7 +1068,8 @@ test('no hard-coded symbols, gecko ids, chain names, addresses or advice in engi
   ];
   for (const [f, src] of files) {
     for (const [re, what] of banned) assert.ok(!re.test(src), `${what} in lib/paxos/${f}.js: ${(src.match(re) || [])[0]}`);
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+    // (copy.js names the banned vocabulary itself, in the BANNED regex: that line is not advice)
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1').replace(/^.*\bBANNED\s*=.*$/gm, '');
     assert.ok(!ADVICE.test(code), `advice wording in lib/paxos/${f}.js: ${(code.match(ADVICE) || [])[0]}`);
   }
 });

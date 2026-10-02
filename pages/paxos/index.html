@@ -4,377 +4,59 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Paxos Health | rodiger</title>
-    <meta name="description" content="Paxos-issued stablecoins and tokenized gold: supply, chains, peg, DeFi footprint, issuer economics and statistically unusual changes, discovered from public data on every load." />
+    <title>Paxos Health · rodiger.io</title>
+    <meta name="description" content="Paxos-issued stablecoins and tokenized gold at a glance: supply, where it moved, peg and usage, with unusual changes flagged." />
+    <link rel="preload" href="/api/paxos" as="fetch" crossorigin="anonymous" />
     <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png" />
     <link rel="icon" type="image/x-icon" href="/static/favicon/favicon.ico" />
     <link rel="stylesheet" href="/static/css/style.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha256-SERKgtTty1vsDxll+qzd4Y2cF9swY9BCq62i9wXJ9Uo=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/paxos/paxos.css" />
+    <script defer src="/paxos/vendor/chart.umd.min.js" integrity="sha256-SERKgtTty1vsDxll+qzd4Y2cF9swY9BCq62i9wXJ9Uo="></script>
     <script defer src="/paxos/app.js"></script>
-    <style>
-      /* Tokens. Categorical slots c0..c7 are Tokyo Night hues re-stepped into the dark
-         band and validated (validate_palette.js --mode dark --surface #24283b): 8 adjacent
-         CVD dE >= 14.1, normal-vision >= 17.3, all >= 3:1; first 4 slots also pass all-pairs.
-         Text never wears these; status colours appear only with an icon and a label.
-         Diverging pair (sign of a change, never an entity): blue <-> red at equal lightness, stepped
-         away from the categorical slots (OKLab dE x100 >= 14 to every c*, so "increase" is not read
-         as the c0 asset) and >= 6:1 on --surface; gray midpoint --div-mid. No-data heatmap cells are
-         hatched, so they never look like the midpoint. --neutral (3.5:1) is the only context gray. */
-      :root {
-        --page: #1a1b26;
-        --surface: #24283b;
-        --surface-2: #1f2335;
-        --raised: #2a2f45;
-        --ink: #c0caf5;
-        --ink-2: #a9b1d6;
-        --ink-muted: #8f99c4; /* 5.2:1 on --surface, 6.1:1 on --page */
-        --hair: #2f3549;
-        --axis: #414868;
-        --border: #292e43;
-        --focus: #7dcfff;
-        --c0: #5a80d2;
-        --c1: #06ab9a;
-        --c2: #b85e1f;
-        --c3: #b54d98;
-        --c4: #9c6900;
-        --c5: #8d6cc4;
-        --c6: #64902a;
-        --c7: #3096cb;
-        --neutral: #737aa2; /* de-emphasis marks (peers, legacy), 3.5:1; a second context line is dashed, not darker */
-        --div-pos: #8eb4ff;
-        --div-neg: #ff8fa3;
-        --div-mid: #3a405a;
-        --tbl-bg: var(--page);
-        --good: #9ece6a;
-        --warn: #e0af68;
-        --crit: #f7768e;
-      }
-      body.paxos { background: var(--page); }
-      .paxos [hidden] { display: none !important; }
-      .paxos .container { max-width: 1100px; padding: 0 16px; box-sizing: border-box; }
-      .paxos main { padding: 0 0 2rem; }
-      .paxos h1 { margin: 0.4rem 0 0.3rem; }
-      .paxos h2 { font-size: 1.15rem; margin: 0 0 0.25rem; color: var(--h2); }
-      .paxos h3 { font-size: 0.95rem; margin: 0 0 0.4rem; color: var(--ink); }
-      .paxos p { margin: 0.4rem 0; }
-      .muted, .sub { color: var(--ink-muted); }
-      .sub { font-size: 0.82rem; margin: 0 0 0.9rem; }
-      .small { font-size: 0.78rem; }
-      .num { font-variant-numeric: tabular-nums; }
-      .nowrap { white-space: nowrap; }
-      .mono-wrap { overflow-wrap: anywhere; word-break: break-all; }
-      .cname { display: inline-block; max-width: 14rem; white-space: normal; overflow-wrap: break-word; }
-      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-      :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-      button { font-family: inherit; }
-
-      /* Header */
-      .head-meta { font-size: 0.82rem; color: var(--ink-muted); display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; align-items: center; }
-      .status-row { margin: 0.5rem 0 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
-      .status-line { font-size: 0.82rem; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: center; min-width: 0; flex: 1 1 18rem; }
-      .status-line a { color: var(--link); }
-      .status-line .ico { font-weight: 700; }
-      .btn { background: transparent; color: var(--ink); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer; }
-      .btn:hover { background: var(--raised); }
-      .btn-link { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
-      .pills { list-style: none; padding: 0; margin: 0.7rem 0 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
-      .pills li { margin: 0; position: relative; }
-      .pill { display: inline-flex; gap: 0.35rem; align-items: center; border: 1px solid var(--border); background: var(--surface-2); border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.72rem; color: var(--ink-2); cursor: default; }
-      .pill .ico { font-weight: 700; }
-      /* The tip wraps long URLs and is shifted left by app.js when it would pass the viewport edge. */
-      .pill .tip { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: max-content; max-width: min(320px, calc(100vw - 32px)); background: var(--surface-2); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.45rem 0.6rem; color: var(--ink); font-size: 0.75rem; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
-      .pill:hover .tip, .pill:focus .tip, .pill:focus-within .tip { display: block; }
-      /* Narrow screens: the open tip is a panel pinned to the viewport's bottom gutters, so it can never
-         widen the page, whatever the pill's position (no script needed). */
-      @media (max-width: 760px) { .pill .tip { position: fixed; top: auto; bottom: 16px; left: 16px !important; right: 16px; width: auto; max-width: none; } }
-      .st-ok .ico, .s-good { color: var(--good); }
-      .st-partial .ico, .st-stale .ico, .s-warn { color: var(--warn); }
-      .st-error .ico, .s-crit { color: var(--crit); }
-      .st-skipped .ico { color: var(--ink-muted); }
-
-      /* Filter bar */
-      .filters { position: relative; z-index: 20; background: var(--page); border-bottom: 1px solid var(--border); margin: 1rem -16px 0; padding: 0.55rem 16px; display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; align-items: center; }
-      .fgroup { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
-      .fgroup > .flabel { font-size: 0.72rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-      .seg { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: thin; min-width: 0; padding: 2px; }
-      .seg button, .toggle { flex: 0 0 auto; background: transparent; color: var(--ink-2); border: 1px solid var(--axis); border-radius: 0.4rem; padding: 0.22rem 0.6rem; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; }
-      .seg button:hover, .toggle:hover { background: var(--raised); }
-      .seg button[aria-pressed="true"], .toggle[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
-      .fgroup.assets { flex: 1 1 340px; }
-      .swatch { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; flex: 0 0 auto; }
-      .swatch.line { height: 3px; width: 1em; border-radius: 2px; }
-      .swatch.dash { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); }
-      .badge { display: inline-block; font-size: 0.68rem; border: 1px solid var(--axis); border-radius: 0.3rem; padding: 0 0.35rem; color: var(--ink-2); white-space: nowrap; }
-
-      /* Sections */
-      .sec { padding: 1.6rem 0 0.4rem; border-top: 1px solid var(--border); margin-top: 1.4rem; }
-      .sec:first-of-type { border-top: 0; }
-      .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.85rem 0.95rem; min-width: 0; --tbl-bg: var(--surface); }
-      .card.missing { border-style: dashed; background: transparent; --tbl-bg: var(--page); }
-      .card.missing h3 { font-weight: 600; }
-      .grid { display: grid; gap: 0.75rem; }
-      .grid + .grid, .card + .grid, .grid + .card, .tiles + .grid, .tiles + .card, .card + .card, .tiles + .tw, .tw + h3 { margin-top: 0.75rem; }
-      .grid > .card + .card, .grid > * + * { margin-top: 0; }
-      .g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
-      .g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
-      .tiles { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
-      .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.65rem 0.75rem; min-width: 0; text-align: left; color: var(--ink); font-size: inherit; }
-      button.tile { cursor: pointer; }
-      button.tile:hover { background: var(--raised); }
-      button.tile[aria-pressed="true"] { border-color: var(--ink-2); }
-      .tile > span { display: block; }
-      .tile .label { font-size: 0.74rem; color: var(--ink-muted); display: flex; align-items: center; gap: 0.35rem; }
-      .tile .value { font-size: 1.2rem; font-weight: 600; margin-top: 0.15rem; line-height: 1.2; overflow-wrap: anywhere; }
-      .tile .meta { font-size: 0.74rem; color: var(--ink-2); margin-top: 0.15rem; }
-      .tile svg.spark { display: block; width: 100%; height: 28px; margin-top: 0.4rem; }
-      .is-refreshing #content { opacity: 0.55; transition: opacity 0.2s; }
-      .placeholder { color: var(--ink-muted); font-size: 0.85rem; }
-      .sec-error { color: var(--ink-2); font-size: 0.85rem; border-left: 3px solid var(--crit); padding-left: 0.6rem; }
-
-      /* Hero */
-      .hero { display: grid; gap: 0.75rem 1.5rem; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: end; margin: 1.2rem 0 1rem; }
-      .hero .k { font-size: 0.8rem; color: var(--ink-muted); }
-      .hero .fig { font-size: clamp(3rem, 10vw, 3.6rem); font-weight: 600; line-height: 1.05; letter-spacing: -0.02em; color: var(--ink); margin: 0.15rem 0; }
-      .hero .deltas { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.85rem; color: var(--ink-2); }
-      .hero .deltas b { color: var(--ink); font-weight: 600; }
-      .hero .side { display: grid; gap: 0.5rem; }
-      .hero .side .row { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.85rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
-      .hero .side .row span:first-child { color: var(--ink-muted); }
-      .hero .side .row span:last-child { text-align: right; }
-      .verdict { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 0.9rem; max-width: 80ch; }
-      @media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
-
-      /* Insight cards */
-      .feed { display: grid; gap: 0.7rem; }
-      .feed > .card + .card { margin-top: 0; }
-      .feed + .btn, .tw + .btn { margin-top: 0.6rem; }
-      .ins .chips { display: flex; flex-wrap: wrap; gap: 0.3rem 0.45rem; align-items: center; margin-bottom: 0.4rem; font-size: 0.72rem; }
-      .chip { display: inline-flex; align-items: center; gap: 0.3rem; border-radius: 0.3rem; padding: 0.05rem 0.45rem; border: 1px solid var(--axis); color: var(--ink); font-size: 0.72rem; white-space: nowrap; }
-      .chip .ico { font-weight: 700; }
-      .pol-positive .ico { color: var(--good); }
-      .pol-negative .ico { color: var(--crit); }
-      .pol-neutral .ico { color: var(--ink-2); }
-      /* Data-quality notes are about the sources: neutral chip, dashed outline, recessed surface. */
-      .pol-dq { border-style: dashed; }
-      .pol-dq .ico { color: var(--ink-2); font-style: italic; font-family: Georgia, serif; }
-      .ins.dq { background: var(--surface-2); border-style: dashed; border-color: var(--axis); --tbl-bg: var(--surface-2); }
-      .ins .related li.dq { border-left-style: dashed; }
-      .paxos .dq-head { margin: 1.4rem 0 0.1rem; font-size: 0.9rem; }
-      .badge.new-you { border-color: var(--focus); color: var(--ink); }
-      .ins h3 { font-size: 0.92rem; line-height: 1.45; margin: 0 0 0.3rem; font-weight: 600; }
-      .ins .why { font-size: 0.78rem; color: var(--ink-2); margin: 0.2rem 0; }
-      .ins details { margin-top: 0.4rem; font-size: 0.8rem; }
-      .ins summary { cursor: pointer; color: var(--link); font-size: 0.78rem; }
-      .ins dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.8rem; margin: 0.5rem 0; }
-      .ins dt { color: var(--ink-muted); }
-      .ins dd { margin: 0; overflow-wrap: anywhere; }
-      .ins .related { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.45rem; }
-      .ins .related li { margin: 0; border-left: 2px solid var(--axis); padding-left: 0.6rem; }
-      .ins .related h4 { font-size: 0.82rem; margin: 0.15rem 0; font-weight: 600; }
-      .ins svg.spark { width: 100%; max-width: 360px; height: 40px; display: block; margin: 0.3rem 0; }
-      .empty { padding: 1rem; text-align: center; color: var(--ink-2); }
-      .compact-list { display: grid; gap: 0.5rem; margin-top: 0.6rem; }
-      details.fold > summary { cursor: pointer; font-weight: 600; color: var(--ink); padding: 0.4rem 0; }
-      details.fold > summary .muted { font-weight: 400; }
-
-      /* Charts */
-      figure.viz { margin: 0; }
-      figure.viz figcaption { font-size: 0.85rem; color: var(--ink); font-weight: 600; margin-bottom: 0.15rem; }
-      figure.viz .cap-sub { font-size: 0.74rem; color: var(--ink-muted); font-weight: 400; display: block; margin-top: 0.1rem; }
-      .chart-box { position: relative; height: 260px; margin-top: 0.4rem; }
-      .chart-box.sm { height: 190px; }
-      .chart-box.xs { height: 140px; }
-      @media (max-width: 600px) { .chart-box { height: 220px; } .chart-box.sm { height: 170px; } }
-      .chart-box canvas { display: block; }
-      details.tv { margin-top: 0.45rem; font-size: 0.78rem; }
-      details.tv > summary { cursor: pointer; color: var(--link); width: max-content; }
-      .legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.74rem; color: var(--ink-2); margin-top: 0.3rem; }
-      .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
-
-      /* Tables */
-      .tw { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
-      .tw.tall { max-height: 420px; overflow-y: auto; }
-      .paxos table { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.78rem; }
-      .paxos th, .paxos td { border: 0; border-bottom: 1px solid var(--border); padding: 0.35rem 0.5rem; text-align: right; vertical-align: top; }
-      .paxos th { background: transparent; color: var(--ink-muted); font-weight: 500; font-size: 0.72rem; white-space: nowrap; }
-      /* Only column headers stick (inside scrolling .tw.tall wrappers), on the background they sit on;
-         row headers scroll with their row. */
-      .paxos thead th { position: sticky; top: 0; z-index: 1; background: var(--tbl-bg); }
-      .paxos td:not(.l) { white-space: nowrap; }
-      .paxos th:first-child, .paxos td:first-child, .paxos .l { text-align: left; }
-      .paxos td { font-variant-numeric: tabular-nums; }
-      .paxos caption { text-align: left; color: var(--ink-muted); font-size: 0.74rem; padding-bottom: 0.25rem; }
-      .tnote { margin: 0.2rem 0 0.1rem; max-width: 90ch; }
-      .paxos tr.sel td { background: var(--raised); }
-      td svg.spark { width: 90px; height: 22px; display: block; margin-left: auto; }
-      /* Sources table: a multi-host source line may wrap; long messages keep a readable column. */
-      .paxos th .small.muted { white-space: normal; overflow-wrap: anywhere; }
-      .paxos td > span.mono-wrap { display: inline-block; min-width: 16rem; }
-      .asset-cell { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
-
-      /* Health grid */
-      .hg td, .hg th { text-align: center; padding: 0.2rem 0.15rem; }
-      .hg th:first-child, .hg td:first-child { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--page); }
-      .hg thead th:first-child { z-index: 2; }
-      .hg-key { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 0.3rem; }
-      .hc { width: 100%; min-width: 4.6rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-2); border-radius: 0.35rem; padding: 0.25rem 0.35rem; font-size: 0.72rem; cursor: pointer; }
-      .hc .ico { font-weight: 700; }
-      .hc.st-notable_negative { color: var(--ink); border-color: var(--crit); }
-      .hc.st-notable_negative .ico { color: var(--crit); }
-      .hc.st-notable_positive { color: var(--ink); border-color: var(--good); }
-      .hc.st-notable_positive .ico { color: var(--good); }
-      .hc.st-notable_neutral { color: var(--ink); border-color: var(--warn); }
-      .hc.st-notable_neutral .ico { color: var(--warn); }
-      .hc.st-no_data { color: var(--ink-muted); background: transparent; }
-      .hc.st-dq { color: var(--ink); border-style: dashed; border-color: var(--ink-muted); }
-      .hc.st-dq .ico { color: var(--ink-2); font-style: italic; font-family: Georgia, serif; }
-      .hc[aria-pressed="true"] { outline: 2px solid var(--ink-2); outline-offset: 1px; }
-      .hc-detail { margin-top: 0.6rem; font-size: 0.82rem; min-height: 1.4em; }
-      .summaries { list-style: none; padding: 0; margin: 0.6rem 0 0; font-size: 0.8rem; display: grid; gap: 0.25rem; }
-      .summaries li { margin: 0; }
-
-      /* Heatmap */
-      .hm { display: grid; gap: 2px; margin-top: 0.5rem; font-size: 0.72rem; position: relative; }
-      .hm .row { display: grid; grid-template-columns: minmax(5.5rem, 9.5rem) minmax(0, 1fr); gap: 0.4rem; align-items: center; }
-      .hm .rl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
-      .hm .cells { display: grid; gap: 1px; height: 18px; }
-      .hm .cells span { display: block; height: 100%; border-radius: 1px; }
-      .nd { background: repeating-linear-gradient(135deg, var(--axis) 0 1.5px, transparent 1.5px 4px); }
-      .nd-key { display: inline-flex; align-items: center; gap: 0.3rem; }
-      .nd-key .nd { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
-      .hm .axis { color: var(--ink-muted); position: relative; height: 1.1em; }
-      .hm .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-      .hm .axis span.first { transform: none; }
-      .hm .axis span.last { transform: translateX(-100%); }
-      .scale { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--ink-muted); margin-top: 0.5rem; flex-wrap: wrap; }
-      .scale .bar { height: 10px; width: 160px; border-radius: 2px; }
-      .tooltip { position: fixed; z-index: 40; pointer-events: none; background: var(--surface-2); border: 1px solid var(--axis); border-radius: 0.35rem; padding: 0.35rem 0.55rem; font-size: 0.75rem; color: var(--ink); max-width: 260px; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
-      .tooltip b { display: block; font-size: 0.82rem; }
-
-      .error-panel { margin: 2rem 0; padding: 1rem 1.1rem; border: 1px solid var(--crit); border-radius: 0.6rem; background: var(--surface); }
-      .error-panel h2 { color: var(--ink); }
-      .banner { margin: 0.6rem 0 0; padding: 0.5rem 0.7rem; border: 1px solid var(--warn); border-radius: 0.5rem; font-size: 0.8rem; color: var(--ink); display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-      .method p { font-size: 0.85rem; color: var(--ink-2); max-width: 78ch; }
-      footer .src { display: block; margin-top: 0.4rem; color: var(--ink-muted); }
-      @media (min-width: 760px) { .filters { position: sticky; top: 0; } }
-      .srcfold { margin-top: 0.6rem; font-size: 0.78rem; }
-      .srcfold > summary { cursor: pointer; color: var(--ink-2); width: max-content; max-width: 100%; }
-      .srcfold .pills { margin-top: 0.4rem; }
-      @media (max-width: 600px) {
-        .paxos h1 { font-size: 1.5rem; }
-        .seg { flex-wrap: wrap; overflow: visible; }
-        .hm .row { grid-template-columns: minmax(4.5rem, 6.5rem) minmax(0, 1fr); }
-        .hm .axis span.mid { display: none; }
-        .seg button, .toggle { font-size: 0.74rem; padding: 0.2rem 0.5rem; }
-        .card { padding: 0.7rem; }
-        .filters { gap: 0.4rem 0.6rem; }
-        .fgroup.assets { flex-basis: 100%; }
-      }
-      @media (prefers-reduced-motion: reduce) { .is-refreshing #content { transition: none; } }
-    </style>
   </head>
   <body class="paxos">
     <div class="container">
       <nav class="top"><a href="/" class="back" aria-label="Back to home">&larr; back</a></nav>
-      <header>
+      <header class="head">
         <h1>Paxos Health</h1>
-        <div class="head-meta" id="head-meta"><span>Every Paxos-issued asset, chain and peer is discovered from public data on each load.</span></div>
-        <div class="status-row">
-          <div class="status-line" id="status" role="status" aria-live="polite"><span>Loading the latest snapshot…</span></div>
-          <button type="button" class="btn" id="refresh" data-action="reload" hidden>Refresh</button>
-        </div>
+        <button type="button" class="chip" id="chip" data-action="chip"><span>Loading…</span></button>
+        <span class="sr-only" id="chip-live" role="status" aria-live="polite"></span>
       </header>
+      <div class="chip-extra" id="chip-extra" hidden></div>
 
-      <div class="filters" id="filters" role="group" aria-label="Dashboard filters">
-        <div class="fgroup assets"><span class="flabel" id="lbl-asset">Asset</span><div class="seg" id="f-asset" role="group" aria-labelledby="lbl-asset"></div></div>
-        <div class="fgroup"><span class="flabel" id="lbl-range">Range</span><div class="seg" id="f-range" role="group" aria-labelledby="lbl-range"></div></div>
-        <div class="fgroup"><button type="button" class="toggle" id="f-legacy" aria-pressed="false">Show legacy</button></div>
+      <div class="scope" id="scope">
+        <div class="seg assets" id="f-asset" role="group" aria-label="Asset"></div>
+        <div class="seg period" id="f-range" role="group" aria-label="Period"></div>
       </div>
+      <div class="compact" id="compact" hidden></div>
 
       <main id="content">
-        <section id="s-hero" aria-label="Headline supply"><div class="placeholder" data-body>Loading…</div></section>
+        <p class="notice" id="notice" hidden></p>
+        <div class="verdict" id="verdict"><span class="ico" aria-hidden="true"></span><span class="vtext" role="status" aria-live="polite">Loading the latest snapshot…</span></div>
 
-        <section class="sec" id="s-unusual" aria-labelledby="h-unusual">
-          <h2 id="h-unusual">What's unusual</h2>
-          <p class="sub" id="sub-unusual">Findings that are rare for the asset's own history or its peers, after allowing for the number of checks run, ranked without weights.</p>
-          <div data-body class="placeholder">Loading…</div>
+        <section class="overview" id="overview" aria-labelledby="h-overview">
+          <h2 class="sr-only" id="h-overview">Overview</h2>
+          <div class="hero" id="hero"><div class="h-label">&nbsp;</div><div class="h-fig empty">—</div><div class="h-delta">&nbsp;</div></div>
+          <div class="brief" id="brief"></div>
         </section>
 
-        <section class="sec" id="s-changed" aria-labelledby="h-changed">
-          <h2 id="h-changed">What changed</h2>
-          <p class="sub" id="sub-changed">Supply change over the selected range, split by asset and by chain.</p>
-          <div data-body class="placeholder">Loading…</div>
+        <section id="cards-sec" aria-labelledby="h-cards">
+          <h2 class="sr-only" id="h-cards">Coins</h2>
+          <div class="cards" id="cards"><div class="acard placeholder"><div class="acard-body"></div></div><div class="acard placeholder"><div class="acard-body"></div></div><div class="acard placeholder"><div class="acard-body"></div></div><div class="acard placeholder"><div class="acard-body"></div></div></div>
         </section>
 
-        <section class="sec" id="s-health" aria-labelledby="h-health">
-          <h2 id="h-health">Health grid</h2>
-          <p class="sub">Each cell summarises the checks run for one asset and dimension. Select a cell to see its strongest evidence.</p>
-          <div data-body class="placeholder">Loading…</div>
+        <section class="lens-sec" id="lens-sec" aria-labelledby="h-lens">
+          <h2 class="sr-only" id="h-lens">Details</h2>
+          <div class="tabs" id="tabs" role="tablist" aria-label="Details"></div>
+          <div class="panel" id="panel" role="tabpanel"></div>
         </section>
 
-        <section class="sec" id="s-assets" aria-labelledby="h-assets">
-          <h2 id="h-assets">Assets</h2>
-          <p class="sub">Every discovered Paxos-issued asset, including legacy ones when "Show legacy" is on.</p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-supply" aria-labelledby="h-supply">
-          <h2 id="h-supply">Supply over time</h2>
-          <p class="sub" id="sub-supply"></p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-peers" aria-labelledby="h-peers">
-          <h2 id="h-peers">Peers</h2>
-          <p class="sub" id="sub-peers"></p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-chains" aria-labelledby="h-chains">
-          <h2 id="h-chains">Chains</h2>
-          <p class="sub" id="sub-chains"></p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-peg" aria-labelledby="h-peg">
-          <h2 id="h-peg">Peg</h2>
-          <p class="sub" id="sub-peg"></p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-defi" aria-labelledby="h-defi">
-          <h2 id="h-defi">DeFi footprint</h2>
-          <p class="sub">Pools whose underlying tokens include a discovered Paxos contract. Pair pools count fully for each asset, so the footprint is an upper bound.</p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-econ" aria-labelledby="h-econ">
-          <h2 id="h-econ">Issuer economics</h2>
-          <p class="sub" id="sub-econ"></p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-usage" aria-labelledby="h-usage">
-          <h2 id="h-usage">On-chain &amp; usage</h2>
-          <p class="sub">Holders per chain, transfer activity where a public series exists, and trading turnover (24h volume / market cap).</p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec" id="s-standing" aria-labelledby="h-standing">
-          <h2 id="h-standing">Standing conditions &amp; watchlist</h2>
-          <p class="sub">Standing: notable for 30 days or longer. Watchlist: rarer than a coin flip and material, but not notable after accounting for the number of checks.</p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
-
-        <section class="sec method" id="s-quality" aria-labelledby="h-quality">
-          <h2 id="h-quality">Data quality &amp; methodology</h2>
-          <p class="sub">Where the numbers come from and how fresh they are (judged against each source's own update cadence), and how findings are flagged.</p>
-          <div data-body class="placeholder">Loading…</div>
-        </section>
+        <details class="fold" id="all-findings" data-k="findings"><summary>All findings</summary><div class="body" data-body></div></details>
+        <details class="fold about" id="about" data-k="about"><summary>About this data</summary><div class="body" data-body></div></details>
       </main>
-      <footer><p><a href="/">rodiger.io</a> · <a href="/api/paxos">/api/paxos</a><span class="src" id="foot-src"></span></p></footer>
+      <footer class="pfoot"><a href="/">rodiger.io</a> · <a href="/api/paxos">Raw data (JSON)</a></footer>
     </div>
     <noscript><p>This dashboard needs JavaScript to load its data.</p></noscript>
   </body>
