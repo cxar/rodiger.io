@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>study tree</title>
+<style>
+:root{--bg:#1a1b26;--bg2:#24283b;--fg:#c0caf5;--h1:#f7768e;--h2:#7aa2f7;--h3:#ff9e64;--link:#7dcfff;--gray:#565f89;--mute:#737aa2;--dim:#a9b1d6;--green:#9ece6a;--yellow:#e0af68;--border:#292e43;--line:#3b4261}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"IBM Plex Mono","Roboto Mono",ui-monospace,Menlo,Monaco,Consolas,monospace;line-height:1.5;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.wrap{max-width:860px;margin:0 auto;padding:1.5rem 1rem 6rem}
+a{color:var(--link)}
+nav a{color:var(--mute);text-decoration:none;font-size:.9em}
+h1{color:var(--h1);font-size:1.4em;margin:.8rem 0 .2rem}
+.sub{color:var(--mute);font-size:.85em}
+.rules{font-size:.82em;color:var(--dim);margin:.7rem 0 .2rem;max-width:68ch}
+.rules b{color:var(--fg);font-weight:600}
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:.6rem 0 .5rem;border-bottom:1px solid var(--border);margin-bottom:.6rem}
+.prog{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;margin:.45rem 0 0}
+.prog>div{height:100%;background:var(--green);transition:width .2s}
+.controls{display:flex;gap:.3rem .7rem;flex-wrap:wrap;align-items:center;font-size:.85em}
+.tools{margin-top:.7rem}
+button,select{font:inherit}
+.btn,select{font-size:.85em;background:var(--bg2);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:.25rem .6rem;cursor:pointer}
+.btn.on{border-color:var(--h2);color:var(--h2)}
+select{padding:.2rem .3rem}
+.eta{color:var(--dim)}
+#ui-next{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;font-size:.82em;color:var(--mute);margin:.2rem 0 .2rem}
+.chip{font-size:1em;border:1px solid var(--h2);color:var(--h2);background:none;border-radius:999px;padding:.15rem .65rem;cursor:pointer}
+.chip.going{border-color:var(--yellow);color:var(--yellow)}
+.chip:hover{background:var(--bg2)}
+
+#ui-tree,.kids,.tasks{list-style:none}
+.branch{margin-top:1.7rem}
+.bh{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;width:100%;background:none;border:0;color:var(--h2);font-weight:600;font-size:1.05em;text-align:left;cursor:pointer;padding:.2rem 0}
+.bh .c{color:var(--mute);font-size:.8em;font-weight:normal;white-space:nowrap}
+.branch.done .bh .c{color:var(--green)}
+.blurb{font-size:.82em;color:var(--dim);margin:.1rem 0 .35rem;max-width:68ch}
+.branch>.links{font-size:.8em;margin:0 0 .3rem}
+.branch.col>.kids,.branch.col>.blurb,.branch.col>.links{display:none}
+
+.kids{margin-left:.6rem;padding-left:1.1rem}
+.branch>.kids{margin-left:.3rem}
+.kids>li{position:relative}
+.kids>li::before{content:"";position:absolute;left:-1.1rem;top:0;bottom:0;border-left:1px solid var(--line)}
+.kids>li.last::before{bottom:auto;height:1.2rem}
+.kids>li::after{content:"";position:absolute;left:-1.1rem;top:1.2rem;width:1.2rem;border-top:1px solid var(--line)}
+.node{scroll-margin-top:calc(var(--barh,6rem) + .6rem)}
+.hd{position:relative;display:flex;align-items:flex-start;gap:.55rem;width:100%;background:none;border:0;color:inherit;text-align:left;cursor:pointer;padding:.45rem .3rem .45rem .2rem;border-radius:4px}
+.hd:hover{background:var(--bg2)}
+.hd:focus-visible,.bh:focus-visible,.btn:focus-visible,.chip:focus-visible,.jump:focus-visible{outline:2px solid var(--h2);outline-offset:1px}
+.haskids>.hd::before{content:"";position:absolute;left:.6rem;top:1.75rem;bottom:0;border-left:1px solid var(--line)}
+.dot{position:relative;z-index:1;flex:0 0 .8rem;height:.8rem;margin-top:.35rem;border-radius:50%;border:2px solid var(--gray);background:var(--bg)}
+.ttl{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.cnt{color:var(--mute);font-size:.78em;white-space:nowrap;margin-top:.2rem}
+.tag{font-size:.68em;border:1px solid var(--mute);color:var(--mute);border-radius:3px;padding:0 .3rem;margin-left:.45rem;font-weight:normal;white-space:nowrap}
+.s-open>.hd .dot{border-color:var(--h2)}
+.s-going>.hd .dot{border-color:var(--yellow);background:linear-gradient(90deg,var(--yellow) 50%,var(--bg) 50%)}
+.s-done>.hd .dot{border-color:var(--green);background:var(--green)}
+.s-locked>.hd .ttl{color:var(--mute)}
+.s-done>.hd .ttl{color:var(--dim)}
+.s-done>.hd .cnt{color:var(--green)}
+
+.body{display:none;margin:0 0 .7rem 1.55rem;font-size:.86em}
+.haskids>.body{margin-left:.6rem;padding-left:.95rem;border-left:1px solid var(--line);margin-bottom:0;padding-bottom:.7rem}
+.ex>.body{display:block}
+.cue{color:var(--dim);max-width:66ch}
+.lock{color:var(--h3);margin-top:.35rem}
+.jump{background:none;border:0;color:var(--link);text-decoration:underline;cursor:pointer;padding:0}
+.levels{margin:.5rem 0 .1rem 1.6rem;max-width:64ch}
+.levels li{margin:.2rem 0;padding-left:.2rem}
+.levels li::marker{color:var(--mute)}
+.tasks{margin-top:.5rem;border-top:1px solid var(--border)}
+.task{display:flex;gap:.65rem;align-items:flex-start;border-bottom:1px solid var(--border);padding:.45rem .1rem}
+.task input{appearance:none;-webkit-appearance:none;flex:0 0 1.15rem;height:1.15rem;margin-top:.1rem;border:2px solid var(--gray);border-radius:3px;display:grid;place-content:center;cursor:pointer;background:none}
+.task input:checked{background:var(--green);border-color:var(--green)}
+.task input:checked::after{content:"";width:.35rem;height:.65rem;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.task input:focus-visible{outline:2px solid var(--h2);outline-offset:1px}
+.tx{flex:1;min-width:0;cursor:pointer;overflow-wrap:anywhere}
+.task .m{color:var(--mute);font-size:.88em;white-space:nowrap}
+.task.chk .tx>span:first-child,.task.chk .tx>a{color:var(--mute);text-decoration:line-through}
+.d{font-size:.78em;border:1px solid;border-radius:3px;padding:0 .3rem;margin-left:.5rem;white-space:nowrap}
+.d-easy{color:var(--green)}.d-medium{color:var(--yellow)}.d-hard{color:var(--h1)}
+.after{color:var(--dim);margin-top:.55rem;max-width:66ch}
+.links{margin-top:.5rem;color:var(--mute)}
+.links a{display:inline-block;margin-right:1rem}
+.nostretch .stretch,.nostretch .optional{display:none}
+.legend{margin-top:2.5rem;padding-top:.8rem;border-top:1px solid var(--border);font-size:.78em;color:var(--mute);display:flex;flex-wrap:wrap;gap:.3rem 1.1rem;align-items:center}
+.legend .dot{display:inline-block;margin:0 .35rem 0 0;vertical-align:-.1rem;width:.8rem}
+.legend .k-open{border-color:var(--h2)}
+.legend .k-going{border-color:var(--yellow);background:linear-gradient(90deg,var(--yellow) 50%,var(--bg) 50%)}
+.legend .k-done{border-color:var(--green);background:var(--green)}
+.legend .note{flex-basis:100%}
+@media (max-width:520px){.kids{padding-left:.95rem}.kids>li::before,.kids>li::after{left:-.95rem}.kids>li::after{width:1.05rem}.wrap{padding-left:.75rem;padding-right:.75rem}.cnt .hh{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><a href="/">&larr; back</a></nav>
+<h1>study tree</h1>
+<div class="sub">getting sharp again &middot; checks save on this device</div>
+<p class="rules"><b>Rules:</b> timer on. No AI, no autocomplete. Talk out loud. Miss it today, redo it from a blank file tomorrow. <b>Rhythm:</b> three weekday sessions of about an hour (two problems or one build) and one longer weekend block (a design, then a build).</p>
+<div class="controls tools">
+  <button class="btn" id="ui-expand" type="button">expand all</button>
+  <button class="btn" id="ui-stretch" type="button">hide stretch</button>
+  <button class="btn" id="ui-reset" type="button">reset</button>
+</div>
+<div class="bar" id="ui-bar">
+  <div class="controls"><span id="ui-total"></span><span class="eta" id="ui-eta"></span>
+    <select id="ui-pace" aria-label="hours per week"></select></div>
+  <div class="prog"><div id="ui-pbar"></div></div>
+</div>
+<div id="ui-next"></div>
+<noscript><p class="rules">This page needs JavaScript to draw the tree.</p></noscript>
+<ul id="ui-tree"></ul>
+<div class="legend"><span><span class="dot k-done"></span>done</span><span><span class="dot k-going"></span>started</span><span><span class="dot k-open"></span>unlocked</span><span><span class="dot"></span>locked</span><span class="note" id="ui-note"></span></div>
+</div>
+<script id="data" type="application/json">{
+ "version": 1,
+ "branches": [
+  {
+   "id": "start",
+   "title": "start here",
+   "blurb": "Measure first. The result decides how much of the tree you need.",
+   "children": [
+    {
+     "id": "diagnostic",
+     "title": "diagnostic",
+     "cue": "One sitting, about two and a half hours. Timer on, no AI, no autocomplete, talking out loud the whole way.",
+     "tasks": [
+      {
+       "id": "diag-m1",
+       "t": "Decode String, 30 min cap",
+       "m": 30,
+       "u": "https://leetcode.com/problems/decode-string/"
+      },
+      {
+       "id": "diag-m2",
+       "t": "Number of Provinces, 30 min cap",
+       "m": 30,
+       "u": "https://leetcode.com/problems/number-of-provinces/"
+      },
+      {
+       "id": "diag-build",
+       "t": "Build a duplicate-file finder in 60 min: walk a directory, group by size, then by content hash, and handle files too big to read into memory",
+       "m": 60
+      },
+      {
+       "id": "diag-notes",
+       "t": "Write down where the time went: recalling syntax, spotting the pattern, debugging, or narrating",
+       "m": 15
+      }
+     ],
+     "after": "Both problems inside the cap and a build that runs: skip the easy problems in patterns and put the time into builds. Otherwise do them all.",
+     "children": [
+      {
+       "id": "setup",
+       "title": "language and setup",
+       "cue": "Pick one language for every round and stop switching. Python is the least typing on algorithm problems. Go is fine if that is where your hands are, but its heap takes five methods of boilerplate and there is no set type, so drill those until they are automatic.",
+       "tasks": [
+        {
+         "id": "setup-lang",
+         "t": "Choose the language",
+         "m": 5
+        },
+        {
+         "id": "setup-editor",
+         "t": "Make a bare editor profile: no AI, no autocomplete, tests run from the terminal",
+         "m": 20
+        },
+        {
+         "id": "setup-sheet",
+         "t": "Write a one-page cheat sheet from memory, then check it: heap, sort with a comparator, queue, set, 2-D grid, string building, integer limits",
+         "m": 30
+        }
+       ],
+       "links": [
+        {
+         "t": "Go container/heap",
+         "u": "https://pkg.go.dev/container/heap"
+        },
+        {
+         "t": "Python heapq",
+         "u": "https://docs.python.org/3/library/heapq.html"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "patterns",
+   "title": "patterns",
+   "blurb": "Enough to clear an algorithm screen. Per problem: five minutes to name the pattern, 25 to code a medium, out loud. Stuck at 30: read the solution, then redo it from a blank file tomorrow.",
+   "links": [
+    {
+     "t": "NeetCode roadmap, the long version of this branch",
+     "u": "https://neetcode.io/roadmap"
+    }
+   ],
+   "children": [
+    {
+     "id": "arrays-hashing",
+     "title": "arrays and hashing",
+     "cue": "When the brute force is a nested loop asking \"have I seen this\", a hash map makes it one pass. Count, group or index by key.",
+     "tasks": [
+      {
+       "id": "lc-two-sum",
+       "t": "Two Sum",
+       "u": "https://leetcode.com/problems/two-sum/",
+       "d": "easy",
+       "m": 15
+      },
+      {
+       "id": "lc-group-anagrams",
+       "t": "Group Anagrams",
+       "u": "https://leetcode.com/problems/group-anagrams/",
+       "d": "medium",
+       "m": 30
+      },
+      {
+       "id": "lc-top-k-frequent-elements",
+       "t": "Top K Frequent Elements",
+       "u": "https://leetcode.com/problems/top-k-frequent-elements/",
+       "d": "medium",
+       "m": 30
+      },
+      {
+       "id": "lc-product-of-array-except-self",
+       "t": "Product of Array Except Self",
+       "u": "https://leetcode.com/problems/product-of-array-except-self/",
+       "d": "medium",
+       "m": 30
+      },
+      {
+       "id": "lc-longest-consecutive-sequence",
+       "t": "Longest Consecutive Sequence",
+       "u": "https://leetcode.com/problems/longest-consecutive-sequence/",
+       "d": "medium",
+       "m": 30
+      }
+     ],
+     "needs": [
+      "setup"
+     ],
+     "children": [
+      {
+       "id": "two-pointers",
+       "title": "two pointers",
+       "cue": "Sorted input, or a pair that has to meet a condition: move two indices toward each other and drop the side that cannot improve the answer.",
+       "tasks": [
+        {
+         "id": "lc-3sum",
+         "t": "3Sum",
+         "u": "https://leetcode.com/problems/3sum/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-container-with-most-water",
+         "t": "Container With Most Water",
+         "u": "https://leetcode.com/problems/container-with-most-water/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-trapping-rain-water",
+         "t": "Trapping Rain Water",
+         "u": "https://leetcode.com/problems/trapping-rain-water/",
+         "d": "hard",
+         "m": 45,
+         "x": true
+        }
+       ],
+       "children": [
+        {
+         "id": "sliding-window",
+         "title": "sliding window",
+         "cue": "Longest or shortest contiguous run that satisfies a rule: grow the right edge, shrink the left while the window is invalid, and update the counts incrementally.",
+         "tasks": [
+          {
+           "id": "lc-best-time-to-buy-and-sell-stock",
+           "t": "Best Time to Buy and Sell Stock",
+           "u": "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/",
+           "d": "easy",
+           "m": 15
+          },
+          {
+           "id": "lc-longest-substring-without-repeating-characters",
+           "t": "Longest Substring Without Repeating Characters",
+           "u": "https://leetcode.com/problems/longest-substring-without-repeating-characters/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-longest-repeating-character-replacement",
+           "t": "Longest Repeating Character Replacement",
+           "u": "https://leetcode.com/problems/longest-repeating-character-replacement/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-minimum-window-substring",
+           "t": "Minimum Window Substring",
+           "u": "https://leetcode.com/problems/minimum-window-substring/",
+           "d": "hard",
+           "m": 45,
+           "x": true
+          }
+         ]
+        },
+        {
+         "id": "binary-search",
+         "title": "binary search",
+         "cue": "Sorted data, or any yes/no question that flips exactly once as the candidate answer grows. Pick one loop template and never write another.",
+         "tasks": [
+          {
+           "id": "lc-binary-search",
+           "t": "Binary Search",
+           "u": "https://leetcode.com/problems/binary-search/",
+           "d": "easy",
+           "m": 15
+          },
+          {
+           "id": "lc-search-in-rotated-sorted-array",
+           "t": "Search in Rotated Sorted Array",
+           "u": "https://leetcode.com/problems/search-in-rotated-sorted-array/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-koko-eating-bananas",
+           "t": "Koko Eating Bananas",
+           "u": "https://leetcode.com/problems/koko-eating-bananas/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-time-based-key-value-store",
+           "t": "Time Based Key-Value Store",
+           "u": "https://leetcode.com/problems/time-based-key-value-store/",
+           "d": "medium",
+           "m": 30
+          }
+         ]
+        },
+        {
+         "id": "linked-lists",
+         "title": "linked lists",
+         "cue": "Draw it, use a dummy head, change one pointer at a time. LRU Cache is the one that matters: a hash map plus a doubly linked list, and it comes back in builds.",
+         "tasks": [
+          {
+           "id": "lc-reverse-linked-list",
+           "t": "Reverse Linked List",
+           "u": "https://leetcode.com/problems/reverse-linked-list/",
+           "d": "easy",
+           "m": 15
+          },
+          {
+           "id": "lc-merge-two-sorted-lists",
+           "t": "Merge Two Sorted Lists",
+           "u": "https://leetcode.com/problems/merge-two-sorted-lists/",
+           "d": "easy",
+           "m": 15
+          },
+          {
+           "id": "lc-lru-cache",
+           "t": "LRU Cache",
+           "u": "https://leetcode.com/problems/lru-cache/",
+           "d": "medium",
+           "m": 30
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "stack",
+       "title": "stack",
+       "cue": "Nesting, matching, or \"next greater element\": keep the unresolved items on a stack and pop when the current one settles them.",
+       "tasks": [
+        {
+         "id": "lc-valid-parentheses",
+         "t": "Valid Parentheses",
+         "u": "https://leetcode.com/problems/valid-parentheses/",
+         "d": "easy",
+         "m": 15
+        },
+        {
+         "id": "lc-min-stack",
+         "t": "Min Stack",
+         "u": "https://leetcode.com/problems/min-stack/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-evaluate-reverse-polish-notation",
+         "t": "Evaluate Reverse Polish Notation",
+         "u": "https://leetcode.com/problems/evaluate-reverse-polish-notation/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-daily-temperatures",
+         "t": "Daily Temperatures",
+         "u": "https://leetcode.com/problems/daily-temperatures/",
+         "d": "medium",
+         "m": 30
+        }
+       ]
+      },
+      {
+       "id": "trees",
+       "title": "trees",
+       "cue": "Most tree problems are one recursive function that returns a fact about a subtree. Know depth-first and level-order traversal without thinking.",
+       "tasks": [
+        {
+         "id": "lc-invert-binary-tree",
+         "t": "Invert Binary Tree",
+         "u": "https://leetcode.com/problems/invert-binary-tree/",
+         "d": "easy",
+         "m": 15
+        },
+        {
+         "id": "lc-binary-tree-level-order-traversal",
+         "t": "Binary Tree Level Order Traversal",
+         "u": "https://leetcode.com/problems/binary-tree-level-order-traversal/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-validate-binary-search-tree",
+         "t": "Validate Binary Search Tree",
+         "u": "https://leetcode.com/problems/validate-binary-search-tree/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-lowest-common-ancestor-of-a-binary-search-tree",
+         "t": "Lowest Common Ancestor of a Binary Search Tree",
+         "u": "https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-search-tree/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-kth-smallest-element-in-a-bst",
+         "t": "Kth Smallest Element in a BST",
+         "u": "https://leetcode.com/problems/kth-smallest-element-in-a-bst/",
+         "d": "medium",
+         "m": 30
+        },
+        {
+         "id": "lc-serialize-and-deserialize-binary-tree",
+         "t": "Serialize and Deserialize Binary Tree",
+         "u": "https://leetcode.com/problems/serialize-and-deserialize-binary-tree/",
+         "d": "hard",
+         "m": 45,
+         "x": true
+        }
+       ],
+       "children": [
+        {
+         "id": "heaps",
+         "title": "heaps",
+         "cue": "Top k, repeated \"give me the next smallest\", merging sorted streams, scheduling by priority. A heap of size k beats sorting everything.",
+         "tasks": [
+          {
+           "id": "lc-kth-largest-element-in-an-array",
+           "t": "Kth Largest Element in an Array",
+           "u": "https://leetcode.com/problems/kth-largest-element-in-an-array/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-k-closest-points-to-origin",
+           "t": "K Closest Points to Origin",
+           "u": "https://leetcode.com/problems/k-closest-points-to-origin/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-task-scheduler",
+           "t": "Task Scheduler",
+           "u": "https://leetcode.com/problems/task-scheduler/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-merge-k-sorted-lists",
+           "t": "Merge k Sorted Lists",
+           "u": "https://leetcode.com/problems/merge-k-sorted-lists/",
+           "d": "hard",
+           "m": 45
+          },
+          {
+           "id": "lc-find-median-from-data-stream",
+           "t": "Find Median from Data Stream",
+           "u": "https://leetcode.com/problems/find-median-from-data-stream/",
+           "d": "hard",
+           "m": 45
+          }
+         ],
+         "children": [
+          {
+           "id": "intervals",
+           "title": "intervals",
+           "cue": "Sort by start, or by end when you are choosing which to keep. Then sweep once, merging or counting overlaps as you go.",
+           "tasks": [
+            {
+             "id": "lc-merge-intervals",
+             "t": "Merge Intervals",
+             "u": "https://leetcode.com/problems/merge-intervals/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-insert-interval",
+             "t": "Insert Interval",
+             "u": "https://leetcode.com/problems/insert-interval/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-non-overlapping-intervals",
+             "t": "Non-overlapping Intervals",
+             "u": "https://leetcode.com/problems/non-overlapping-intervals/",
+             "d": "medium",
+             "m": 30
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": "graphs",
+         "title": "graphs",
+         "cue": "Grids and dependency lists are graphs. Breadth-first for the shortest path without weights, depth-first for connectivity, topological order for prerequisites. Mark a node visited when you enqueue it, not when you pop it.",
+         "tasks": [
+          {
+           "id": "lc-number-of-islands",
+           "t": "Number of Islands",
+           "u": "https://leetcode.com/problems/number-of-islands/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-clone-graph",
+           "t": "Clone Graph",
+           "u": "https://leetcode.com/problems/clone-graph/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-rotting-oranges",
+           "t": "Rotting Oranges",
+           "u": "https://leetcode.com/problems/rotting-oranges/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-course-schedule",
+           "t": "Course Schedule",
+           "u": "https://leetcode.com/problems/course-schedule/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-pacific-atlantic-water-flow",
+           "t": "Pacific Atlantic Water Flow",
+           "u": "https://leetcode.com/problems/pacific-atlantic-water-flow/",
+           "d": "medium",
+           "m": 30
+          }
+         ],
+         "children": [
+          {
+           "id": "weighted-graphs",
+           "title": "weighted graphs and union-find",
+           "cue": "Dijkstra when edges have non-negative weights. Union-find when the question is whether two things are connected as edges arrive.",
+           "tasks": [
+            {
+             "id": "lc-network-delay-time",
+             "t": "Network Delay Time",
+             "u": "https://leetcode.com/problems/network-delay-time/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-cheapest-flights-within-k-stops",
+             "t": "Cheapest Flights Within K Stops",
+             "u": "https://leetcode.com/problems/cheapest-flights-within-k-stops/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-redundant-connection",
+             "t": "Redundant Connection",
+             "u": "https://leetcode.com/problems/redundant-connection/",
+             "d": "medium",
+             "m": 30
+            }
+           ],
+           "s": true
+          }
+         ]
+        },
+        {
+         "id": "backtracking",
+         "title": "backtracking",
+         "cue": "Asked for every subset, combination or permutation: choose, recurse, undo. Draw the decision tree before writing code.",
+         "tasks": [
+          {
+           "id": "lc-subsets",
+           "t": "Subsets",
+           "u": "https://leetcode.com/problems/subsets/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-combination-sum",
+           "t": "Combination Sum",
+           "u": "https://leetcode.com/problems/combination-sum/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-permutations",
+           "t": "Permutations",
+           "u": "https://leetcode.com/problems/permutations/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-word-search",
+           "t": "Word Search",
+           "u": "https://leetcode.com/problems/word-search/",
+           "d": "medium",
+           "m": 30
+          }
+         ],
+         "children": [
+          {
+           "id": "dp",
+           "title": "dynamic programming",
+           "cue": "Counting ways, or finding a best value, where subproblems repeat: say the state in words, write the recurrence, memoize. Write it top-down first.",
+           "tasks": [
+            {
+             "id": "lc-climbing-stairs",
+             "t": "Climbing Stairs",
+             "u": "https://leetcode.com/problems/climbing-stairs/",
+             "d": "easy",
+             "m": 15
+            },
+            {
+             "id": "lc-house-robber",
+             "t": "House Robber",
+             "u": "https://leetcode.com/problems/house-robber/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-coin-change",
+             "t": "Coin Change",
+             "u": "https://leetcode.com/problems/coin-change/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-longest-increasing-subsequence",
+             "t": "Longest Increasing Subsequence",
+             "u": "https://leetcode.com/problems/longest-increasing-subsequence/",
+             "d": "medium",
+             "m": 30
+            },
+            {
+             "id": "lc-word-break",
+             "t": "Word Break",
+             "u": "https://leetcode.com/problems/word-break/",
+             "d": "medium",
+             "m": 30
+            }
+           ],
+           "children": [
+            {
+             "id": "dp-2d",
+             "title": "two-dimensional dp",
+             "cue": "Two sequences or a grid: the state is a pair of indices.",
+             "tasks": [
+              {
+               "id": "lc-unique-paths",
+               "t": "Unique Paths",
+               "u": "https://leetcode.com/problems/unique-paths/",
+               "d": "medium",
+               "m": 30
+              },
+              {
+               "id": "lc-longest-common-subsequence",
+               "t": "Longest Common Subsequence",
+               "u": "https://leetcode.com/problems/longest-common-subsequence/",
+               "d": "medium",
+               "m": 30
+              },
+              {
+               "id": "lc-edit-distance",
+               "t": "Edit Distance",
+               "u": "https://leetcode.com/problems/edit-distance/",
+               "d": "medium",
+               "m": 30
+              }
+             ],
+             "s": true
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": "tries",
+         "title": "tries",
+         "cue": "Prefix lookups across many words.",
+         "tasks": [
+          {
+           "id": "lc-implement-trie-prefix-tree",
+           "t": "Implement Trie (Prefix Tree)",
+           "u": "https://leetcode.com/problems/implement-trie-prefix-tree/",
+           "d": "medium",
+           "m": 30
+          },
+          {
+           "id": "lc-design-add-and-search-words-data-structure",
+           "t": "Design Add and Search Words Data Structure",
+           "u": "https://leetcode.com/problems/design-add-and-search-words-data-structure/",
+           "d": "medium",
+           "m": 30
+          }
+         ],
+         "s": true
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "builds",
+   "title": "builds",
+   "blurb": "Practical rounds: build something small that runs, then extend it when the requirements change. One file, your own tests, a clock. Pass the clock in as a parameter so tests never sleep.",
+   "children": [
+    {
+     "id": "kv-store",
+     "title": "key-value store",
+     "cue": "The warm-up, and a common timed format: one small system in four levels, each building on the last.",
+     "tasks": [
+      {
+       "id": "kv-run",
+       "t": "Timed run: every level in 60 min, with your own tests",
+       "m": 60
+      },
+      {
+       "id": "kv-redo",
+       "t": "Next day: rebuild it from a blank file in 40 min",
+       "m": 40
+      }
+     ],
+     "levels": [
+      "set, get, delete.",
+      "Expiry: set with a time-to-live, checked against the clock you pass in.",
+      "scan(prefix): live keys in sorted order.",
+      "Transactions: begin, commit, rollback."
+     ],
+     "needs": [
+      "setup"
+     ],
+     "children": [
+      {
+       "id": "cache",
+       "title": "cache with eviction",
+       "cue": "The linked-list problem grown into a component.",
+       "tasks": [
+        {
+         "id": "cache-run",
+         "t": "Timed run: every level in 60 min, with your own tests",
+         "m": 60
+        },
+        {
+         "id": "cache-review",
+         "t": "Read it back as a reviewer and write down three things you would flag",
+         "m": 15
+        }
+       ],
+       "levels": [
+        "get and put in O(1) with a capacity, least recently used out first. Hand-roll the list.",
+        "Per-entry time-to-live. Expired entries do not count toward capacity.",
+        "Safe for concurrent callers with one lock. Say out loud what splitting the lock would buy.",
+        "Hit, miss and eviction counters."
+       ],
+       "needs": [
+        "linked-lists"
+       ],
+       "children": [
+        {
+         "id": "rate-limiter",
+         "title": "rate limiter",
+         "cue": "Comes up as a build and again as a design.",
+         "tasks": [
+          {
+           "id": "rl-run",
+           "t": "Timed run: every level in 60 min, with your own tests",
+           "m": 60
+          },
+          {
+           "id": "rl-review",
+           "t": "Read it back as a reviewer and write down three things you would flag",
+           "m": 15
+          }
+         ],
+         "levels": [
+          "Token bucket per key: allow(key, now) with a capacity and a refill rate.",
+          "Two tiers, per user and per organization. A request passes only if both allow, and a rejection by one must not spend the other's token.",
+          "A sliding-window variant. Compare memory use and burst behavior out loud.",
+          "Talk it through on several machines: where the counters live, what has to be atomic, what happens when that store is slow."
+         ],
+         "links": [
+          {
+           "t": "Token bucket",
+           "u": "https://en.wikipedia.org/wiki/Token_bucket"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "ledger",
+       "title": "account ledger",
+       "cue": "Another common four-level format, and home ground.",
+       "tasks": [
+        {
+         "id": "ledger-run",
+         "t": "Timed run: every level in 60 min, with your own tests",
+         "m": 60
+        },
+        {
+         "id": "ledger-review",
+         "t": "Read it back as a reviewer and write down three things you would flag",
+         "m": 15
+        }
+       ],
+       "levels": [
+        "Create account, deposit, transfer. Reject overdrafts. Integer minor units, never floats.",
+        "Top n accounts by total outgoing amount.",
+        "Scheduled payments with cancel, applied in timestamp order before any later operation.",
+        "Idempotency keys: a repeated transfer request returns the original result and moves no money."
+       ],
+       "links": [
+        {
+         "t": "Stripe on idempotency keys",
+         "u": "https://stripe.com/blog/idempotency"
+        }
+       ],
+       "children": [
+        {
+         "id": "order-book",
+         "title": "order book",
+         "cue": "Price-time priority is a classic build, and the natural next step after a ledger.",
+         "tasks": [
+          {
+           "id": "ob-run",
+           "t": "Timed run: every level in 75 min, with your own tests",
+           "m": 75
+          },
+          {
+           "id": "ob-review",
+           "t": "Read it back as a reviewer and write down three things you would flag",
+           "m": 15
+          }
+         ],
+         "levels": [
+          "Limit orders: add(side, price, quantity). Match on price, then time. Emit trades.",
+          "Cancel by order id without scanning the book.",
+          "Market orders, partial fills, best bid and ask, depth for the top n levels.",
+          "Talk through the structure choice: heaps, a sorted map of price levels, or an array of levels. Say what you would change for throughput."
+         ],
+         "needs": [
+          "heaps"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "concurrency",
+       "title": "concurrency drills",
+       "cue": "Practical rounds like to take a working single-threaded program and ask for a concurrent one. Short reps, 20 minutes or less each.",
+       "tasks": [
+        {
+         "id": "cc-race",
+         "t": "A counter hit by 100 workers: make it lose updates, then fix it with a lock. In Go, catch it with -race and fix it again with an atomic",
+         "m": 20
+        },
+        {
+         "id": "cc-queue",
+         "t": "Producer and consumer over a bounded queue, with a clean shutdown and no leaked workers",
+         "m": 20
+        },
+        {
+         "id": "cc-fan",
+         "t": "Fan out to n workers, collect the results, return the first error and cancel the rest",
+         "m": 20
+        },
+        {
+         "id": "cc-timeout",
+         "t": "A timeout and cancellation around a slow call",
+         "m": 15
+        },
+        {
+         "id": "cc-explain",
+         "t": "Explain out loud: deadlock, data race versus race condition, and why check-then-act breaks",
+         "m": 15
+        },
+        {
+         "id": "cc-cas",
+         "t": "A compare-and-swap retry loop, and the ABA problem in two sentences",
+         "m": 20,
+         "x": true
+        }
+       ],
+       "links": [
+        {
+         "t": "Go: pipelines and cancellation",
+         "u": "https://go.dev/blog/pipelines"
+        },
+        {
+         "t": "Go race detector",
+         "u": "https://go.dev/doc/articles/race_detector"
+        },
+        {
+         "t": "Go errgroup",
+         "u": "https://pkg.go.dev/golang.org/x/sync/errgroup"
+        },
+        {
+         "t": "Python concurrent.futures",
+         "u": "https://docs.python.org/3/library/concurrent.futures.html"
+        }
+       ],
+       "children": [
+        {
+         "id": "worker-pool",
+         "title": "worker pool",
+         "cue": "The piece every concurrent build is made of.",
+         "tasks": [
+          {
+           "id": "wp-run",
+           "t": "Timed run: every level in 45 min, with your own tests",
+           "m": 45
+          },
+          {
+           "id": "wp-review",
+           "t": "Read it back as a reviewer and write down three things you would flag",
+           "m": 10
+          }
+         ],
+         "levels": [
+          "submit(job), with at most n running at once.",
+          "Backpressure: a full queue blocks or rejects. Choose one and say why.",
+          "Graceful shutdown that drains in-flight work. A timeout per job.",
+          "Results returned in submission order."
+         ],
+         "children": [
+          {
+           "id": "crawler",
+           "title": "concurrent crawler",
+           "cue": "Single-threaded first, then concurrent. The visited set is where it goes wrong.",
+           "tasks": [
+            {
+             "id": "crawler-run",
+             "t": "Timed run: every level in 60 min, with your own tests",
+             "m": 60
+            },
+            {
+             "id": "crawler-review",
+             "t": "Read it back as a reviewer and write down three things you would flag",
+             "m": 15
+            }
+           ],
+           "levels": [
+            "Single-threaded: breadth-first from a seed over a fake fetch(url), same host only.",
+            "Concurrent, with at most n fetches in flight.",
+            "The visited set: check and add must be one atomic step.",
+            "Know when you are done: nothing queued and nothing in flight. Then add retries with backoff."
+           ]
+          },
+          {
+           "id": "scheduler",
+           "title": "job scheduler with retries",
+           "cue": "A heap, a clock and a worker pool. Durable-execution thinking in miniature.",
+           "tasks": [
+            {
+             "id": "sched-run",
+             "t": "Timed run: every level in 60 min, with your own tests",
+             "m": 60
+            },
+            {
+             "id": "sched-review",
+             "t": "Read it back as a reviewer and write down three things you would flag",
+             "m": 15
+            }
+           ],
+           "levels": [
+            "schedule(job, run_at) on a min-heap.",
+            "Workers pick up jobs as they come due.",
+            "Retries with exponential backoff, a maximum attempt count, and a dead-letter list.",
+            "A job that ran but whose acknowledgement was lost must not apply twice."
+           ],
+           "needs": [
+            "heaps"
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "assisted",
+       "title": "assisted round",
+       "cue": "Some loops now put an AI assistant inside the editor for one round and grade how you break the problem down and check its output, not the typing.",
+       "tasks": [
+        {
+         "id": "as-run",
+         "t": "60 min in an unfamiliar open-source repo: fix one real issue with an agent, saying what you are verifying and why",
+         "m": 60
+        },
+        {
+         "id": "as-notes",
+         "t": "List the times it was wrong and how you caught each one",
+         "m": 10
+        }
+       ]
+      },
+      {
+       "id": "four-stage",
+       "title": "four-stage rehearsal",
+       "cue": "Some onsites carry one problem through four stages over several hours, and early choices come back later. Pick a prompt: a metrics and alerting service, or a transfer processor with retries.",
+       "tasks": [
+        {
+         "id": "fs-design",
+         "t": "Stage 1, 30 min: requirements and design, written down, assumptions stated",
+         "m": 30
+        },
+        {
+         "id": "fs-build",
+         "t": "Stage 2, 75 min: build the core of what you designed",
+         "m": 75
+        },
+        {
+         "id": "fs-review",
+         "t": "Stage 3, 20 min: review it as someone else's pull request and list five findings",
+         "m": 20
+        },
+        {
+         "id": "fs-extend",
+         "t": "Stage 4, 30 min: take a new requirement that strains the design and extend without a rewrite",
+         "m": 30
+        }
+       ],
+       "needs": [
+        "rate-limiter",
+        "worker-pool",
+        "design-shape"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "design",
+   "title": "design",
+   "blurb": "45 minutes and you drive. The deep dives are where seniority shows, so get to them with time left.",
+   "children": [
+    {
+     "id": "design-shape",
+     "title": "the 45-minute shape",
+     "cue": "A fixed order keeps you from stalling: requirements, core entities, API, high-level design, deep dives. Give each a minute budget and say the budget out loud.",
+     "tasks": [
+      {
+       "id": "ds-read",
+       "t": "Read one delivery framework end to end",
+       "m": 30,
+       "u": "https://www.hellointerview.com/learn/system-design/in-a-hurry/delivery"
+      },
+      {
+       "id": "ds-skeleton",
+       "t": "Write your own one-page skeleton with minutes per step",
+       "m": 20
+      },
+      {
+       "id": "ds-numbers",
+       "t": "Back-of-envelope from memory: requests per second, storage per year and bandwidth for 100 million daily users",
+       "m": 20
+      }
+     ],
+     "needs": [
+      "diagnostic"
+     ],
+     "children": [
+      {
+       "id": "blocks",
+       "title": "building blocks",
+       "cue": "Three minutes each, out loud, ending on one tradeoff. If you cannot, read the chapter and try again.",
+       "tasks": [
+        {
+         "id": "bb-replication",
+         "t": "Replication, failover, and what a client sees during one",
+         "m": 15
+        },
+        {
+         "id": "bb-partition",
+         "t": "Partitioning, rebalancing and hot keys",
+         "m": 15
+        },
+        {
+         "id": "bb-consistency",
+         "t": "Consistency: linearizable, eventual, and what a quorum buys",
+         "m": 15
+        },
+        {
+         "id": "bb-cache",
+         "t": "Caching: invalidation, stampedes, write-through versus cache-aside",
+         "m": 15
+        },
+        {
+         "id": "bb-queues",
+         "t": "Queues versus logs: delivery guarantees, ordering, consumer groups",
+         "m": 15
+        },
+        {
+         "id": "bb-idempotency",
+         "t": "Idempotency, and exactly-once effects on top of at-least-once delivery",
+         "m": 15
+        },
+        {
+         "id": "bb-storage",
+         "t": "Storage engines: B-trees versus LSM trees, and what an index costs",
+         "m": 15
+        },
+        {
+         "id": "bb-consensus",
+         "t": "Consensus: what Raft gives you, in two minutes",
+         "m": 15
+        }
+       ],
+       "links": [
+        {
+         "t": "Hello Interview core concepts",
+         "u": "https://www.hellointerview.com/learn/system-design/in-a-hurry/core-concepts"
+        },
+        {
+         "t": "Designing Data-Intensive Applications",
+         "u": "https://dataintensive.net/"
+        }
+       ],
+       "children": [
+        {
+         "id": "classics",
+         "title": "classics",
+         "cue": "45 minutes each, out loud, on a timer. Then 15 minutes against a reference, writing down what you missed.",
+         "tasks": [
+          {
+           "id": "cl-rate",
+           "t": "Distributed rate limiter",
+           "m": 60
+          },
+          {
+           "id": "cl-crawler",
+           "t": "Web crawler",
+           "m": 60
+          },
+          {
+           "id": "cl-sched",
+           "t": "Job scheduler with delayed and recurring jobs",
+           "m": 60
+          },
+          {
+           "id": "cl-metrics",
+           "t": "Metrics collection and alerting",
+           "m": 60
+          }
+         ]
+        },
+        {
+         "id": "home-turf",
+         "title": "home turf",
+         "cue": "Money movement is your deepest ground. Lead with the failure modes: retries, double spends, reconciliation.",
+         "tasks": [
+          {
+           "id": "ht-ledger",
+           "t": "Ledger with idempotent transfers and reconciliation",
+           "m": 60
+          },
+          {
+           "id": "ht-withdraw",
+           "t": "Withdrawal pipeline: queueing, the signing boundary, nonce management, fee bumping, reorgs",
+           "m": 60
+          },
+          {
+           "id": "ht-matching",
+           "t": "Matching engine with market-data fan-out",
+           "m": 60
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "written",
+       "title": "design in writing",
+       "cue": "Some loops run design in a shared document with no drawing tool.",
+       "tasks": [
+        {
+         "id": "wr-doc",
+         "t": "Redo one classic in 45 min as prose and lists only",
+         "m": 45
+        }
+       ],
+       "s": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "stories",
+   "title": "stories",
+   "blurb": "Your real work, said out loud. Senior loops lean hard on these rounds, and numbers and decisions beat adjectives.",
+   "children": [
+    {
+     "id": "inventory",
+     "title": "inventory",
+     "cue": "Everything worth telling, one line each: what it was, what you did, and the number.",
+     "tasks": [
+      {
+       "id": "inv-list",
+       "t": "List ten projects, incidents and decisions",
+       "m": 40
+      },
+      {
+       "id": "inv-numbers",
+       "t": "Put a number on each: money, volume, time saved, people",
+       "m": 20
+      }
+     ],
+     "needs": [
+      "diagnostic"
+     ],
+     "children": [
+      {
+       "id": "deep-dives",
+       "title": "two deep dives",
+       "cue": "Pick the two systems you know best. Expect 45 minutes on one of them, with \"why\" after every answer.",
+       "tasks": [
+        {
+         "id": "dd-a-page",
+         "t": "System one: the architecture on one page, from memory",
+         "m": 20
+        },
+        {
+         "id": "dd-a-talk",
+         "t": "System one, recorded: three decisions and the alternatives you rejected, what broke in production, what you would change",
+         "m": 40
+        },
+        {
+         "id": "dd-b-page",
+         "t": "System two: the architecture on one page, from memory",
+         "m": 20
+        },
+        {
+         "id": "dd-b-talk",
+         "t": "System two, recorded: the same three questions",
+         "m": 40
+        }
+       ]
+      },
+      {
+       "id": "eight-stories",
+       "title": "eight stories",
+       "cue": "Two minutes each, out loud: the situation, what you did, the result, what you would do differently.",
+       "tasks": [
+        {
+         "id": "st-conflict",
+         "t": "A conflict you resolved",
+         "m": 10
+        },
+        {
+         "id": "st-failure",
+         "t": "A failure you owned",
+         "m": 10
+        },
+        {
+         "id": "st-influence",
+         "t": "Influence without authority",
+         "m": 10
+        },
+        {
+         "id": "st-underperf",
+         "t": "Someone who was underperforming",
+         "m": 10
+        },
+        {
+         "id": "st-ambiguity",
+         "t": "Ambiguous scope you gave shape to",
+         "m": 10
+        },
+        {
+         "id": "st-speed",
+         "t": "A speed versus safety call",
+         "m": 10
+        },
+        {
+         "id": "st-reversed",
+         "t": "A decision you reversed",
+         "m": 10
+        },
+        {
+         "id": "st-proud",
+         "t": "The work you are proudest of",
+         "m": 10
+        }
+       ],
+       "children": [
+        {
+         "id": "values",
+         "title": "values round",
+         "cue": "Some companies weigh a mission or values round as heavily as the coding. Have opinions that are yours, including a disagreement.",
+         "tasks": [
+          {
+           "id": "val-view",
+           "t": "Write your view of the company's mission, with one place you disagree",
+           "m": 20
+          },
+          {
+           "id": "val-ethics",
+           "t": "An ethical conflict at work and what you did",
+           "m": 10
+          },
+          {
+           "id": "val-dislike",
+           "t": "Work you dislike, and how you get others to do it",
+           "m": 10
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "opening",
+       "title": "the opening",
+       "cue": "You will say these in every conversation, so make them short and true.",
+       "tasks": [
+        {
+         "id": "op-arc",
+         "t": "A 90-second arc, recorded and played back",
+         "m": 20
+        },
+        {
+         "id": "op-why",
+         "t": "Why now, and why this role: two honest sentences each",
+         "m": 15
+        },
+        {
+         "id": "op-hands",
+         "t": "What you have built hands-on lately, with or without agents",
+         "m": 15
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mocks",
+   "title": "mocks",
+   "blurb": "Someone else's eyes and someone else's clock. The first one goes worse than the solo practice did, which is the reason to do it before it counts.",
+   "links": [
+    {
+     "t": "interviewing.io (paid mocks)",
+     "u": "https://interviewing.io/"
+    }
+   ],
+   "children": [
+    {
+     "id": "mock-coding",
+     "title": "coding mock",
+     "cue": "A friend who interviews, or a paid service.",
+     "tasks": [
+      {
+       "id": "mock-coding-do",
+       "t": "One coding mock: a pattern problem, then a build",
+       "m": 60
+      },
+      {
+       "id": "mock-coding-notes",
+       "t": "Write down their three notes and fix one this week",
+       "m": 15
+      }
+     ],
+     "needs": [
+      "trees",
+      "rate-limiter"
+     ]
+    },
+    {
+     "id": "mock-design",
+     "title": "design mock",
+     "cue": "Ask for a prompt you have not practiced.",
+     "tasks": [
+      {
+       "id": "mock-design-do",
+       "t": "One design mock, 45 min",
+       "m": 60
+      },
+      {
+       "id": "mock-design-notes",
+       "t": "Write down their three notes and fix one this week",
+       "m": 15
+      }
+     ],
+     "needs": [
+      "classics"
+     ]
+    },
+    {
+     "id": "mock-experience",
+     "title": "experience mock",
+     "cue": "A deep dive on one system, then stories.",
+     "tasks": [
+      {
+       "id": "mock-experience-do",
+       "t": "One experience mock: deep dive plus three stories",
+       "m": 60
+      },
+      {
+       "id": "mock-experience-notes",
+       "t": "Write down their three notes and fix one this week",
+       "m": 15
+      }
+     ],
+     "needs": [
+      "deep-dives",
+      "eight-stories"
+     ]
+    },
+    {
+     "id": "full-loop",
+     "title": "full loop",
+     "cue": "One sitting, back to back, the way the day itself runs.",
+     "tasks": [
+      {
+       "id": "fl-run",
+       "t": "Coding, build, design and experience in one four-hour block",
+       "m": 240
+      },
+      {
+       "id": "fl-order",
+       "t": "Line up the real ones, lowest stakes first",
+       "m": 10
+      }
+     ],
+     "needs": [
+      "mock-coding",
+      "mock-design",
+      "mock-experience"
+     ]
+    }
+   ]
+  }
+ ]
+}</script>
+<script>
+(function(){
+"use strict";
+var KEY="study-tree-v1",PACES=[6,8,10,12];
+var data=JSON.parse(document.getElementById("data").textContent);
+function load(k){try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return{}}}
+var st=load(KEY),ui=load(KEY+"-ui");
+if(!ui.ex)ui.ex={};
+if(!ui.col)ui.col={};
+if(PACES.indexOf(ui.pace)<0)ui.pace=8;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+function saveUi(){try{localStorage.setItem(KEY+"-ui",JSON.stringify(ui))}catch(e){}}
+function $(id){return document.getElementById(id)}
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function hrs(m){return String(Math.round(m/6)/10)}
+function mins(m){return m>90?hrs(m)+" h":m+" min"}
+
+var byId={},nodes=[],root=$("ui-tree");
+function req(n){return n.tasks.filter(function(t){return !t.x})}
+function isDone(n){return req(n).every(function(t){return st[t.id]})}
+function started(n){return n.tasks.some(function(t){return st[t.id]})}
+function blockers(n){
+  var out=[];
+  if(n.parent&&!isDone(n.parent))out.push(n.parent);
+  (n.needs||[]).forEach(function(id){var m=byId[id];if(m&&!isDone(m)&&out.indexOf(m)<0)out.push(m)});
+  return out;
+}
+function state(n){return isDone(n)?"done":blockers(n).length?"locked":started(n)?"going":"open"}
+
+function linkRow(links){
+  var p=el("p","links");
+  links.forEach(function(l){var a=el("a",null,l.t);a.href=l.u;a.target="_blank";a.rel="noopener";p.appendChild(a)});
+  return p;
+}
+function build(n,parent,b){
+  n.parent=parent;n.branch=b;byId[n.id]=n;nodes.push(n);b._nodes.push(n);
+  var li=el("li","node");li.id=n.id;
+  if(n.s)li.classList.add("stretch");
+  if(n.children&&n.children.length)li.classList.add("haskids");
+  var hd=el("button","hd");hd.type="button";
+  hd.appendChild(el("span","dot"));
+  var ttl=el("span","ttl",n.title);
+  if(n.s)ttl.appendChild(el("span","tag","stretch"));
+  hd.appendChild(ttl);
+  var cnt=el("span","cnt");n._f=el("span");n._h=el("span","hh");cnt.appendChild(n._f);cnt.appendChild(n._h);hd.appendChild(cnt);
+  li.appendChild(hd);
+  var body=el("div","body");
+  body.appendChild(el("p","cue",n.cue));
+  n._lock=el("p","lock");body.appendChild(n._lock);
+  if(n.levels){var ol=el("ol","levels");n.levels.forEach(function(t){ol.appendChild(el("li",null,t))});body.appendChild(ol)}
+  var ul=el("ul","tasks");
+  n.tasks.forEach(function(t){
+    var row=el("li","task");if(t.x)row.classList.add("optional");
+    var cb=el("input");cb.type="checkbox";cb.setAttribute("aria-label",t.t);
+    var tx=el("div","tx");
+    if(t.u){var a=el("a",null,t.t);a.href=t.u;a.target="_blank";a.rel="noopener";tx.appendChild(a)}
+    else tx.appendChild(el("span",null,t.t));
+    if(t.d)tx.appendChild(el("span","d d-"+t.d,t.d));
+    if(t.x)tx.appendChild(el("span","tag","optional"));
+    row.appendChild(cb);row.appendChild(tx);row.appendChild(el("span","m",mins(t.m)));
+    cb.addEventListener("change",function(){if(cb.checked)st[t.id]=Date.now();else delete st[t.id];save();render()});
+    tx.addEventListener("click",function(e){if(e.target.tagName==="A")return;cb.checked=!cb.checked;cb.dispatchEvent(new Event("change"))});
+    t._cb=cb;t._row=row;ul.appendChild(row);
+  });
+  body.appendChild(ul);
+  if(n.after)body.appendChild(el("p","after",n.after));
+  if(n.links)body.appendChild(linkRow(n.links));
+  li.appendChild(body);
+  if(n.children&&n.children.length){var k=el("ul","kids");n.children.forEach(function(c){k.appendChild(build(c,n,b))});li.appendChild(k)}
+  hd.addEventListener("click",function(){ui.ex[n.id]=!ui.ex[n.id];saveUi();render()});
+  n._li=li;n._hd=hd;
+  return li;
+}
+data.branches.forEach(function(b){
+  b._nodes=[];
+  var li=el("li","branch");li.id="b-"+b.id;
+  var bh=el("button","bh");bh.type="button";bh.appendChild(el("span",null,b.title));
+  b._c=el("span","c");bh.appendChild(b._c);li.appendChild(bh);
+  if(b.blurb)li.appendChild(el("p","blurb",b.blurb));
+  if(b.links)li.appendChild(linkRow(b.links));
+  var ul=el("ul","kids");
+  b.children.forEach(function(c){ul.appendChild(build(c,null,b))});
+  li.appendChild(ul);
+  bh.addEventListener("click",function(){ui.col[b.id]=!ui.col[b.id];saveUi();render()});
+  b._li=li;b._bh=bh;root.appendChild(li);
+});
+
+function go(id){
+  var n=byId[id];if(!n)return;
+  ui.ex[id]=true;ui.col[n.branch.id]=false;if(n.s)ui.nostretch=false;
+  saveUi();render();
+  n._li.scrollIntoView({block:"start"});
+}
+function render(){
+  var doneM=0,totM=0,doneT=0,totT=0,extraM=0,anyEx=false;
+  document.documentElement.style.setProperty("--barh",$("ui-bar").offsetHeight+"px");
+  root.classList.toggle("nostretch",!!ui.nostretch);
+  nodes.forEach(function(n){
+    var s=state(n),li=n._li,ex=!!ui.ex[n.id];
+    n._s=s;if(ex)anyEx=true;
+    li.classList.remove("s-done","s-going","s-open","s-locked");li.classList.add("s-"+s);
+    li.classList.toggle("ex",ex);n._hd.setAttribute("aria-expanded",ex?"true":"false");
+    var r=req(n),d=0,m=0;
+    r.forEach(function(t){m+=t.m;if(st[t.id])d++});
+    n._f.textContent=d+"/"+r.length;n._h.textContent=" \u00b7 "+hrs(m)+" h";
+    n.tasks.forEach(function(t){
+      var on=!!st[t.id];t._cb.checked=on;t._row.classList.toggle("chk",on);
+      if(n.s||t.x)extraM+=t.m;
+      else{totT++;totM+=t.m;if(on){doneT++;doneM+=t.m}}
+    });
+    var bl=s==="locked"?blockers(n):[];
+    n._lock.textContent="";n._lock.style.display=bl.length?"":"none";
+    if(bl.length){
+      n._lock.appendChild(document.createTextNode("locked until: "));
+      bl.forEach(function(x,i){
+        if(i)n._lock.appendChild(document.createTextNode(", "));
+        var j=el("button","jump",x.title);j.type="button";
+        j.addEventListener("click",function(){go(x.id)});n._lock.appendChild(j);
+      });
+    }
+  });
+  var chips=[];
+  data.branches.forEach(function(b){
+    var d=0,t=0,m=0,dm=0,pick=null;
+    b._nodes.forEach(function(n){
+      if(n.s)return;
+      req(n).forEach(function(k){t++;m+=k.m;if(st[k.id]){d++;dm+=k.m}});
+      if(n._s==="going"&&(!pick||pick._s!=="going"))pick=n;
+      else if(n._s==="open"&&!pick)pick=n;
+    });
+    b._c.textContent=d+"/"+t+" \u00b7 "+hrs(dm)+" of "+hrs(m)+" h";
+    b._li.classList.toggle("done",t>0&&d===t);
+    b._li.classList.toggle("col",!!ui.col[b.id]);
+    b._bh.setAttribute("aria-expanded",ui.col[b.id]?"false":"true");
+    if(pick)chips.push(pick);
+  });
+  var left=totM-doneM,weeks=Math.ceil(left/60/ui.pace);
+  $("ui-total").textContent=doneT+" / "+totT+" \u00b7 "+hrs(doneM)+" of "+hrs(totM)+" h";
+  $("ui-eta").textContent=left>0?"about "+weeks+(weeks===1?" week":" weeks")+" left at":"core done";
+  $("ui-pace").style.display=left>0?"":"none";
+  $("ui-pbar").style.width=(totM?100*doneM/totM:0)+"%";
+  $("ui-expand").textContent=anyEx?"collapse all":"expand all";
+  $("ui-stretch").textContent=ui.nostretch?"show stretch":"hide stretch";
+  $("ui-stretch").classList.toggle("on",!!ui.nostretch);
+  $("ui-note").textContent="Stretch and optional items add "+hrs(extraM)+" h and do not count toward the total.";
+  var nx=$("ui-next");nx.textContent="";
+  nx.appendChild(document.createTextNode(chips.length?"next up":left>0?"":"all core work done"));
+  chips.forEach(function(n){
+    var c=el("button","chip"+(n._s==="going"?" going":""),n.branch.title+" \u203a "+n.title);c.type="button";
+    c.addEventListener("click",function(){go(n.id)});nx.appendChild(c);
+  });
+  var uls=root.querySelectorAll("ul.kids");
+  for(var i=0;i<uls.length;i++){
+    var kids=uls[i].children,last=null;
+    for(var j=0;j<kids.length;j++){kids[j].classList.remove("last");if(!(ui.nostretch&&kids[j].classList.contains("stretch")))last=kids[j]}
+    if(last)last.classList.add("last");
+  }
+}
+var pace=$("ui-pace");
+PACES.forEach(function(p){var o=el("option",null,p+" h/wk");o.value=p;pace.appendChild(o)});
+pace.value=ui.pace;
+pace.addEventListener("change",function(){ui.pace=+pace.value;saveUi();render()});
+$("ui-expand").addEventListener("click",function(){
+  var any=nodes.some(function(n){return ui.ex[n.id]});
+  ui.ex={};if(!any)nodes.forEach(function(n){ui.ex[n.id]=true});
+  saveUi();render();
+});
+$("ui-stretch").addEventListener("click",function(){ui.nostretch=!ui.nostretch;saveUi();render()});
+$("ui-reset").addEventListener("click",function(){if(confirm("Uncheck everything?")){st={};save();render()}});
+window.addEventListener("storage",function(e){if(e.key===KEY){st=load(KEY);render()}});
+window.addEventListener("resize",function(){document.documentElement.style.setProperty("--barh",$("ui-bar").offsetHeight+"px")});
+if(!ui.seen){ui.seen=true;ui.ex.diagnostic=true;saveUi()}
+render();
+var h=location.hash.slice(1);if(h&&byId[h])go(h);
+})();
+</script>
+</body>
+</html>
